@@ -1,0 +1,21 @@
+# V1.9 Quant Radar Configuration
+
+csv_url: "https://docs.google.com/spreadsheets/d/1O_txXYVAcDp0syjexAcowRRdrNX4gyrFzrGqNgh9dfw/export?format=csv"
+
+ibkr:
+  host: "127.0.0.1"
+  port: 4001
+  client_id: 1
+  timeout: 30
+
+data:
+  iv_history_db: "data/iv_history.db"
+  price_period: "1y"
+
+reports:
+  output_dir: "reports"
+  log_dir: "logs"
+
+schedule:
+  timezone: "Asia/Shanghai"
+  run_time: "17:00"
