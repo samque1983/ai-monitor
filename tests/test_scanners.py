@@ -1,8 +1,10 @@
 # tests/test_scanners.py
 import pytest
+import pandas as pd
 from datetime import date
 from src.data_engine import TickerData
 from src.scanners import scan_iv_extremes, scan_ma200_crossover, scan_leaps_setup
+from src.scanners import scan_sell_put, SellPutSignal
 
 
 def make_ticker(**kwargs) -> TickerData:
@@ -129,3 +131,76 @@ class TestLEAPSSetup:
     def test_none_rsi_skipped(self):
         data = [make_ticker(rsi14=None)]
         assert len(scan_leaps_setup(data)) == 0
+
+
+class TestSellPutScanner:
+    def test_basic_signal(self):
+        ticker_data = make_ticker(
+            ticker="AAPL",
+            earnings_date=date(2026, 6, 1),
+            days_to_earnings=101,
+        )
+        options_df = pd.DataFrame({
+            "strike": [145.0, 150.0, 155.0],
+            "bid": [1.5, 2.0, 3.0],
+            "dte": [50, 50, 50],
+            "expiration": [date(2026, 4, 11)] * 3,
+            "impliedVolatility": [0.3, 0.3, 0.3],
+        })
+        result = scan_sell_put(
+            ticker_data=ticker_data,
+            target_strike=150.0,
+            options_df=options_df,
+        )
+        assert result is not None
+        assert result.strike == 150.0
+        assert result.bid == 2.0
+        assert result.apy == pytest.approx((2.0 / 150.0) * (365 / 50) * 100, rel=1e-2)
+        assert result.earnings_risk is False
+
+    def test_earnings_within_dte_flags_risk(self):
+        ticker_data = make_ticker(
+            ticker="AAPL",
+            earnings_date=date(2026, 3, 15),
+            days_to_earnings=23,
+        )
+        options_df = pd.DataFrame({
+            "strike": [150.0],
+            "bid": [3.0],
+            "dte": [50],
+            "expiration": [date(2026, 4, 11)],
+            "impliedVolatility": [0.3],
+        })
+        result = scan_sell_put(ticker_data, 150.0, options_df)
+        assert result is not None
+        assert result.earnings_risk is True
+
+    def test_apy_below_threshold_returns_none(self):
+        ticker_data = make_ticker(ticker="AAPL")
+        options_df = pd.DataFrame({
+            "strike": [150.0],
+            "bid": [0.10],
+            "dte": [50],
+            "expiration": [date(2026, 4, 11)],
+            "impliedVolatility": [0.1],
+        })
+        result = scan_sell_put(ticker_data, 150.0, options_df)
+        assert result is None
+
+    def test_closest_strike_below_target(self):
+        ticker_data = make_ticker(ticker="AAPL")
+        options_df = pd.DataFrame({
+            "strike": [145.0, 148.0, 152.0, 155.0],
+            "bid": [3.0, 2.5, 2.0, 1.5],
+            "dte": [50, 50, 50, 50],
+            "expiration": [date(2026, 4, 11)] * 4,
+            "impliedVolatility": [0.3] * 4,
+        })
+        result = scan_sell_put(ticker_data, 150.0, options_df)
+        assert result is not None
+        assert result.strike == 148.0
+
+    def test_empty_options_returns_none(self):
+        ticker_data = make_ticker(ticker="AAPL")
+        result = scan_sell_put(ticker_data, 150.0, pd.DataFrame())
+        assert result is None
