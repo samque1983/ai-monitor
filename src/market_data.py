@@ -5,6 +5,7 @@ from typing import Optional
 import pandas as pd
 import yfinance as yf
 from src.data_loader import classify_market
+from src.iv_store import IVStore
 
 logger = logging.getLogger(__name__)
 
@@ -12,11 +13,14 @@ logger = logging.getLogger(__name__)
 class MarketDataProvider:
     """Hybrid IBKR/yfinance market data provider."""
 
-    def __init__(self, ibkr_config: Optional[dict] = None):
+    def __init__(self, ibkr_config: Optional[dict] = None, iv_db_path: Optional[str] = None):
         self.ibkr = None
         self.ibkr_config = ibkr_config
+        self.iv_store: Optional[IVStore] = None
         if ibkr_config:
             self.ibkr = self._try_connect_ibkr(ibkr_config)
+        if iv_db_path:
+            self.iv_store = IVStore(iv_db_path)
 
     def _try_connect_ibkr(self, config: dict):
         """Attempt IBKR connection. Returns IB instance or None."""
@@ -115,10 +119,37 @@ class MarketDataProvider:
             return pd.DataFrame()
 
     def get_iv_rank(self, ticker: str) -> Optional[float]:
-        """Get IV Rank (0-100). Placeholder -- will be implemented with IV history storage."""
+        """Get IV Rank (0-100) using ATM IV from options chain and historical data."""
         if self.should_skip_options(ticker):
             return None
-        return None
+        try:
+            t = yf.Ticker(ticker)
+            current_price = t.info.get("regularMarketPrice") or t.info.get("previousClose")
+            if not current_price:
+                return None
+
+            exps = t.options
+            if not exps:
+                return None
+            # Use nearest expiration
+            chain = t.option_chain(exps[0])
+            calls = chain.calls
+            if calls.empty:
+                return None
+            # Find ATM option
+            calls = calls.copy()
+            calls["diff"] = abs(calls["strike"] - current_price)
+            atm = calls.loc[calls["diff"].idxmin()]
+            current_iv = float(atm["impliedVolatility"])
+
+            # Store snapshot and compute rank
+            if self.iv_store:
+                self.iv_store.save_iv(ticker, date.today(), current_iv)
+                return self.iv_store.compute_iv_rank(ticker, current_iv)
+            return None
+        except Exception as e:
+            logger.warning(f"IV rank fetch failed for {ticker}: {e}")
+            return None
 
     def disconnect(self):
         """Disconnect from IBKR if connected."""
