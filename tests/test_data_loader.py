@@ -27,6 +27,9 @@ class TestCleanStrikePrice:
     def test_clean_numeric_value(self):
         assert clean_strike_price(150.50) == 150.50
 
+    def test_clean_nan_value(self):
+        assert clean_strike_price(float("nan")) is None
+
 
 class TestClassifyMarket:
     def test_us_ticker(self):

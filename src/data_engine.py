@@ -84,7 +84,7 @@ def build_ticker_data(
     rsi14 = compute_rsi(close, 14)
 
     # Weekly SMA 50
-    weekly_df = provider.get_weekly_price_data(ticker, period="1y")
+    weekly_df = provider.get_weekly_price_data(ticker, period="2y")
     ma50w = None
     if not weekly_df.empty:
         weekly_close = weekly_df["Close"]

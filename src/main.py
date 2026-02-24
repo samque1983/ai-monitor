@@ -45,7 +45,12 @@ def run_scan(config_path: str = "config.yaml"):
     logger.info(f"Universe: {len(tickers)} tickers, {len(target_buys)} target buys")
 
     # Step 2: Connect to market data
-    provider = MarketDataProvider(ibkr_config=config.get("ibkr"))
+    iv_db_path = config["data"]["iv_history_db"]
+    os.makedirs(os.path.dirname(iv_db_path) or ".", exist_ok=True)
+    provider = MarketDataProvider(
+        ibkr_config=config.get("ibkr"),
+        iv_db_path=iv_db_path,
+    )
     data_source = "IBKR Gateway" if provider.ibkr else "yfinance"
 
     # Step 3: Build ticker data

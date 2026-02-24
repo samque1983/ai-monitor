@@ -13,6 +13,9 @@ def clean_strike_price(value) -> Optional[float]:
     if value is None:
         return None
     if isinstance(value, (int, float)):
+        import math
+        if math.isnan(value):
+            return None
         return float(value)
     s = str(value).strip()
     if not s:
