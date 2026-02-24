@@ -45,44 +45,47 @@ class TestClassifyMarket:
         assert classify_market("000001.SZ") == "CN"
 
 
+def _mock_csv_response(csv_text):
+    """Create a mock requests.Response with CSV content."""
+    from unittest.mock import MagicMock
+    resp = MagicMock()
+    resp.text = csv_text
+    resp.raise_for_status = MagicMock()
+    return resp
+
+
 class TestFetchUniverse:
-    @patch("src.data_loader.pd.read_csv")
-    def test_returns_ticker_list_and_target_buys(self, mock_read_csv):
-        mock_df = pd.DataFrame({
-            "代码": ["AAPL", "MSFT", "0700.HK"],
-            "Strike (黄金位)": ["$150", "280.5", ""],
-        })
-        mock_read_csv.return_value = mock_df
+    @patch("src.data_loader.requests.get")
+    def test_returns_ticker_list_and_target_buys(self, mock_get):
+        mock_get.return_value = _mock_csv_response(
+            "代码,Strike (黄金位)\nAAPL,$150\nMSFT,280.5\n0700.HK,\n"
+        )
 
         tickers, target_buys = fetch_universe("https://example.com/test.csv")
 
         assert tickers == ["AAPL", "MSFT", "0700.HK"]
         assert target_buys == {"AAPL": 150.0, "MSFT": 280.5}
 
-    @patch("src.data_loader.pd.read_csv")
-    def test_strips_whitespace_from_tickers(self, mock_read_csv):
-        mock_df = pd.DataFrame({
-            "代码": [" AAPL ", "MSFT"],
-            "Strike (黄金位)": ["150", "280"],
-        })
-        mock_read_csv.return_value = mock_df
+    @patch("src.data_loader.requests.get")
+    def test_strips_whitespace_from_tickers(self, mock_get):
+        mock_get.return_value = _mock_csv_response(
+            "代码,Strike (黄金位)\n AAPL ,150\nMSFT,280\n"
+        )
 
         tickers, target_buys = fetch_universe("https://example.com/test.csv")
         assert tickers == ["AAPL", "MSFT"]
 
-    @patch("src.data_loader.pd.read_csv")
-    def test_skips_rows_with_empty_ticker(self, mock_read_csv):
-        mock_df = pd.DataFrame({
-            "代码": ["AAPL", "", None, "MSFT"],
-            "Strike (黄金位)": ["150", "100", "200", "280"],
-        })
-        mock_read_csv.return_value = mock_df
+    @patch("src.data_loader.requests.get")
+    def test_skips_rows_with_empty_ticker(self, mock_get):
+        mock_get.return_value = _mock_csv_response(
+            "代码,Strike (黄金位)\nAAPL,150\n,100\n,200\nMSFT,280\n"
+        )
 
         tickers, target_buys = fetch_universe("https://example.com/test.csv")
         assert tickers == ["AAPL", "MSFT"]
 
-    @patch("src.data_loader.pd.read_csv")
-    def test_csv_fetch_failure_raises(self, mock_read_csv):
-        mock_read_csv.side_effect = Exception("Network error")
+    @patch("src.data_loader.requests.get")
+    def test_csv_fetch_failure_raises(self, mock_get):
+        mock_get.side_effect = Exception("Network error")
         with pytest.raises(Exception, match="Network error"):
             fetch_universe("https://example.com/test.csv")

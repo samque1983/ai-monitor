@@ -1,8 +1,10 @@
 # src/data_loader.py
+import io
 import re
 from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
+import requests
 import logging
 
 logger = logging.getLogger(__name__)
@@ -49,7 +51,10 @@ def fetch_universe(csv_url: str) -> Tuple[List[str], Dict[str, float]]:
 
     Raises on network/parse failure (no data = no scan).
     """
-    df = pd.read_csv(csv_url)
+    resp = requests.get(csv_url, timeout=30)
+    resp.raise_for_status()
+    resp.encoding = "utf-8"
+    df = pd.read_csv(io.StringIO(resp.text))
 
     # Clean ticker column
     df["代码"] = df["代码"].astype(str).str.strip()
