@@ -7,8 +7,8 @@ from src.scanners import SellPutSignal
 
 def format_earnings_tag(earnings_date: Optional[date], days: Optional[int]) -> str:
     if earnings_date and days is not None:
-        return f"Earnings: {earnings_date} ({days}d)"
-    return "Earnings: N/A"
+        return f"财报: {earnings_date} ({days}天)"
+    return "财报: N/A"
 
 
 def format_report(
@@ -28,55 +28,56 @@ def format_report(
     sep = "=" * 55
 
     # Header
-    day_name = scan_date.strftime("%a")
+    day_cn_map = {"Mon": "周一", "Tue": "周二", "Wed": "周三", "Thu": "周四", "Fri": "周五", "Sat": "周六", "Sun": "周日"}
+    day_name = day_cn_map.get(scan_date.strftime("%a"), scan_date.strftime("%a"))
     lines.append(sep)
-    lines.append(f"  V1.9 QUANT RADAR \u2014 {scan_date} ({day_name})")
-    lines.append(f"  Data Source: {data_source} | Universe: {universe_count} tickers")
+    lines.append(f"  量化扫描雷达 \u2014 {scan_date} ({day_name})")
+    lines.append(f"  数据源: {data_source} | 标的数: {universe_count}")
     lines.append(sep)
     lines.append("")
 
-    # Module 2: IV Extremes
-    lines.append("\u2500\u2500 MODULE 2: IV EXTREMES \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500")
+    # IV Extremes
+    lines.append("── 波动率极值监控 ─────────────────────────────────")
     lines.append("")
-    lines.append("\u25bc LOW IV (IV Rank < 20%)")
+    lines.append("▼ 低波动率 (IV Rank < 20%)")
     if iv_low:
         for t in iv_low:
             lines.append(f"  {t.ticker:<8} IV Rank: {t.iv_rank:5.1f}%  \u2502 {format_earnings_tag(t.earnings_date, t.days_to_earnings)}")
     else:
-        lines.append("  (none)")
+        lines.append("  (无符合条件的标的)")
     lines.append("")
-    lines.append("\u25b2 HIGH IV (IV Rank > 80%)")
+    lines.append("▲ 高波动率 (IV Rank > 80%)")
     if iv_high:
         for t in iv_high:
             lines.append(f"  {t.ticker:<8} IV Rank: {t.iv_rank:5.1f}%  \u2502 {format_earnings_tag(t.earnings_date, t.days_to_earnings)}")
     else:
-        lines.append("  (none)")
+        lines.append("  (无符合条件的标的)")
     lines.append("")
 
-    # Module 3: MA200 Crossover
-    lines.append("\u2500\u2500 MODULE 3: MA200 CROSSOVER \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500")
+    # MA200 Crossover
+    lines.append("── 趋势反转提醒 (MA200) ──────────────────────────")
     lines.append("")
-    lines.append("\u2191 BULLISH CROSS (Price > MA200)")
+    lines.append("↑ 向上突破 MA200")
     if ma200_bullish:
         for t in ma200_bullish:
             pct = ((t.last_price - t.ma200) / t.ma200 * 100) if t.ma200 else 0
             lines.append(f"  {t.ticker:<8} Price: ${t.last_price:.2f}  MA200: ${t.ma200:.2f} ({pct:+.2f}%)")
             lines.append(f"          {format_earnings_tag(t.earnings_date, t.days_to_earnings)}")
     else:
-        lines.append("  (none)")
+        lines.append("  (无符合条件的标的)")
     lines.append("")
-    lines.append("\u2193 BEARISH CROSS (Price < MA200)")
+    lines.append("↓ 向下跌破 MA200")
     if ma200_bearish:
         for t in ma200_bearish:
             pct = ((t.last_price - t.ma200) / t.ma200 * 100) if t.ma200 else 0
             lines.append(f"  {t.ticker:<8} Price: ${t.last_price:.2f}  MA200: ${t.ma200:.2f} ({pct:+.2f}%)")
             lines.append(f"          {format_earnings_tag(t.earnings_date, t.days_to_earnings)}")
     else:
-        lines.append("  (none)")
+        lines.append("  (无符合条件的标的)")
     lines.append("")
 
-    # Module 4: LEAPS Setup
-    lines.append("\u2500\u2500 MODULE 4: LEAPS SETUP (V1.9 \u5171\u632f) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500")
+    # LEAPS Setup
+    lines.append("── LEAPS 共振信号 ────────────────────────────────")
     lines.append("")
     if leaps:
         for t in leaps:
@@ -84,20 +85,20 @@ def format_report(
             lines.append(f"  {t.ticker:<8} Price: ${t.last_price:.2f}  MA200: ${t.ma200:.2f}  MA50w: ${t.ma50w:.2f} ({ma50w_pct:+.1f}%)")
             lines.append(f"          RSI: {t.rsi14:.1f}  IV Rank: {t.iv_rank:.1f}%  \u2502 {format_earnings_tag(t.earnings_date, t.days_to_earnings)}")
     else:
-        lines.append("  (no tickers meet all 4 conditions)")
+        lines.append("  (无同时满足全部4项条件的标的)")
     lines.append("")
 
-    # Module 5: Sell Put
-    lines.append("\u2500\u2500 MODULE 5: SELL PUT SCANNER \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500")
+    # Sell Put
+    lines.append("── Sell Put 扫描 ─────────────────────────────────")
     lines.append("")
     if sell_puts:
         for signal, t in sell_puts:
             lines.append(f"  {signal.ticker:<8} Strike: ${signal.strike:.0f}  DTE: {signal.dte}  Bid: ${signal.bid:.2f}  APY: {signal.apy:.1f}%")
             lines.append(f"          {format_earnings_tag(t.earnings_date, t.days_to_earnings)}")
             if signal.earnings_risk:
-                lines.append(f"          \U0001f6a8 WARNING: Earnings falls within DTE window \u2014 gap risk")
+                lines.append(f"          \U0001f6a8 警告: 财报日在DTE窗口内 \u2014 跳空风险")
     else:
-        lines.append("  (none)")
+        lines.append("  (无符合条件的标的)")
     lines.append("")
 
     # Skipped tickers detail
@@ -111,7 +112,7 @@ def format_report(
     # Footer
     skipped_count = len(skipped) if skipped else 0
     lines.append(sep)
-    lines.append(f"  Scan completed in {elapsed_seconds:.1f}s │ Processed: {universe_count - skipped_count} │ Skipped: {skipped_count}")
+    lines.append(f"  扫描耗时 {elapsed_seconds:.1f}s │ 处理: {universe_count - skipped_count} │ 跳过: {skipped_count}")
     lines.append(sep)
 
     return "\n".join(lines)

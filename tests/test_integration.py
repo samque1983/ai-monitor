@@ -61,5 +61,5 @@ def test_full_pipeline(mock_provider):
         leaps=leaps, sell_puts=[],
         elapsed_seconds=1.0,
     )
-    assert "V1.9 QUANT RADAR" in report
-    assert "AAPL" in report or "(none)" in report
+    assert "量化扫描雷达" in report
+    assert "AAPL" in report or "无符合条件的标的" in report

@@ -21,11 +21,13 @@ class TestFormatEarningsTag:
     def test_with_date(self):
         tag = format_earnings_tag(date(2026, 4, 25), 64)
         assert "2026-04-25" in tag
-        assert "64d" in tag
+        assert "64天" in tag
+        assert "财报" in tag
 
     def test_without_date(self):
         tag = format_earnings_tag(None, None)
         assert "N/A" in tag
+        assert "财报" in tag
 
 
 class TestFormatReport:
@@ -40,9 +42,10 @@ class TestFormatReport:
             sell_puts=[],
             elapsed_seconds=12.5,
         )
-        assert "V1.9 QUANT RADAR" in report
+        assert "量化扫描雷达" in report
         assert "2026-02-20" in report
         assert "42" in report
+        assert "V1.9" not in report
 
     def test_report_contains_iv_extremes(self):
         low = [make_ticker(ticker="AAPL", iv_rank=12.3)]
@@ -57,7 +60,7 @@ class TestFormatReport:
         )
         assert "AAPL" in report
         assert "12.3" in report
-        assert "IV EXTREMES" in report
+        assert "波动率极值监控" in report
 
     def test_report_contains_sell_put_warning(self):
         signal = SellPutSignal(
@@ -78,7 +81,7 @@ class TestFormatReport:
         assert "NVDA" in report
         assert "\U0001f6a8" in report
 
-    def test_empty_modules_show_none(self):
+    def test_empty_modules_show_chinese_none(self):
         report = format_report(
             scan_date=date(2026, 2, 20),
             data_source="yfinance",
@@ -88,7 +91,7 @@ class TestFormatReport:
             leaps=[], sell_puts=[],
             elapsed_seconds=5.0,
         )
-        assert "(none)" in report.lower() or "no tickers" in report.lower()
+        assert "无符合条件的标的" in report
 
     def test_skipped_tickers_show_reasons(self):
         report = format_report(
@@ -107,5 +110,5 @@ class TestFormatReport:
         assert "BRK.B" in report
         assert "600900" in report
         assert "无价格数据" in report
-        assert "Skipped: 2" in report
-        assert "Processed: 8" in report
+        assert "跳过: 2" in report
+        assert "处理: 8" in report
