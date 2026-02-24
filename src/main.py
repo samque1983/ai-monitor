@@ -11,6 +11,7 @@ from src.market_data import MarketDataProvider
 from src.data_engine import TickerData, build_ticker_data
 from src.scanners import scan_iv_extremes, scan_ma200_crossover, scan_leaps_setup, scan_sell_put
 from src.report import format_report
+from src.html_report import format_html_report
 from src.email_stub import send_email
 
 logger = logging.getLogger(__name__)
@@ -104,6 +105,20 @@ def run_scan(config_path: str = "config.yaml"):
         elapsed_seconds=elapsed,
     )
 
+    html_report = format_html_report(
+        scan_date=today,
+        data_source=data_source,
+        universe_count=len(tickers),
+        iv_low=iv_low,
+        iv_high=iv_high,
+        ma200_bullish=ma200_bull,
+        ma200_bearish=ma200_bear,
+        leaps=leaps,
+        sell_puts=sell_put_results,
+        skipped=skipped,
+        elapsed_seconds=elapsed,
+    )
+
     # Step 6: Output
     print(report)
 
@@ -114,6 +129,11 @@ def run_scan(config_path: str = "config.yaml"):
     with open(report_path, "w") as f:
         f.write(report)
     logger.info(f"Report saved: {report_path}")
+
+    html_path = os.path.join(reports_dir, f"{today}_radar.html")
+    with open(html_path, "w", encoding="utf-8") as f:
+        f.write(html_report)
+    logger.info(f"HTML report saved: {html_path}")
 
     # Email stub
     send_email(report, config)
