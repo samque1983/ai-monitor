@@ -38,7 +38,6 @@ class TestFormatReport:
             ma200_bullish=[], ma200_bearish=[],
             leaps=[],
             sell_puts=[],
-            errors_count=0,
             elapsed_seconds=12.5,
         )
         assert "V1.9 QUANT RADAR" in report
@@ -54,7 +53,7 @@ class TestFormatReport:
             iv_low=low, iv_high=[],
             ma200_bullish=[], ma200_bearish=[],
             leaps=[], sell_puts=[],
-            errors_count=0, elapsed_seconds=5.0,
+            elapsed_seconds=5.0,
         )
         assert "AAPL" in report
         assert "12.3" in report
@@ -74,7 +73,7 @@ class TestFormatReport:
             ma200_bullish=[], ma200_bearish=[],
             leaps=[],
             sell_puts=[(signal, make_ticker(ticker="NVDA"))],
-            errors_count=0, elapsed_seconds=5.0,
+            elapsed_seconds=5.0,
         )
         assert "NVDA" in report
         assert "\U0001f6a8" in report
@@ -87,6 +86,26 @@ class TestFormatReport:
             iv_low=[], iv_high=[],
             ma200_bullish=[], ma200_bearish=[],
             leaps=[], sell_puts=[],
-            errors_count=0, elapsed_seconds=5.0,
+            elapsed_seconds=5.0,
         )
         assert "(none)" in report.lower() or "no tickers" in report.lower()
+
+    def test_skipped_tickers_show_reasons(self):
+        report = format_report(
+            scan_date=date(2026, 2, 20),
+            data_source="yfinance",
+            universe_count=10,
+            iv_low=[], iv_high=[],
+            ma200_bullish=[], ma200_bearish=[],
+            leaps=[], sell_puts=[],
+            skipped=[
+                ("BRK.B", "无价格数据 (no price data)"),
+                ("600900", "无价格数据 (no price data)"),
+            ],
+            elapsed_seconds=5.0,
+        )
+        assert "BRK.B" in report
+        assert "600900" in report
+        assert "无价格数据" in report
+        assert "Skipped: 2" in report
+        assert "Processed: 8" in report

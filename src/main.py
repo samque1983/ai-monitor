@@ -3,7 +3,7 @@ import sys
 import time
 import logging
 from datetime import date
-from typing import List
+from typing import Dict, List, Tuple
 
 from src.config import load_config
 from src.data_loader import fetch_universe
@@ -55,7 +55,7 @@ def run_scan(config_path: str = "config.yaml"):
 
     # Step 3: Build ticker data
     all_data: List[TickerData] = []
-    errors_count = 0
+    skipped: List[Tuple[str, str]] = []  # (ticker, reason)
     today = date.today()
 
     for ticker in tickers:
@@ -64,12 +64,11 @@ def run_scan(config_path: str = "config.yaml"):
             if td:
                 all_data.append(td)
             else:
-                errors_count += 1
+                skipped.append((ticker, "无价格数据 (no price data)"))
         except Exception as e:
-            logger.error(f"Failed to process {ticker}: {e}")
-            errors_count += 1
+            skipped.append((ticker, str(e)))
 
-    logger.info(f"Processed {len(all_data)} tickers, {errors_count} errors")
+    logger.info(f"Processed {len(all_data)} tickers, {len(skipped)} skipped")
 
     # Step 4: Run scanners
     iv_low, iv_high = scan_iv_extremes(all_data)
@@ -101,7 +100,7 @@ def run_scan(config_path: str = "config.yaml"):
         ma200_bearish=ma200_bear,
         leaps=leaps,
         sell_puts=sell_put_results,
-        errors_count=errors_count,
+        skipped=skipped,
         elapsed_seconds=elapsed,
     )
 

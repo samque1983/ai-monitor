@@ -21,8 +21,8 @@ def format_report(
     ma200_bearish: List[TickerData],
     leaps: List[TickerData],
     sell_puts: List[Tuple[SellPutSignal, TickerData]],
-    errors_count: int,
-    elapsed_seconds: float,
+    skipped: Optional[List[Tuple[str, str]]] = None,
+    elapsed_seconds: float = 0.0,
 ) -> str:
     lines = []
     sep = "=" * 55
@@ -100,9 +100,18 @@ def format_report(
         lines.append("  (none)")
     lines.append("")
 
+    # Skipped tickers detail
+    if skipped:
+        lines.append("── 跳过的标的 (Skipped Tickers) ────────────────────")
+        lines.append("")
+        for ticker, reason in skipped:
+            lines.append(f"  {ticker:<12} {reason}")
+        lines.append("")
+
     # Footer
+    skipped_count = len(skipped) if skipped else 0
     lines.append(sep)
-    lines.append(f"  Scan completed in {elapsed_seconds:.1f}s \u2502 Errors: {errors_count} tickers skipped")
+    lines.append(f"  Scan completed in {elapsed_seconds:.1f}s │ Processed: {universe_count - skipped_count} │ Skipped: {skipped_count}")
     lines.append(sep)
 
     return "\n".join(lines)

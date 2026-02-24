@@ -59,7 +59,7 @@ def test_full_pipeline(mock_provider):
         iv_low=iv_low, iv_high=iv_high,
         ma200_bullish=ma200_bull, ma200_bearish=ma200_bear,
         leaps=leaps, sell_puts=[],
-        errors_count=0, elapsed_seconds=1.0,
+        elapsed_seconds=1.0,
     )
     assert "V1.9 QUANT RADAR" in report
     assert "AAPL" in report or "(none)" in report
