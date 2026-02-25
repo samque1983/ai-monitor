@@ -32,6 +32,30 @@ def clean_strike_price(value) -> Optional[float]:
         return None
 
 
+def normalize_ticker(ticker: str) -> str:
+    """Normalize ticker symbol for yfinance compatibility.
+
+    - BRK.B → BRK-B (yfinance uses dash for share class)
+    - 600900 → 600900.SS (Shanghai)
+    - 000001 → 000001.SZ (Shenzhen)
+    - 300750 → 300750.SZ (Shenzhen ChiNext)
+    """
+    t = ticker.strip().upper()
+    # Already has exchange suffix like .SS, .SZ, .HK → skip digit logic
+    if re.match(r"^\d{6}\.(SS|SZ)$", t):
+        return t
+    # US share class: BRK.B → BRK-B, BRK.A → BRK-A
+    if re.match(r"^[A-Z]+\.[A-Z]$", t):
+        return t.replace(".", "-")
+    # Bare 6-digit A-share code → add suffix
+    if re.match(r"^\d{6}$", t):
+        if t.startswith("6"):
+            return t + ".SS"
+        else:
+            return t + ".SZ"
+    return t
+
+
 def classify_market(ticker: str) -> str:
     """Classify ticker into market: 'US', 'HK', or 'CN'."""
     ticker = ticker.upper()
@@ -60,6 +84,7 @@ def fetch_universe(csv_url: str) -> Tuple[List[str], Dict[str, float]]:
     df["代码"] = df["代码"].astype(str).str.strip()
     df = df[df["代码"].notna() & (df["代码"] != "") & (df["代码"] != "nan") & (df["代码"] != "None")]
 
+    df["代码"] = df["代码"].apply(normalize_ticker)
     tickers = df["代码"].tolist()
 
     # Build target buy list

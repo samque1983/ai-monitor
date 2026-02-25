@@ -32,6 +32,7 @@ class MarketDataProvider:
                 config["port"],
                 clientId=config["client_id"],
                 timeout=config.get("timeout", 30),
+                readonly=True,
             )
             logger.info("Connected to IBKR Gateway")
             return ib

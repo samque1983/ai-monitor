@@ -2,7 +2,7 @@
 import pandas as pd
 import pytest
 from unittest.mock import patch, MagicMock
-from src.data_loader import fetch_universe, clean_strike_price, classify_market
+from src.data_loader import fetch_universe, clean_strike_price, classify_market, normalize_ticker
 
 
 class TestCleanStrikePrice:
@@ -29,6 +29,38 @@ class TestCleanStrikePrice:
 
     def test_clean_nan_value(self):
         assert clean_strike_price(float("nan")) is None
+
+
+class TestNormalizeTicker:
+    def test_us_ticker_unchanged(self):
+        assert normalize_ticker("AAPL") == "AAPL"
+
+    def test_hk_ticker_unchanged(self):
+        assert normalize_ticker("0700.HK") == "0700.HK"
+
+    def test_brk_dot_b_to_dash(self):
+        assert normalize_ticker("BRK.B") == "BRK-B"
+
+    def test_brk_dot_a_to_dash(self):
+        assert normalize_ticker("BRK.A") == "BRK-A"
+
+    def test_six_digit_starting_with_6_gets_ss(self):
+        assert normalize_ticker("600900") == "600900.SS"
+
+    def test_six_digit_starting_with_0_gets_sz(self):
+        assert normalize_ticker("000001") == "000001.SZ"
+
+    def test_six_digit_starting_with_3_gets_sz(self):
+        assert normalize_ticker("300750") == "300750.SZ"
+
+    def test_already_has_ss_suffix(self):
+        assert normalize_ticker("600900.SS") == "600900.SS"
+
+    def test_already_has_sz_suffix(self):
+        assert normalize_ticker("000001.SZ") == "000001.SZ"
+
+    def test_lowercase_brk(self):
+        assert normalize_ticker("brk.b") == "BRK-B"
 
 
 class TestClassifyMarket:
