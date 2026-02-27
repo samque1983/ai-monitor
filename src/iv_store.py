@@ -76,6 +76,29 @@ class IVStore:
         row = cursor.fetchone()
         return row[0] if row else None
 
+    def get_data_sufficiency(self, ticker: str) -> dict:
+        """
+        检查 IV 历史数据的充足性
+
+        Returns:
+            {
+                "total_days": int,
+                "sufficient_for_ivp": bool,      # >= 30天
+                "sufficient_for_momentum": bool  # >= 5天
+            }
+        """
+        cursor = self.conn.execute(
+            "SELECT COUNT(*) FROM iv_history WHERE ticker = ?",
+            (ticker,)
+        )
+        count = cursor.fetchone()[0]
+
+        return {
+            "total_days": count,
+            "sufficient_for_ivp": count >= 30,
+            "sufficient_for_momentum": count >= 5,
+        }
+
     def compute_iv_rank(self, ticker: str, current_iv: float) -> Optional[float]:
         """IV Rank = (current - 52w_low) / (52w_high - 52w_low) * 100"""
         history = self.get_iv_history(ticker, days=365)

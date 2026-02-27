@@ -81,3 +81,34 @@ class TestGetIVNDaysAgo:
 
         result = store.get_iv_n_days_ago("AAPL", n=5, reference_date=today)
         assert result is None
+
+
+class TestDataSufficiency:
+    def test_sufficient_for_both(self, store):
+        """数据充足: 同时满足 IVP (30天) 和 Momentum (5天)"""
+        today = date(2026, 2, 27)
+        for i in range(40):
+            store.save_iv("AAPL", today - timedelta(days=i), 0.25)
+
+        result = store.get_data_sufficiency("AAPL")
+        assert result["total_days"] == 40
+        assert result["sufficient_for_ivp"] is True
+        assert result["sufficient_for_momentum"] is True
+
+    def test_insufficient_for_ivp(self, store):
+        """数据不足: 仅满足 Momentum"""
+        today = date(2026, 2, 27)
+        for i in range(10):
+            store.save_iv("AAPL", today - timedelta(days=i), 0.25)
+
+        result = store.get_data_sufficiency("AAPL")
+        assert result["total_days"] == 10
+        assert result["sufficient_for_ivp"] is False
+        assert result["sufficient_for_momentum"] is True
+
+    def test_no_data(self, store):
+        """无数据时返回全 False"""
+        result = store.get_data_sufficiency("AAPL")
+        assert result["total_days"] == 0
+        assert result["sufficient_for_ivp"] is False
+        assert result["sufficient_for_momentum"] is False
