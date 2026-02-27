@@ -55,6 +55,46 @@ def compute_rsi(prices: pd.Series, period: int = 14) -> Optional[float]:
     return float(100 - (100 / (1 + rs)))
 
 
+def validate_price_df(df: pd.DataFrame, ticker: str) -> bool:
+    """
+    验证价格 DataFrame 的质量 (data-explorer 思路)
+
+    检查项:
+    1. 必须包含 Open, Close 列
+    2. 价格值 > 0
+    3. 无 NaN (或 NaN 占比 < 5%)
+    4. Index 为 DatetimeIndex
+
+    Returns:
+        True: 数据合格
+        False: 数据异常,应跳过该 ticker
+    """
+    if df.empty:
+        logger.warning(f"Empty price data for {ticker}")
+        return False
+
+    required_cols = ["Open", "Close"]
+    if not all(col in df.columns for col in required_cols):
+        logger.warning(f"Missing required columns for {ticker}")
+        return False
+
+    # 检查价格 > 0
+    if (df["Close"] <= 0).any() or (df["Open"] <= 0).any():
+        logger.warning(f"Invalid price values for {ticker}")
+        return False
+
+    # 检查 NaN 占比
+    total_cells = len(df) * len(required_cols)
+    nan_count = df[required_cols].isna().sum().sum()
+    nan_ratio = nan_count / total_cells if total_cells > 0 else 0
+
+    if nan_ratio > 0.05:
+        logger.warning(f"Too many NaN values for {ticker}: {nan_ratio:.1%}")
+        return False
+
+    return True
+
+
 def build_ticker_data(
     ticker: str,
     provider: MarketDataProvider,

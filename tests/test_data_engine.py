@@ -5,7 +5,7 @@ import pytest
 from datetime import date
 from typing import Optional
 from unittest.mock import MagicMock, patch
-from src.data_engine import TickerData, compute_sma, compute_rsi, build_ticker_data
+from src.data_engine import TickerData, compute_sma, compute_rsi, build_ticker_data, validate_price_df
 
 
 class TestComputeSMA:
@@ -80,3 +80,67 @@ class TestBuildTickerData:
 
         result = build_ticker_data("INVALID", provider)
         assert result is None
+
+
+class TestValidatePriceDF:
+    def test_valid_dataframe_passes(self):
+        """正常数据通过验证"""
+        dates = pd.date_range("2025-01-01", periods=100, freq="B")
+        df = pd.DataFrame({
+            "Open": np.linspace(100, 110, 100),
+            "Close": np.linspace(100, 110, 100),
+        }, index=dates)
+
+        assert validate_price_df(df, "AAPL") is True
+
+    def test_empty_dataframe_fails(self):
+        """空 DataFrame 验证失败"""
+        df = pd.DataFrame()
+        assert validate_price_df(df, "AAPL") is False
+
+    def test_missing_columns_fails(self):
+        """缺少必需列 (Open)"""
+        df = pd.DataFrame({"Close": [100, 101, 102]})
+        assert validate_price_df(df, "AAPL") is False
+
+    def test_negative_prices_fail(self):
+        """负价格验证失败"""
+        dates = pd.date_range("2025-01-01", periods=10, freq="B")
+        df = pd.DataFrame({
+            "Open": [100, -5, 102, 103, 104, 105, 106, 107, 108, 109],
+            "Close": [100, 101, 102, 103, 104, 105, 106, 107, 108, 109],
+        }, index=dates)
+
+        assert validate_price_df(df, "AAPL") is False
+
+    def test_zero_prices_fail(self):
+        """零价格验证失败"""
+        dates = pd.date_range("2025-01-01", periods=10, freq="B")
+        df = pd.DataFrame({
+            "Open": [100, 101, 102, 103, 104, 105, 106, 107, 108, 109],
+            "Close": [100, 0, 102, 103, 104, 105, 106, 107, 108, 109],
+        }, index=dates)
+
+        assert validate_price_df(df, "AAPL") is False
+
+    def test_too_many_nans_fail(self):
+        """NaN 占比 > 5% 验证失败"""
+        dates = pd.date_range("2025-01-01", periods=10, freq="B")
+        df = pd.DataFrame({
+            "Open": [100, np.nan, np.nan, np.nan, np.nan, np.nan, 106, 107, 108, 109],
+            "Close": [100, 101, 102, 103, 104, 105, 106, 107, 108, 109],
+        }, index=dates)
+
+        assert validate_price_df(df, "AAPL") is False
+
+    def test_acceptable_nan_ratio_passes(self):
+        """NaN 占比 < 5% 通过验证"""
+        dates = pd.date_range("2025-01-01", periods=100, freq="B")
+        opens = np.linspace(100, 110, 100)
+        opens[0] = np.nan  # 1% NaN
+        df = pd.DataFrame({
+            "Open": opens,
+            "Close": np.linspace(100, 110, 100),
+        }, index=dates)
+
+        assert validate_price_df(df, "AAPL") is True
