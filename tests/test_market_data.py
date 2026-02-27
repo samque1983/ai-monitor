@@ -121,3 +121,49 @@ class TestLoadEarningsFromCSV:
             assert result == []
         finally:
             os.unlink(csv_path)
+
+
+class TestGetHistoricalEarningsDates:
+    @patch("src.market_data.yf.Ticker")
+    def test_yfinance_success(self, MockTicker):
+        """yfinance 成功返回历史财报日期"""
+        mock_t = MockTicker.return_value
+        mock_t.earnings_dates = pd.DataFrame(
+            {"EPS Estimate": [1.0, 1.1, 1.2]},
+            index=pd.to_datetime(["2026-04-25", "2026-01-20", "2025-10-15"]),
+        )
+
+        provider = MarketDataProvider()
+        result = provider.get_historical_earnings_dates("AAPL", count=3)
+
+        assert len(result) <= 3
+        assert all(isinstance(d, date) for d in result)
+
+    @patch("src.market_data.yf.Ticker")
+    def test_yfinance_fails_fallback_to_csv(self, MockTicker):
+        """yfinance 失败时降级到 CSV"""
+        mock_t = MockTicker.return_value
+        mock_t.earnings_dates = None  # 模拟失败
+
+        # 创建临时 CSV
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
+            f.write("ticker,date,time_type\n")
+            f.write("AAPL,2026-01-30,AMC\n")
+            csv_path = f.name
+
+        try:
+            provider = MarketDataProvider()
+            provider.config = {"data": {"earnings_csv_path": csv_path}}
+
+            result = provider.get_historical_earnings_dates("AAPL", count=5)
+
+            assert len(result) == 1
+            assert result[0] == date(2026, 1, 30)
+        finally:
+            os.unlink(csv_path)
+
+    def test_cn_market_returns_empty(self):
+        """CN 市场直接返回空列表"""
+        provider = MarketDataProvider()
+        result = provider.get_historical_earnings_dates("600900.SS", count=5)
+        assert result == []

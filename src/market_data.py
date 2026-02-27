@@ -84,6 +84,33 @@ class MarketDataProvider:
             logger.warning(f"Earnings date fetch failed for {ticker}: {e}")
             return None
 
+    def get_historical_earnings_dates(self, ticker: str, count: int = 8) -> list:
+        """
+        获取历史财报日期 (yfinance → 本地 CSV 降级)
+
+        Fallback 链路:
+        1. 尝试 yfinance Ticker.earnings_dates
+        2. 失败时读取 data/earnings_calendar.csv
+        3. 仍无数据返回 []
+        """
+        if self.should_skip_options(ticker):
+            return []
+
+        # 一级: yfinance
+        try:
+            t = yf.Ticker(ticker)
+            ed = t.earnings_dates
+            if ed is not None and not ed.empty:
+                today = date.today()
+                past_dates = [d.date() for d in ed.index if d.date() < today]
+                past_dates.sort(reverse=True)
+                return past_dates[:count]
+        except Exception as e:
+            logger.warning(f"yfinance earnings dates failed for {ticker}: {e}")
+
+        # 二级: 本地 CSV Fallback
+        return self._load_earnings_from_csv(ticker, count)
+
     def _load_earnings_from_csv(self, ticker: str, count: int) -> list:
         """从本地 CSV 加载财报日期"""
         csv_path = self.config.get("data", {}).get(
