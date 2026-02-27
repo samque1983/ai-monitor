@@ -2,7 +2,7 @@
 import os
 import tempfile
 import pytest
-from datetime import date
+from datetime import date, timedelta
 from src.iv_store import IVStore
 
 
@@ -47,3 +47,37 @@ class TestIVStore:
         history = store.get_iv_history("AAPL", days=365)
         assert len(history) == 1
         assert history[0][1] == 0.30
+
+
+class TestGetIVNDaysAgo:
+    def test_exact_match_5_days_ago(self, store):
+        """精确匹配 5 天前的数据"""
+        today = date(2026, 2, 27)
+        store.save_iv("AAPL", today - timedelta(days=5), 0.25)
+        store.save_iv("AAPL", today - timedelta(days=3), 0.28)
+        store.save_iv("AAPL", today, 0.30)
+
+        result = store.get_iv_n_days_ago("AAPL", n=5, reference_date=today)
+        assert result == 0.25
+
+    def test_window_tolerance(self, store):
+        """窗口容差: 7天前的数据仍被返回 (5-8天窗口)"""
+        today = date(2026, 2, 27)
+        store.save_iv("AAPL", today - timedelta(days=7), 0.22)
+        store.save_iv("AAPL", today, 0.30)
+
+        result = store.get_iv_n_days_ago("AAPL", n=5, reference_date=today)
+        assert result == 0.22
+
+    def test_no_data_returns_none(self, store):
+        """无数据时返回 None"""
+        result = store.get_iv_n_days_ago("AAPL", n=5, reference_date=date(2026, 2, 27))
+        assert result is None
+
+    def test_data_too_recent_returns_none(self, store):
+        """数据太新 (仅2天前), 不在窗口内"""
+        today = date(2026, 2, 27)
+        store.save_iv("AAPL", today - timedelta(days=2), 0.30)
+
+        result = store.get_iv_n_days_ago("AAPL", n=5, reference_date=today)
+        assert result is None

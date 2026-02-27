@@ -42,6 +42,40 @@ class IVStore:
         )
         return cursor.fetchall()
 
+    def get_iv_n_days_ago(
+        self,
+        ticker: str,
+        n: int = 5,
+        reference_date: Optional[date] = None
+    ) -> Optional[float]:
+        """
+        获取约 n 天前的 IV 值 (容差: n ~ n+3 天)
+
+        Args:
+            ticker: 股票代码
+            n: 目标天数 (默认 5)
+            reference_date: 参考日期 (默认今天)
+
+        Returns:
+            IV 值或 None (数据不足时)
+        """
+        if reference_date is None:
+            reference_date = date.today()
+
+        target_date = reference_date - timedelta(days=n)
+        window_start = reference_date - timedelta(days=n + 3)
+
+        cursor = self.conn.execute(
+            """
+            SELECT iv FROM iv_history
+            WHERE ticker = ? AND date >= ? AND date <= ?
+            ORDER BY date DESC LIMIT 1
+            """,
+            (ticker, window_start.isoformat(), target_date.isoformat())
+        )
+        row = cursor.fetchone()
+        return row[0] if row else None
+
     def compute_iv_rank(self, ticker: str, current_iv: float) -> Optional[float]:
         """IV Rank = (current - 52w_low) / (52w_high - 52w_low) * 100"""
         history = self.get_iv_history(ticker, days=365)
