@@ -63,7 +63,6 @@ def validate_price_df(df: pd.DataFrame, ticker: str) -> bool:
     1. 必须包含 Open, Close 列
     2. 价格值 > 0
     3. 无 NaN (或 NaN 占比 < 5%)
-    4. Index 为 DatetimeIndex
 
     Returns:
         True: 数据合格
