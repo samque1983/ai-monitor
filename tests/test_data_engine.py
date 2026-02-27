@@ -5,7 +5,7 @@ import pytest
 from datetime import date
 from typing import Optional
 from unittest.mock import MagicMock, patch
-from src.data_engine import TickerData, compute_sma, compute_rsi, build_ticker_data, validate_price_df
+from src.data_engine import TickerData, compute_sma, compute_rsi, build_ticker_data, validate_price_df, EarningsGap, compute_earnings_gaps
 
 
 class TestComputeSMA:
@@ -144,3 +144,105 @@ class TestValidatePriceDF:
         }, index=dates)
 
         assert validate_price_df(df, "AAPL") is True
+
+
+class TestComputeEarningsGaps:
+    def test_basic_gap_calculation(self):
+        """两个财报事件,已知 Gap 值"""
+        earnings_dates = [date(2025, 7, 25), date(2025, 10, 24)]
+        dates = pd.date_range("2025-06-01", "2025-11-30", freq="B")
+        prices = pd.DataFrame({
+            "Open": [100.0] * len(dates),
+            "Close": [100.0] * len(dates),
+        }, index=dates)
+
+        # 第一个财报: prev_close=100, open=105 → gap=+5%
+        ed1 = pd.Timestamp("2025-07-25")
+        ed1_prev = pd.Timestamp("2025-07-24")
+        if ed1 in prices.index and ed1_prev in prices.index:
+            prices.loc[ed1_prev, "Close"] = 100.0
+            prices.loc[ed1, "Open"] = 105.0
+
+        # 第二个财报: prev_close=100, open=97 → gap=-3%
+        ed2 = pd.Timestamp("2025-10-24")
+        ed2_prev = pd.Timestamp("2025-10-23")
+        if ed2 in prices.index and ed2_prev in prices.index:
+            prices.loc[ed2_prev, "Close"] = 100.0
+            prices.loc[ed2, "Open"] = 97.0
+
+        result = compute_earnings_gaps("AAPL", earnings_dates, prices)
+
+        assert result is not None
+        assert result.ticker == "AAPL"
+        assert result.sample_count == 2
+        assert result.avg_gap == pytest.approx(4.0, abs=0.1)  # mean(|5|, |-3|) = 4.0
+        assert result.up_ratio == pytest.approx(50.0)  # 1上1下 = 50%
+        assert abs(result.max_gap) == pytest.approx(5.0, abs=0.1)  # max by abs value
+
+    def test_insufficient_samples_returns_none(self):
+        """样本数 < 2 返回 None"""
+        earnings_dates = [date(2025, 7, 25)]
+        dates = pd.date_range("2025-06-01", "2025-08-30", freq="B")
+        prices = pd.DataFrame({
+            "Open": [100.0] * len(dates),
+            "Close": [100.0] * len(dates),
+        }, index=dates)
+
+        result = compute_earnings_gaps("AAPL", earnings_dates, prices)
+        assert result is None
+
+    def test_empty_earnings_dates_returns_none(self):
+        """空财报列表返回 None"""
+        dates = pd.date_range("2025-06-01", "2025-08-30", freq="B")
+        prices = pd.DataFrame({
+            "Open": [100.0] * len(dates),
+            "Close": [100.0] * len(dates),
+        }, index=dates)
+
+        result = compute_earnings_gaps("AAPL", [], prices)
+        assert result is None
+
+    def test_empty_price_df_returns_none(self):
+        """空价格数据返回 None"""
+        earnings_dates = [date(2025, 7, 25), date(2025, 10, 24)]
+        result = compute_earnings_gaps("AAPL", earnings_dates, pd.DataFrame())
+        assert result is None
+
+    def test_skip_earnings_dates_not_in_prices(self):
+        """财报日不在价格数据中,跳过该事件"""
+        earnings_dates = [date(2020, 1, 1), date(2020, 4, 1)]  # 不在数据中
+        dates = pd.date_range("2025-06-01", "2025-08-30", freq="B")
+        prices = pd.DataFrame({
+            "Open": [100.0] * len(dates),
+            "Close": [100.0] * len(dates),
+        }, index=dates)
+
+        result = compute_earnings_gaps("AAPL", earnings_dates, prices)
+        assert result is None
+
+    def test_skip_zero_prev_close(self):
+        """prev_close = 0 的事件被跳过"""
+        earnings_dates = [date(2025, 7, 25), date(2025, 10, 24)]
+        dates = pd.date_range("2025-06-01", "2025-11-30", freq="B")
+        prices = pd.DataFrame({
+            "Open": [100.0] * len(dates),
+            "Close": [100.0] * len(dates),
+        }, index=dates)
+
+        # 设置一个有效 Gap
+        ed1 = pd.Timestamp("2025-07-25")
+        ed1_prev = pd.Timestamp("2025-07-24")
+        if ed1 in prices.index and ed1_prev in prices.index:
+            prices.loc[ed1_prev, "Close"] = 100.0
+            prices.loc[ed1, "Open"] = 105.0
+
+        # 设置一个无效 Gap (prev_close = 0)
+        ed2 = pd.Timestamp("2025-10-24")
+        ed2_prev = pd.Timestamp("2025-10-23")
+        if ed2 in prices.index and ed2_prev in prices.index:
+            prices.loc[ed2_prev, "Close"] = 0.0  # 无效
+            prices.loc[ed2, "Open"] = 97.0
+
+        result = compute_earnings_gaps("AAPL", earnings_dates, prices)
+        # 只有1个有效样本,应返回 None (min_samples=2)
+        assert result is None

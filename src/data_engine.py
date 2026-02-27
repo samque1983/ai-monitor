@@ -26,6 +26,16 @@ class TickerData:
     days_to_earnings: Optional[int]
 
 
+@dataclass
+class EarningsGap:
+    """历史财报 Gap 统计"""
+    ticker: str
+    avg_gap: float       # mean(|gap|) 平均跳空幅度 (%)
+    up_ratio: float      # P(gap > 0) 上涨概率 (%)
+    max_gap: float       # 最大跳空 (保留符号)
+    sample_count: int    # 样本数量
+
+
 def compute_sma(prices: pd.Series, window: int) -> Optional[float]:
     """Compute Simple Moving Average. Returns None if insufficient data."""
     if len(prices) < window:
@@ -53,6 +63,74 @@ def compute_rsi(prices: pd.Series, period: int = 14) -> Optional[float]:
         return 100.0
     rs = avg_gain / avg_loss
     return float(100 - (100 / (1 + rs)))
+
+
+def compute_earnings_gaps(
+    ticker: str,
+    earnings_dates: list,
+    price_df: pd.DataFrame,
+    min_samples: int = 2,
+) -> Optional[EarningsGap]:
+    """
+    计算历史财报 Gap 统计
+
+    Gap 定义 (MVP 简化版):
+        gap = (财报日 Open - 前一交易日 Close) / 前一交易日 Close * 100
+
+    边界处理:
+    - 财报日不在 price_df 中: 跳过该事件
+    - 样本数 < min_samples: 返回 None
+    - prev_close = 0: 跳过该事件
+    """
+    if not earnings_dates or price_df.empty:
+        return None
+
+    # 数据验证
+    if not validate_price_df(price_df, ticker):
+        return None
+
+    gaps = []
+    for ed in earnings_dates:
+        ed_ts = pd.Timestamp(ed)
+
+        # 检查财报日是否在数据中
+        if ed_ts not in price_df.index:
+            continue
+
+        # 获取前一交易日
+        idx = price_df.index.get_loc(ed_ts)
+        if idx == 0:
+            continue
+        prev_ts = price_df.index[idx - 1]
+
+        prev_close = float(price_df.loc[prev_ts, "Close"])
+        ed_open = float(price_df.loc[ed_ts, "Open"])
+
+        # 除零保护
+        if prev_close == 0 or pd.isna(prev_close):
+            continue
+
+        gap = (ed_open - prev_close) / prev_close * 100
+        gaps.append(gap)
+
+    # 样本数检查
+    if len(gaps) < min_samples:
+        return None
+
+    # 统计计算
+    abs_gaps = [abs(g) for g in gaps]
+    avg_gap = sum(abs_gaps) / len(abs_gaps)
+    up_count = sum(1 for g in gaps if g > 0)
+    up_ratio = up_count / len(gaps) * 100
+    max_gap_val = max(gaps, key=abs)  # 保留符号
+
+    return EarningsGap(
+        ticker=ticker,
+        avg_gap=round(avg_gap, 1),
+        up_ratio=round(up_ratio, 1),
+        max_gap=round(max_gap_val, 1),
+        sample_count=len(gaps),
+    )
 
 
 def validate_price_df(df: pd.DataFrame, ticker: str) -> bool:
