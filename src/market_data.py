@@ -1,5 +1,6 @@
 # src/market_data.py
 import logging
+import os
 from datetime import date, datetime
 from typing import Optional
 import pandas as pd
@@ -17,6 +18,7 @@ class MarketDataProvider:
         self.ibkr = None
         self.ibkr_config = ibkr_config
         self.iv_store: Optional[IVStore] = None
+        self.config: dict = {}
         if ibkr_config:
             self.ibkr = self._try_connect_ibkr(ibkr_config)
         if iv_db_path:
@@ -81,6 +83,31 @@ class MarketDataProvider:
         except Exception as e:
             logger.warning(f"Earnings date fetch failed for {ticker}: {e}")
             return None
+
+    def _load_earnings_from_csv(self, ticker: str, count: int) -> list:
+        """从本地 CSV 加载财报日期"""
+        csv_path = self.config.get("data", {}).get(
+            "earnings_csv_path",
+            "data/earnings_calendar.csv"
+        )
+
+        if not os.path.exists(csv_path):
+            logger.debug(f"Earnings CSV not found: {csv_path}")
+            return []
+
+        try:
+            df = pd.read_csv(csv_path)
+            # 列名: ticker, date, time_type (可选)
+            ticker_data = df[df["ticker"] == ticker].copy()
+            if ticker_data.empty:
+                return []
+            ticker_data["date"] = pd.to_datetime(ticker_data["date"]).dt.date
+            dates = ticker_data["date"].tolist()
+            dates.sort(reverse=True)
+            return dates[:count]
+        except Exception as e:
+            logger.error(f"CSV earnings load failed for {ticker}: {e}")
+            return []
 
     def should_skip_options(self, ticker: str) -> bool:
         """Return True if options data should be skipped for this ticker."""

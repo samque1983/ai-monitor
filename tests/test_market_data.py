@@ -1,4 +1,6 @@
 # tests/test_market_data.py
+import os
+import tempfile
 import pandas as pd
 import numpy as np
 import pytest
@@ -67,3 +69,55 @@ class TestClassifyAndSkip:
 
     def test_should_not_skip_options_hk_ticker(self, provider_no_ibkr):
         assert provider_no_ibkr.should_skip_options("0700.HK") is False
+
+
+class TestLoadEarningsFromCSV:
+    def test_load_from_csv_success(self):
+        """成功从 CSV 加载财报日期"""
+        # 创建临时 CSV
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
+            f.write("ticker,date,time_type\n")
+            f.write("AAPL,2026-01-30,AMC\n")
+            f.write("AAPL,2025-10-31,AMC\n")
+            f.write("MSFT,2026-01-28,BMO\n")
+            csv_path = f.name
+
+        try:
+            config = {"data": {"earnings_csv_path": csv_path}}
+            provider = MarketDataProvider(ibkr_config=None, iv_db_path=None)
+            provider.config = config
+
+            result = provider._load_earnings_from_csv("AAPL", count=2)
+
+            assert len(result) == 2
+            assert all(isinstance(d, date) for d in result)
+            assert result[0] == date(2026, 1, 30)
+            assert result[1] == date(2025, 10, 31)
+        finally:
+            os.unlink(csv_path)
+
+    def test_csv_not_exists_returns_empty(self):
+        """CSV 不存在时返回空列表"""
+        config = {"data": {"earnings_csv_path": "/nonexistent/path.csv"}}
+        provider = MarketDataProvider(ibkr_config=None, iv_db_path=None)
+        provider.config = config
+
+        result = provider._load_earnings_from_csv("AAPL", count=5)
+        assert result == []
+
+    def test_ticker_not_in_csv_returns_empty(self):
+        """Ticker 不在 CSV 中返回空列表"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
+            f.write("ticker,date,time_type\n")
+            f.write("AAPL,2026-01-30,AMC\n")
+            csv_path = f.name
+
+        try:
+            config = {"data": {"earnings_csv_path": csv_path}}
+            provider = MarketDataProvider(ibkr_config=None, iv_db_path=None)
+            provider.config = config
+
+            result = provider._load_earnings_from_csv("MSFT", count=5)
+            assert result == []
+        finally:
+            os.unlink(csv_path)
