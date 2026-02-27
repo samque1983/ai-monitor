@@ -51,6 +51,7 @@ def run_scan(config_path: str = "config.yaml"):
     provider = MarketDataProvider(
         ibkr_config=config.get("ibkr"),
         iv_db_path=iv_db_path,
+        config=config,
     )
     data_source = "IBKR Gateway" if provider.ibkr else "yfinance"
 

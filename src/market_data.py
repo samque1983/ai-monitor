@@ -14,11 +14,11 @@ logger = logging.getLogger(__name__)
 class MarketDataProvider:
     """Hybrid IBKR/yfinance market data provider."""
 
-    def __init__(self, ibkr_config: Optional[dict] = None, iv_db_path: Optional[str] = None):
+    def __init__(self, ibkr_config: Optional[dict] = None, iv_db_path: Optional[str] = None, config: Optional[dict] = None):
         self.ibkr = None
         self.ibkr_config = ibkr_config
         self.iv_store: Optional[IVStore] = None
-        self.config: dict = {}
+        self.config: dict = config or {}  # Accept config parameter
         if ibkr_config:
             self.ibkr = self._try_connect_ibkr(ibkr_config)
         if iv_db_path:
@@ -97,6 +97,13 @@ class MarketDataProvider:
 
         try:
             df = pd.read_csv(csv_path)
+
+            # Validate required columns
+            required_cols = ["ticker", "date"]
+            if not all(col in df.columns for col in required_cols):
+                logger.error(f"CSV missing required columns: {required_cols}. Found: {list(df.columns)}")
+                return []
+
             # 列名: ticker, date, time_type (可选)
             ticker_data = df[df["ticker"] == ticker].copy()
             if ticker_data.empty:
