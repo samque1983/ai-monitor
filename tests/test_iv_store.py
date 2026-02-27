@@ -112,3 +112,13 @@ class TestDataSufficiency:
         assert result["total_days"] == 0
         assert result["sufficient_for_ivp"] is False
         assert result["sufficient_for_momentum"] is False
+
+    def test_single_day_data(self, store):
+        """边界情况: 仅1天数据"""
+        today = date(2026, 2, 27)
+        store.save_iv("AAPL", today, 0.25)
+
+        result = store.get_data_sufficiency("AAPL")
+        assert result["total_days"] == 1
+        assert result["sufficient_for_ivp"] is False
+        assert result["sufficient_for_momentum"] is False

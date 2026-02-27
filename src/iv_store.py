@@ -2,7 +2,7 @@
 import sqlite3
 import logging
 from datetime import date, timedelta
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Dict, Union
 
 logger = logging.getLogger(__name__)
 
@@ -76,9 +76,12 @@ class IVStore:
         row = cursor.fetchone()
         return row[0] if row else None
 
-    def get_data_sufficiency(self, ticker: str) -> dict:
+    def get_data_sufficiency(self, ticker: str) -> Dict[str, Union[int, bool]]:
         """
         检查 IV 历史数据的充足性
+
+        Args:
+            ticker: 股票代码
 
         Returns:
             {
