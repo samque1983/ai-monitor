@@ -49,7 +49,7 @@ class MarketDataProvider:
     def _yf_price_data(self, ticker: str, period: str) -> pd.DataFrame:
         """Fetch price data from yfinance."""
         try:
-            df = yf.download(ticker, period=period, progress=False)
+            df = yf.download(ticker, period=period, progress=False, timeout=30)
             if df.empty:
                 logger.warning(f"No price data for {ticker}")
             return df
@@ -60,7 +60,7 @@ class MarketDataProvider:
     def get_weekly_price_data(self, ticker: str, period: str = "1y") -> pd.DataFrame:
         """Fetch weekly OHLCV data for weekly MA calculation."""
         try:
-            df = yf.download(ticker, period=period, interval="1wk", progress=False)
+            df = yf.download(ticker, period=period, interval="1wk", progress=False, timeout=30)
             return df
         except Exception as e:
             logger.error(f"yfinance weekly data failed for {ticker}: {e}")
