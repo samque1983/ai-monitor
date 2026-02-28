@@ -21,6 +21,7 @@ class TickerData:
     ma50w: Optional[float]
     rsi14: Optional[float]
     iv_rank: Optional[float]
+    iv_momentum: Optional[float]  # 新增: 5日IV动量 (%)
     prev_close: float
     earnings_date: Optional[date]
     days_to_earnings: Optional[int]
@@ -212,6 +213,9 @@ def build_ticker_data(
     # IV Rank
     iv_rank = provider.get_iv_rank(ticker)
 
+    # IV Momentum
+    iv_momentum = provider.get_iv_momentum(ticker)
+
     # Earnings date
     earnings_date = provider.get_earnings_date(ticker)
     days_to_earnings = None
@@ -232,6 +236,7 @@ def build_ticker_data(
         ma50w=ma50w,
         rsi14=rsi14,
         iv_rank=iv_rank,
+        iv_momentum=iv_momentum,
         prev_close=prev_close,
         earnings_date=earnings_date,
         days_to_earnings=days_to_earnings,

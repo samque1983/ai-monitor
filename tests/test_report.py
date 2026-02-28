@@ -10,7 +10,8 @@ def make_ticker(**kwargs) -> TickerData:
     defaults = dict(
         ticker="TEST", name="Test", market="US",
         last_price=100.0, ma200=95.0, ma50w=98.0,
-        rsi14=40.0, iv_rank=25.0, prev_close=99.0,
+        rsi14=40.0, iv_rank=25.0, iv_momentum=None,
+        prev_close=99.0,
         earnings_date=date(2026, 4, 25), days_to_earnings=64,
     )
     defaults.update(kwargs)

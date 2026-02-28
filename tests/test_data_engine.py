@@ -146,6 +146,48 @@ class TestValidatePriceDF:
         assert validate_price_df(df, "AAPL") is True
 
 
+class TestIVMomentum:
+    @patch("src.data_engine.MarketDataProvider")
+    def test_iv_momentum_calculated(self, MockProvider):
+        """iv_momentum 成功计算"""
+        provider = MockProvider()
+        dates = pd.date_range("2025-03-01", periods=250, freq="B")
+        daily_df = pd.DataFrame({"Close": np.linspace(100, 200, 250)}, index=dates)
+        provider.get_price_data.return_value = daily_df
+
+        weekly_dates = pd.date_range("2025-01-01", periods=60, freq="W")
+        weekly_df = pd.DataFrame({"Close": np.linspace(90, 190, 60)}, index=weekly_dates)
+        provider.get_weekly_price_data.return_value = weekly_df
+
+        provider.get_earnings_date.return_value = None
+        provider.get_iv_rank.return_value = 50.0
+        provider.get_iv_momentum.return_value = 35.0  # 新增
+
+        result = build_ticker_data("AAPL", provider, reference_date=date(2026, 2, 20))
+        assert result is not None
+        assert result.iv_momentum == 35.0
+
+    @patch("src.data_engine.MarketDataProvider")
+    def test_iv_momentum_none_when_unavailable(self, MockProvider):
+        """iv_momentum 无数据时为 None"""
+        provider = MockProvider()
+        dates = pd.date_range("2025-03-01", periods=250, freq="B")
+        daily_df = pd.DataFrame({"Close": np.linspace(100, 200, 250)}, index=dates)
+        provider.get_price_data.return_value = daily_df
+
+        weekly_dates = pd.date_range("2025-01-01", periods=60, freq="W")
+        weekly_df = pd.DataFrame({"Close": np.linspace(90, 190, 60)}, index=weekly_dates)
+        provider.get_weekly_price_data.return_value = weekly_df
+
+        provider.get_earnings_date.return_value = None
+        provider.get_iv_rank.return_value = 50.0
+        provider.get_iv_momentum.return_value = None  # 无数据
+
+        result = build_ticker_data("AAPL", provider, reference_date=date(2026, 2, 20))
+        assert result is not None
+        assert result.iv_momentum is None
+
+
 class TestComputeEarningsGaps:
     def test_basic_gap_calculation(self):
         """两个财报事件,已知 Gap 值"""
