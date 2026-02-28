@@ -213,6 +213,53 @@ class MarketDataProvider:
             logger.warning(f"IV rank fetch failed for {ticker}: {e}")
             return None
 
+    def get_iv_momentum(self, ticker: str) -> Optional[float]:
+        """
+        计算 5 日 IV 动量: (current_iv - iv_5d_ago) / iv_5d_ago * 100
+
+        依赖:
+        - iv_store.get_iv_n_days_ago()
+        - 当前 ATM IV
+
+        返回:
+        - float: 百分比变化率
+        - None: 数据不足或非期权标的
+        """
+        if self.should_skip_options(ticker) or not self.iv_store:
+            return None
+
+        try:
+            # 获取当前 IV
+            t = yf.Ticker(ticker)
+            current_price = t.info.get("regularMarketPrice") or t.info.get("previousClose")
+            if not current_price:
+                return None
+
+            exps = t.options
+            if not exps:
+                return None
+
+            chain = t.option_chain(exps[0])
+            calls = chain.calls
+            if calls.empty:
+                return None
+
+            calls = calls.copy()
+            calls["diff"] = abs(calls["strike"] - current_price)
+            atm = calls.loc[calls["diff"].idxmin()]
+            current_iv = float(atm["impliedVolatility"])
+
+            # 获取 5 天前 IV
+            iv_5d_ago = self.iv_store.get_iv_n_days_ago(ticker, n=5)
+            if iv_5d_ago is None or iv_5d_ago == 0:
+                return None
+
+            return round((current_iv - iv_5d_ago) / iv_5d_ago * 100, 1)
+
+        except Exception as e:
+            logger.warning(f"IV momentum failed for {ticker}: {e}")
+            return None
+
     def disconnect(self):
         """Disconnect from IBKR if connected."""
         if self.ibkr:

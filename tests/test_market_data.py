@@ -179,3 +179,72 @@ class TestGetHistoricalEarningsDates:
         provider = MarketDataProvider()
         result = provider.get_historical_earnings_dates("600900.SS", count=5)
         assert result == []
+
+
+class TestGetIVMomentum:
+    @patch("src.market_data.yf.Ticker")
+    def test_iv_momentum_calculated(self, MockTicker):
+        """成功计算 IV 动量"""
+        mock_t = MockTicker.return_value
+        mock_t.info = {"regularMarketPrice": 150.0}
+        mock_t.options = ["2026-03-20"]
+
+        # Mock 期权链
+        from unittest.mock import MagicMock
+        mock_chain = MagicMock()
+        mock_calls = pd.DataFrame({
+            "strike": [145, 150, 155],
+            "impliedVolatility": [0.30, 0.28, 0.29],
+        })
+        mock_chain.calls = mock_calls
+        mock_t.option_chain.return_value = mock_chain
+
+        # Mock IVStore
+        mock_store = MagicMock()
+        mock_store.get_iv_n_days_ago.return_value = 0.20  # 5天前 IV = 0.20
+
+        provider = MarketDataProvider()
+        provider.iv_store = mock_store
+
+        result = provider.get_iv_momentum("AAPL")
+
+        # (0.28 - 0.20) / 0.20 * 100 = 40%
+        assert result == pytest.approx(40.0, abs=1.0)
+
+    def test_cn_market_returns_none(self):
+        """CN 市场返回 None"""
+        provider = MarketDataProvider()
+        provider.iv_store = MagicMock()
+        result = provider.get_iv_momentum("600900.SS")
+        assert result is None
+
+    def test_no_iv_store_returns_none(self):
+        """无 IVStore 返回 None"""
+        provider = MarketDataProvider()
+        provider.iv_store = None
+        result = provider.get_iv_momentum("AAPL")
+        assert result is None
+
+    @patch("src.market_data.yf.Ticker")
+    def test_no_historical_iv_returns_none(self, MockTicker):
+        """5天前无 IV 数据返回 None"""
+        mock_t = MockTicker.return_value
+        mock_t.info = {"regularMarketPrice": 150.0}
+        mock_t.options = ["2026-03-20"]
+
+        mock_chain = MagicMock()
+        mock_calls = pd.DataFrame({
+            "strike": [150],
+            "impliedVolatility": [0.28],
+        })
+        mock_chain.calls = mock_calls
+        mock_t.option_chain.return_value = mock_chain
+
+        mock_store = MagicMock()
+        mock_store.get_iv_n_days_ago.return_value = None  # 无历史数据
+
+        provider = MarketDataProvider()
+        provider.iv_store = mock_store
+
+        result = provider.get_iv_momentum("AAPL")
+        assert result is None
