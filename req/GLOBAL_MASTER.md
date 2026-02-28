@@ -191,15 +191,16 @@ class TickerData:
 ### 7.2 临时文档
 - `docs/plans/*.md` (实现完成且 specs 同步后删除)
 
-### 7.3 Spec-to-Code 映射 (待完善)
-实现 Phase 2 后更新此表:
+### 7.3 Spec-to-Code 映射
+
+**Status**: ✅ 完成（Phase 1 + Phase 2）
 
 | Spec File | Source Modules | Purpose |
 |-----------|----------------|---------|
-| `docs/specs/data_pipeline.md` | `data_loader.py`, `market_data.py` | 数据获取与市场分类 |
+| `docs/specs/data_pipeline.md` | `data_loader.py`, `market_data.py`, `iv_store.py` | 数据获取、市场分类、IV 存储 |
 | `docs/specs/indicators.md` | `data_engine.py` | 技术指标计算引擎 |
-| `docs/specs/scanners.md` | `scanners.py` | 扫描器逻辑规则 |
-| `docs/specs/reporting.md` | `report.py`, `html_report.py` | 战报生成 |
+| `docs/specs/scanners.md` | `scanners.py` | 扫描器逻辑规则 (Phase 1 + Phase 2) |
+| `docs/specs/reporting.md` | `report.py`, `html_report.py` | 战报生成 (文本 + HTML) |
 
 ---
 
