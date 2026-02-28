@@ -1,7 +1,7 @@
 # tests/test_report.py
 import pytest
 from datetime import date
-from src.data_engine import TickerData
+from src.data_engine import TickerData, EarningsGap
 from src.scanners import SellPutSignal
 from src.report import format_report, format_earnings_tag
 
@@ -150,4 +150,82 @@ class TestIVMomentumSection:
         )
 
         assert "波动率异动雷达" in report
+        assert "无符合条件的标的" in report
+
+
+class TestEarningsGapSection:
+    def test_gap_data_in_report(self):
+        """Gap 数据出现在报告中"""
+        gaps = [
+            EarningsGap(
+                ticker="AAPL",
+                avg_gap=4.2,
+                up_ratio=62.5,
+                max_gap=-8.1,
+                sample_count=6
+            )
+        ]
+        ticker_map = {
+            "AAPL": make_ticker(
+                ticker="AAPL",
+                iv_rank=85.3,
+                days_to_earnings=2
+            )
+        }
+
+        report = format_report(
+            scan_date=date(2026, 2, 20),
+            data_source="yfinance",
+            universe_count=10,
+            iv_low=[], iv_high=[],
+            ma200_bullish=[], ma200_bearish=[],
+            leaps=[], sell_puts=[],
+            iv_momentum=[],
+            earnings_gaps=gaps,
+            earnings_gap_ticker_map=ticker_map,
+            elapsed_seconds=5.0,
+        )
+
+        assert "财报 Gap 预警" in report
+        assert "AAPL" in report
+        assert "4.2" in report
+        assert "62.5" in report
+        assert "-8.1" in report
+        assert "85.3" in report
+
+    def test_high_iv_risk_warning(self):
+        """高 IV + 临近财报显示风险警告"""
+        gaps = [EarningsGap("AAPL", 4.2, 62.5, -8.1, 6)]
+        ticker_map = {
+            "AAPL": make_ticker(ticker="AAPL", iv_rank=75.0, days_to_earnings=2)
+        }
+
+        report = format_report(
+            scan_date=date(2026, 2, 20),
+            data_source="yfinance",
+            universe_count=10,
+            iv_low=[], iv_high=[],
+            ma200_bullish=[], ma200_bearish=[],
+            leaps=[], sell_puts=[],
+            earnings_gaps=gaps,
+            earnings_gap_ticker_map=ticker_map,
+            elapsed_seconds=5.0,
+        )
+
+        assert "IV Crush 风险" in report
+
+    def test_empty_gaps_shows_placeholder(self):
+        """无符合条件的标的显示占位符"""
+        report = format_report(
+            scan_date=date(2026, 2, 20),
+            data_source="yfinance",
+            universe_count=10,
+            iv_low=[], iv_high=[],
+            ma200_bullish=[], ma200_bearish=[],
+            leaps=[], sell_puts=[],
+            earnings_gaps=[],
+            elapsed_seconds=5.0,
+        )
+
+        assert "财报 Gap 预警" in report
         assert "无符合条件的标的" in report

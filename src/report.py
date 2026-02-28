@@ -1,7 +1,7 @@
 # src/report.py
 from datetime import date
 from typing import List, Optional, Tuple
-from src.data_engine import TickerData
+from src.data_engine import TickerData, EarningsGap
 from src.scanners import SellPutSignal
 
 
@@ -121,6 +121,49 @@ def format_report(
                 f"IV Rank: {iv_rank_str}  "
                 f"│ {earnings_tag}"
             )
+    else:
+        lines.append("  (无符合条件的标的)")
+
+    lines.append("")
+
+    # --- Earnings Gap ---
+    gaps_list = earnings_gaps or []
+    gap_map = earnings_gap_ticker_map or {}
+
+    lines.append("── 财报 Gap 预警 ─────────────────────────────────")
+    lines.append("")
+
+    if gaps_list:
+        for g in gaps_list:
+            td = gap_map.get(g.ticker)
+
+            # 提取信息 (兜底处理)
+            days_str = f"{td.days_to_earnings}天" if td and td.days_to_earnings is not None else "N/A"
+            iv_str = f"{td.iv_rank:.1f}%" if td and td.iv_rank is not None else "N/A"
+
+            # 行1: 警告标题
+            lines.append(f"  ⚠️ {g.ticker} 财报还有 {days_str}")
+
+            # 行2: Gap 统计
+            lines.append(
+                f"     历史平均 Gap ±{g.avg_gap:.1f}%  |  "
+                f"上涨概率 {g.up_ratio:.1f}%  |  "
+                f"历史最大跳空 {g.max_gap:+.1f}%"
+            )
+
+            # 行3: 当前状态
+            lines.append(
+                f"     当前 IV Rank: {iv_str}  "
+                f"(样本数: {g.sample_count})"
+            )
+
+            # 风险标注: 高 IV + 临近财报
+            if td and td.iv_rank is not None and td.iv_rank > 70:
+                lines.append(
+                    f"     🔥 高 IV ({td.iv_rank:.1f}%) + 临近财报 → IV Crush 风险!"
+                )
+
+            lines.append("")
     else:
         lines.append("  (无符合条件的标的)")
 
