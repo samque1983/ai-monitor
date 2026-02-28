@@ -4,7 +4,7 @@ from datetime import date
 from html import escape as _html_escape
 from typing import List, Optional, Tuple
 
-from src.data_engine import TickerData
+from src.data_engine import TickerData, EarningsGap
 from src.scanners import SellPutSignal
 
 
@@ -113,6 +113,58 @@ def _skipped_table(skipped: List[Tuple[str, str]]) -> str:
     return "<table>" + "".join(rows) + "</table>"
 
 
+def _iv_momentum_table(tickers: List[TickerData]) -> str:
+    """生成 IV 动量表格"""
+    if not tickers:
+        return f'<table>{_empty_row(4)}</table>'
+
+    rows = []
+    for t in tickers:
+        mom_str = f"+{t.iv_momentum:.1f}%" if t.iv_momentum is not None else "N/A"
+        iv_str = f"{t.iv_rank:.1f}%" if t.iv_rank is not None else "N/A"
+        earnings_str = _format_earnings(t.earnings_date, t.days_to_earnings)
+
+        rows.append(
+            f"<tr>"
+            f'<td class="ticker">{_escape(t.ticker)}</td>'
+            f"<td>IV动量: {_escape(mom_str)}</td>"
+            f"<td>IV Rank: {_escape(iv_str)}</td>"
+            f"<td>{_escape(earnings_str)}</td>"
+            f"</tr>"
+        )
+
+    return "<table>" + "".join(rows) + "</table>"
+
+
+def _earnings_gap_table(gaps: list, ticker_map: dict) -> str:
+    """生成财报 Gap 预警表格"""
+    if not gaps:
+        return f'<table>{_empty_row(4)}</table>'
+
+    rows = []
+    for g in gaps:
+        td = ticker_map.get(g.ticker)
+        days_str = f"{td.days_to_earnings}天" if td and td.days_to_earnings is not None else "N/A"
+        iv_str = f"{td.iv_rank:.1f}%" if td and td.iv_rank is not None else "N/A"
+
+        # 风险标注
+        risk_badge = ""
+        if td and td.iv_rank is not None and td.iv_rank > 70:
+            risk_badge = ' <span class="risk-badge">高IV风险</span>'
+
+        rows.append(
+            f"<tr>"
+            f'<td class="ticker">⚠️ {_escape(g.ticker)}{risk_badge}</td>'
+            f"<td>财报还有 {_escape(days_str)}<br>"
+            f"平均Gap ±{g.avg_gap:.1f}% · 上涨概率 {g.up_ratio:.1f}%</td>"
+            f"<td>最大跳空 {g.max_gap:+.1f}%<br>样本数: {g.sample_count}</td>"
+            f"<td>IV Rank: {_escape(iv_str)}</td>"
+            f"</tr>"
+        )
+
+    return "<table>" + "".join(rows) + "</table>"
+
+
 CSS = """\
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
@@ -192,6 +244,14 @@ table tr:last-child td {
     font-size: 13px;
     display: inline-block;
 }
+.risk-badge {
+    background: #ff3b30;
+    color: white;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.85em;
+    margin-left: 8px;
+}
 footer {
     text-align: center;
     color: #86868b;
@@ -221,6 +281,9 @@ def format_html_report(
     leaps: List[TickerData],
     sell_puts: List[Tuple[SellPutSignal, TickerData]],
     skipped: Optional[List[Tuple[str, str]]] = None,
+    iv_momentum: Optional[List[TickerData]] = None,
+    earnings_gaps: Optional[list] = None,
+    earnings_gap_ticker_map: Optional[dict] = None,
     elapsed_seconds: float = 0.0,
 ) -> str:
     """Render the scan results as a self-contained Apple-style HTML page."""
@@ -285,6 +348,21 @@ def format_html_report(
     parts.append('<div class="card">')
     parts.append("<h2>Sell Put 扫描</h2>")
     parts.append(_sell_put_table(sell_puts))
+    parts.append("</div>")
+
+    # --- Card: IV Momentum ---
+    iv_momentum_list = iv_momentum or []
+    parts.append('<div class="card">')
+    parts.append("<h2>波动率异动雷达 (5日IV动量)</h2>")
+    parts.append(_iv_momentum_table(iv_momentum_list))
+    parts.append("</div>")
+
+    # --- Card: Earnings Gap ---
+    gaps_list = earnings_gaps or []
+    gap_map = earnings_gap_ticker_map or {}
+    parts.append('<div class="card">')
+    parts.append("<h2>财报 Gap 预警</h2>")
+    parts.append(_earnings_gap_table(gaps_list, gap_map))
     parts.append("</div>")
 
     # --- Card: Skipped (conditional) ---

@@ -1,7 +1,7 @@
 # tests/test_html_report.py
 import pytest
 from datetime import date
-from src.data_engine import TickerData
+from src.data_engine import TickerData, EarningsGap
 from src.scanners import SellPutSignal
 from src.html_report import format_html_report
 
@@ -139,3 +139,44 @@ class TestHtmlReport:
         )
         assert "<style>" in html
         assert "max-width" in html
+
+
+class TestIVMomentumCard:
+    def test_momentum_card_in_html(self):
+        """IV Momentum 卡片出现在 HTML 中"""
+        momentum = [make_ticker(ticker="SPIKE", iv_momentum=45.0)]
+        html = format_html_report(
+            scan_date=date(2026, 2, 20),
+            data_source="yfinance",
+            universe_count=10,
+            iv_low=[], iv_high=[],
+            ma200_bullish=[], ma200_bearish=[],
+            leaps=[], sell_puts=[],
+            iv_momentum=momentum,
+            elapsed_seconds=5.0,
+        )
+
+        assert "波动率异动雷达" in html
+        assert "SPIKE" in html
+
+
+class TestEarningsGapCard:
+    def test_gap_card_in_html(self):
+        """Earnings Gap 卡片出现在 HTML 中"""
+        gaps = [EarningsGap("AAPL", 4.2, 62.5, -8.1, 6)]
+        ticker_map = {"AAPL": make_ticker(ticker="AAPL", iv_rank=85.3, days_to_earnings=2)}
+
+        html = format_html_report(
+            scan_date=date(2026, 2, 20),
+            data_source="yfinance",
+            universe_count=10,
+            iv_low=[], iv_high=[],
+            ma200_bullish=[], ma200_bearish=[],
+            leaps=[], sell_puts=[],
+            earnings_gaps=gaps,
+            earnings_gap_ticker_map=ticker_map,
+            elapsed_seconds=5.0,
+        )
+
+        assert "财报 Gap 预警" in html
+        assert "AAPL" in html
