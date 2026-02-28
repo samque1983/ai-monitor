@@ -7,7 +7,7 @@ from datetime import date, datetime
 from unittest.mock import MagicMock
 from src.data_engine import build_ticker_data
 from src.market_data import MarketDataProvider
-from src.scanners import scan_iv_extremes, scan_ma200_crossover, scan_leaps_setup, scan_sell_put
+from src.scanners import scan_iv_extremes, scan_ma200_crossover, scan_leaps_setup, scan_sell_put, scan_iv_momentum, scan_earnings_gap
 from src.report import format_report
 
 
@@ -34,6 +34,8 @@ def mock_provider():
     provider.get_earnings_date.return_value = date(2026, 4, 25)
     provider.get_iv_rank.return_value = 18.0
     provider.should_skip_options.return_value = False
+    provider.get_iv_momentum.return_value = 25.0  # Below threshold
+    provider.get_historical_earnings_dates.return_value = []
 
     return provider
 
@@ -63,3 +65,37 @@ def test_full_pipeline(mock_provider):
     )
     assert "量化扫描雷达" in report
     assert "AAPL" in report or "无符合条件的标的" in report
+
+
+def test_phase2_pipeline_integration(mock_provider):
+    """Phase 2 扫描器集成测试"""
+    td = build_ticker_data("AAPL", mock_provider, reference_date=date(2026, 2, 20))
+    assert td is not None
+
+    all_data = [td]
+
+    # Phase 1 扫描器
+    iv_low, iv_high = scan_iv_extremes(all_data)
+    ma200_bull, ma200_bear = scan_ma200_crossover(all_data)
+    leaps = scan_leaps_setup(all_data)
+
+    # Phase 2 扫描器
+    iv_momentum = scan_iv_momentum(all_data, threshold=30.0)
+    earnings_gaps = scan_earnings_gap(all_data, mock_provider, days_threshold=3)
+
+    # 生成报告
+    report = format_report(
+        scan_date=date(2026, 2, 20),
+        data_source="mock",
+        universe_count=1,
+        iv_low=iv_low, iv_high=iv_high,
+        ma200_bullish=ma200_bull, ma200_bearish=ma200_bear,
+        leaps=leaps, sell_puts=[],
+        iv_momentum=iv_momentum,
+        earnings_gaps=earnings_gaps,
+        earnings_gap_ticker_map={"AAPL": td},
+        elapsed_seconds=1.0,
+    )
+
+    assert "波动率异动雷达" in report
+    assert "财报 Gap 预警" in report

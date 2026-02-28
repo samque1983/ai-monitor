@@ -9,7 +9,14 @@ from src.config import load_config
 from src.data_loader import fetch_universe
 from src.market_data import MarketDataProvider
 from src.data_engine import TickerData, build_ticker_data
-from src.scanners import scan_iv_extremes, scan_ma200_crossover, scan_leaps_setup, scan_sell_put
+from src.scanners import (
+    scan_iv_extremes,
+    scan_ma200_crossover,
+    scan_leaps_setup,
+    scan_sell_put,
+    scan_iv_momentum,
+    scan_earnings_gap,
+)
 from src.report import format_report
 from src.html_report import format_html_report
 from src.email_stub import send_email
@@ -77,6 +84,21 @@ def run_scan(config_path: str = "config.yaml"):
     ma200_bull, ma200_bear = scan_ma200_crossover(all_data)
     leaps = scan_leaps_setup(all_data)
 
+    # Phase 2: IV Momentum
+    scanner_config = config.get("scanners", {})
+    iv_momentum = scan_iv_momentum(
+        all_data,
+        threshold=scanner_config.get("iv_momentum_threshold", 30)
+    )
+
+    # Phase 2: Earnings Gap
+    earnings_gaps = scan_earnings_gap(
+        all_data,
+        provider,
+        days_threshold=scanner_config.get("earnings_gap_days", 3),
+    )
+    earnings_gap_ticker_map = {td.ticker: td for td in all_data}
+
     # Module 5: Sell Put
     sell_put_results = []
     for td in all_data:
@@ -102,6 +124,9 @@ def run_scan(config_path: str = "config.yaml"):
         ma200_bearish=ma200_bear,
         leaps=leaps,
         sell_puts=sell_put_results,
+        iv_momentum=iv_momentum,
+        earnings_gaps=earnings_gaps,
+        earnings_gap_ticker_map=earnings_gap_ticker_map,
         skipped=skipped,
         elapsed_seconds=elapsed,
     )
@@ -116,6 +141,9 @@ def run_scan(config_path: str = "config.yaml"):
         ma200_bearish=ma200_bear,
         leaps=leaps,
         sell_puts=sell_put_results,
+        iv_momentum=iv_momentum,
+        earnings_gaps=earnings_gaps,
+        earnings_gap_ticker_map=earnings_gap_ticker_map,
         skipped=skipped,
         elapsed_seconds=elapsed,
     )
