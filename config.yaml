@@ -11,6 +11,12 @@ ibkr:
 data:
   iv_history_db: "data/iv_history.db"
   price_period: "1y"
+  earnings_csv_path: "data/earnings_calendar.csv"
+
+scanners:
+  iv_momentum_threshold: 30
+  earnings_gap_days: 3
+  earnings_lookback: 8
 
 reports:
   output_dir: "reports"

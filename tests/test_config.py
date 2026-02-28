@@ -46,3 +46,16 @@ def test_load_config_custom_file():
         assert config["ibkr"]["port"] == 4002
     finally:
         os.unlink(tmp_path)
+
+
+def test_config_has_phase2_scanner_settings():
+    """配置包含 Phase 2 扫描器设置"""
+    config = load_config("config.yaml")
+    scanners = config.get("scanners", {})
+
+    assert "iv_momentum_threshold" in scanners
+    assert "earnings_gap_days" in scanners
+    assert "earnings_lookback" in scanners
+
+    data_config = config.get("data", {})
+    assert "earnings_csv_path" in data_config
