@@ -5,6 +5,7 @@ from datetime import date
 from src.data_engine import TickerData
 from src.scanners import scan_iv_extremes, scan_ma200_crossover, scan_leaps_setup
 from src.scanners import scan_sell_put, SellPutSignal
+from src.scanners import scan_iv_momentum
 
 
 def make_ticker(**kwargs) -> TickerData:
@@ -205,3 +206,47 @@ class TestSellPutScanner:
         ticker_data = make_ticker(ticker="AAPL")
         result = scan_sell_put(ticker_data, 150.0, pd.DataFrame())
         assert result is None
+
+
+class TestIVMomentumScanner:
+    def test_high_momentum_detected(self):
+        """高动量标的被筛选"""
+        data = [
+            make_ticker(ticker="SPIKE", iv_momentum=45.0),
+            make_ticker(ticker="CALM", iv_momentum=10.0),
+        ]
+        result = scan_iv_momentum(data, threshold=30.0)
+
+        assert len(result) == 1
+        assert result[0].ticker == "SPIKE"
+
+    def test_boundary_excluded(self):
+        """边界值 (30.0) 不触发"""
+        data = [make_ticker(ticker="EXACT", iv_momentum=30.0)]
+        result = scan_iv_momentum(data, threshold=30.0)
+
+        assert len(result) == 0
+
+    def test_none_momentum_skipped(self):
+        """iv_momentum=None 的标的被跳过"""
+        data = [make_ticker(ticker="NODATA", iv_momentum=None)]
+        result = scan_iv_momentum(data, threshold=30.0)
+
+        assert len(result) == 0
+
+    def test_sorted_descending(self):
+        """结果按 iv_momentum 降序排列"""
+        data = [
+            make_ticker(ticker="A", iv_momentum=35.0),
+            make_ticker(ticker="B", iv_momentum=50.0),
+            make_ticker(ticker="C", iv_momentum=40.0),
+        ]
+        result = scan_iv_momentum(data, threshold=30.0)
+
+        assert [t.ticker for t in result] == ["B", "C", "A"]
+
+    def test_custom_threshold(self):
+        """自定义阈值"""
+        data = [make_ticker(ticker="MED", iv_momentum=25.0)]
+        assert len(scan_iv_momentum(data, threshold=20.0)) == 1
+        assert len(scan_iv_momentum(data, threshold=30.0)) == 0

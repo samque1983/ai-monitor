@@ -14,6 +14,28 @@ def scan_iv_extremes(data: List[TickerData]) -> Tuple[List[TickerData], List[Tic
     return low, high
 
 
+def scan_iv_momentum(
+    data: List[TickerData],
+    threshold: float = 30.0
+) -> List[TickerData]:
+    """
+    波动率异动雷达: 筛选 IV 快速膨胀的标的
+
+    触发条件:
+        iv_momentum > threshold (默认 30%)
+
+    输出:
+        符合条件的 TickerData 列表,按 iv_momentum 降序排列
+    """
+    result = [
+        t for t in data
+        if t.iv_momentum is not None and t.iv_momentum > threshold
+    ]
+    # 按动量降序排列
+    result.sort(key=lambda x: x.iv_momentum, reverse=True)
+    return result
+
+
 def scan_ma200_crossover(data: List[TickerData]) -> Tuple[List[TickerData], List[TickerData]]:
     """Module 3: Detect MA200 crossover signals. Returns (bullish_list, bearish_list)."""
     bullish = []
