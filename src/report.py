@@ -21,6 +21,9 @@ def format_report(
     ma200_bearish: List[TickerData],
     leaps: List[TickerData],
     sell_puts: List[Tuple[SellPutSignal, TickerData]],
+    iv_momentum: Optional[List[TickerData]] = None,
+    earnings_gaps: Optional[list] = None,
+    earnings_gap_ticker_map: Optional[dict] = None,
     skipped: Optional[List[Tuple[str, str]]] = None,
     elapsed_seconds: float = 0.0,
 ) -> str:
@@ -99,6 +102,28 @@ def format_report(
                 lines.append(f"          \U0001f6a8 警告: 财报日在DTE窗口内 \u2014 跳空风险")
     else:
         lines.append("  (无符合条件的标的)")
+    lines.append("")
+
+    # IV Momentum
+    iv_momentum_list = iv_momentum or []
+    lines.append("── 波动率异动雷达 (5日IV动量) ──────────────────────")
+    lines.append("")
+
+    if iv_momentum_list:
+        for t in iv_momentum_list:
+            iv_mom_str = f"+{t.iv_momentum:.1f}%" if t.iv_momentum else "N/A"
+            iv_rank_str = f"{t.iv_rank:.1f}%" if t.iv_rank is not None else "N/A"
+            earnings_tag = format_earnings_tag(t.earnings_date, t.days_to_earnings)
+
+            lines.append(
+                f"  {t.ticker:<8} "
+                f"IV动量: {iv_mom_str}  "
+                f"IV Rank: {iv_rank_str}  "
+                f"│ {earnings_tag}"
+            )
+    else:
+        lines.append("  (无符合条件的标的)")
+
     lines.append("")
 
     # Skipped tickers detail

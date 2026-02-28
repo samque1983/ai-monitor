@@ -113,3 +113,41 @@ class TestFormatReport:
         assert "无价格数据" in report
         assert "跳过: 2" in report
         assert "处理: 8" in report
+
+
+class TestIVMomentumSection:
+    def test_momentum_tickers_in_report(self):
+        """IV 动量标的出现在报告中"""
+        momentum = [
+            make_ticker(ticker="SPIKE", iv_momentum=45.0, iv_rank=72.0, days_to_earnings=2)
+        ]
+        report = format_report(
+            scan_date=date(2026, 2, 20),
+            data_source="yfinance",
+            universe_count=10,
+            iv_low=[], iv_high=[],
+            ma200_bullish=[], ma200_bearish=[],
+            leaps=[], sell_puts=[],
+            iv_momentum=momentum,
+            elapsed_seconds=5.0,
+        )
+
+        assert "波动率异动雷达" in report
+        assert "SPIKE" in report
+        assert "45.0" in report
+
+    def test_empty_momentum_shows_placeholder(self):
+        """无符合条件的标的显示占位符"""
+        report = format_report(
+            scan_date=date(2026, 2, 20),
+            data_source="yfinance",
+            universe_count=10,
+            iv_low=[], iv_high=[],
+            ma200_bullish=[], ma200_bearish=[],
+            leaps=[], sell_puts=[],
+            iv_momentum=[],
+            elapsed_seconds=5.0,
+        )
+
+        assert "波动率异动雷达" in report
+        assert "无符合条件的标的" in report
