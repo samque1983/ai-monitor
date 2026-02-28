@@ -37,8 +37,15 @@ All frontend code must follow the design system defined in `docs/specs/design_sy
 -->
 
 ### 6. Spec-to-Code Mapping
+
 Each spec in `docs/specs/` maps 1:1 to source modules:
-- `req/phase_1_monitor_market.md` → `src/config.py`, `src/data_loader.py`, `src/market_data.py`, `src/data_engine.py`, `src/scanners.py`, `src/report.py`, `src/iv_store.py`, `src/main.py`
+
+| Spec File | Source Modules | Purpose |
+|-----------|----------------|---------|
+| `docs/specs/data_pipeline.md` | `data_loader.py`, `market_data.py`, `iv_store.py` | 数据获取、市场分类、IV 存储 |
+| `docs/specs/indicators.md` | `data_engine.py` | 技术指标计算引擎 |
+| `docs/specs/scanners.md` | `scanners.py` | 扫描器逻辑 (Phase 1 + Phase 2) |
+| `docs/specs/reporting.md` | `report.py`, `html_report.py` | 战报生成 (文本 + HTML) |
 
 ## Document Hierarchy
 
@@ -91,3 +98,58 @@ docs/plans/                ← Temporary working docs (not maintained post-imple
 - **Config authority:** All configuration lives in `config.yaml`, loaded via `src/config.py`.
 - **Market data:** All external API calls go through `MarketDataProvider` — no other module touches yfinance or ib_insync directly.
 - **Error isolation:** Per-ticker try-except in main loop — one ticker failure never crashes the scan.
+
+## Financial Domain Requirements
+
+### 1. Financial Data Integrity (金融数据完整性)
+
+**复权调整 (Adjusted Prices)**:
+- All technical indicators (MA, RSI) MUST use adjusted close prices
+- yfinance returns adjusted data by default
+- IBKR data must be verified for corporate actions
+
+**多市场时差处理 (Multi-Market Timezone)**:
+- US Market: Eastern Time (ET)
+- HK Market: Hong Kong Time (HKT, UTC+8)
+- CN Market: China Standard Time (CST, UTC+8)
+- Earnings dates use `date` type (no timezone conversion needed)
+- Gap calculations use calendar day differences
+
+**股息影响 (Dividend Impact)**:
+- MA/RSI based on adjusted prices (dividends already included)
+- IV Rank unaffected by dividends (implied volatility)
+- Total return calculations require explicit dividend reinvestment
+
+See `req/GLOBAL_MASTER.md` Section II for detailed rules.
+
+### 2. Skill Fusion Protocol
+
+**When to activate Financial Service Skill**:
+- ✅ During Brainstorming phase
+- ✅ During Write Plan phase
+- ✅ When designing indicators/scanners
+- ✅ When analyzing market data
+
+**Required considerations**:
+- Adjusted prices for all price-based calculations
+- Market classification (US/HK/CN) for data source selection
+- Timezone handling for earnings dates
+- Dividend impact on technical indicators
+
+### 3. Data Analysis Pipeline
+
+**Mandatory workflow**:
+```
+Raw Data → data-explorer (清洗) → Financial Service Skill (建模) → Indicators
+```
+
+**Rules**:
+- ❌ Forbidden: Generic Python statistical logic without financial context
+- ✅ Required: All analysis must comply with `req/GLOBAL_MASTER.md` rules
+- ✅ Required: Validate data quality before calculation (see `data_engine.validate_price_df()`)
+- ✅ Required: Handle market-specific edge cases (CN/HK no options, etc.)
+
+**Reference**:
+- Financial data integrity: `req/GLOBAL_MASTER.md` Section II
+- Error isolation: `req/GLOBAL_MASTER.md` Section III
+- Data validation: `docs/specs/indicators.md` → `validate_price_df()`
