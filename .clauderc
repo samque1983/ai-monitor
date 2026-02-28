@@ -1,0 +1,12 @@
+custom_instructions: |
+  # 项目执行协议
+  读取上级目录 ../.clauderc的规则，并应用到当前项目中
+  
+  ## 1. 深度能力融合 (Skill Fusion)
+  - 在执行 Superpowers 的 `Brainstorm` 或 `Write Plan` 阶段时，必须自动激活 `Financial Service Skill`。
+  - 在此阶段，必须显式考虑金融特有风险：如复权调整（Adjusted Prices）、多市场时差（US/HK/CN）、以及股息对技术指标的影响。
+
+  ## 2. 数据分析链路 (Data Analysis Pipeline)
+  - 执行数据分析任务时，必须结合 `data-explorer` 实施路径。
+  - 流程要求：先通过 `data-explorer` 进行原始数据清洗与验证，随后调用 `Financial Service Skill` 进行金融层面的逻辑建模（如 MA200 趋势确认）。
+  - 禁止仅使用通用的 Python 统计逻辑；所有分析结论必须符合 `claude.md` 中定义的规则。
