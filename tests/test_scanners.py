@@ -6,6 +6,9 @@ from src.data_engine import TickerData
 from src.scanners import scan_iv_extremes, scan_ma200_crossover, scan_leaps_setup
 from src.scanners import scan_sell_put, SellPutSignal
 from src.scanners import scan_iv_momentum
+from src.scanners import scan_earnings_gap
+from src.data_engine import EarningsGap
+from unittest.mock import MagicMock
 
 
 def make_ticker(**kwargs) -> TickerData:
@@ -250,3 +253,69 @@ class TestIVMomentumScanner:
         data = [make_ticker(ticker="MED", iv_momentum=25.0)]
         assert len(scan_iv_momentum(data, threshold=20.0)) == 1
         assert len(scan_iv_momentum(data, threshold=30.0)) == 0
+
+
+class TestEarningsGapScanner:
+    def test_ticker_within_threshold_analyzed(self):
+        """临近财报的标的被分析"""
+        data = [
+            make_ticker(ticker="AAPL", days_to_earnings=2, earnings_date=date(2026, 2, 27)),
+            make_ticker(ticker="MSFT", days_to_earnings=10, earnings_date=date(2026, 3, 7)),
+        ]
+
+        mock_provider = MagicMock()
+        mock_provider.should_skip_options.return_value = False
+
+        # Mock 历史财报日期
+        mock_provider.get_historical_earnings_dates.return_value = [
+            date(2026, 1, 20), date(2025, 10, 15), date(2025, 7, 10),
+        ]
+
+        # Mock 价格数据
+        dates_idx = pd.date_range("2025-06-01", "2026-02-25", freq="B")
+        price_df = pd.DataFrame({
+            "Open": [100.0] * len(dates_idx),
+            "Close": [100.0] * len(dates_idx),
+        }, index=dates_idx)
+
+        # 设置 Gap
+        for ed, gap_open in [
+            (pd.Timestamp("2026-01-20"), 106.0),
+            (pd.Timestamp("2025-10-15"), 95.0),
+            (pd.Timestamp("2025-07-10"), 103.0)
+        ]:
+            if ed in price_df.index:
+                price_df.loc[ed, "Open"] = gap_open
+
+        mock_provider.get_price_data.return_value = price_df
+
+        result = scan_earnings_gap(data, mock_provider, days_threshold=3)
+
+        assert len(result) == 1
+        assert result[0].ticker == "AAPL"
+        assert result[0].sample_count >= 2
+
+    def test_ticker_outside_threshold_skipped(self):
+        """超过阈值的标的被跳过"""
+        data = [make_ticker(ticker="MSFT", days_to_earnings=10)]
+        mock_provider = MagicMock()
+
+        result = scan_earnings_gap(data, mock_provider, days_threshold=3)
+        assert len(result) == 0
+
+    def test_ticker_with_no_earnings_date_skipped(self):
+        """无财报日期的标的被跳过"""
+        data = [make_ticker(ticker="NOEARN", days_to_earnings=None, earnings_date=None)]
+        mock_provider = MagicMock()
+
+        result = scan_earnings_gap(data, mock_provider, days_threshold=3)
+        assert len(result) == 0
+
+    def test_cn_market_skipped(self):
+        """CN 市场被跳过"""
+        data = [make_ticker(ticker="600900.SS", days_to_earnings=2)]
+        mock_provider = MagicMock()
+        mock_provider.should_skip_options.return_value = True
+
+        result = scan_earnings_gap(data, mock_provider, days_threshold=3)
+        assert len(result) == 0

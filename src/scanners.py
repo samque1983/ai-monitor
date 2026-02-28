@@ -1,10 +1,16 @@
 from dataclasses import dataclass
 from datetime import date
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, TYPE_CHECKING
+import logging
 
 import pandas as pd
 
-from src.data_engine import TickerData
+from src.data_engine import TickerData, EarningsGap, compute_earnings_gaps
+
+if TYPE_CHECKING:
+    from src.market_data import MarketDataProvider
+
+logger = logging.getLogger(__name__)
 
 
 def scan_iv_extremes(data: List[TickerData]) -> Tuple[List[TickerData], List[TickerData]]:
@@ -144,3 +150,50 @@ def scan_sell_put(
         apy=round(apy, 2),
         earnings_risk=earnings_risk,
     )
+
+
+def scan_earnings_gap(
+    data: List[TickerData],
+    provider: "MarketDataProvider",
+    days_threshold: int = 3,
+) -> List[EarningsGap]:
+    """
+    财报 Gap 黑天鹅预警: 分析即将财报的历史跳空风险
+
+    触发条件:
+        days_to_earnings <= days_threshold (默认 3 天)
+    """
+    results = []
+
+    for t in data:
+        # 检查是否临近财报
+        if t.days_to_earnings is None or t.days_to_earnings > days_threshold:
+            continue
+
+        # 跳过非期权市场
+        if provider.should_skip_options(t.ticker):
+            continue
+
+        try:
+            # 获取历史财报日期 (带 fallback)
+            hist_dates = provider.get_historical_earnings_dates(t.ticker)
+            if len(hist_dates) < 2:
+                logger.debug(f"Insufficient earnings history for {t.ticker}")
+                continue
+
+            # 获取历史价格
+            price_df = provider.get_price_data(t.ticker, period="3y")
+            if price_df.empty:
+                logger.warning(f"No price data for {t.ticker}")
+                continue
+
+            # 计算 Gap 统计
+            gap = compute_earnings_gaps(t.ticker, hist_dates, price_df)
+            if gap:
+                results.append(gap)
+
+        except Exception as e:
+            logger.error(f"Earnings gap scan failed for {t.ticker}: {e}")
+            continue
+
+    return results
