@@ -2,7 +2,7 @@
 import logging
 import os
 from datetime import date, datetime
-from typing import Optional
+from typing import List, Optional
 import pandas as pd
 import yfinance as yf
 from src.data_loader import classify_market
@@ -84,7 +84,7 @@ class MarketDataProvider:
             logger.warning(f"Earnings date fetch failed for {ticker}: {e}")
             return None
 
-    def get_historical_earnings_dates(self, ticker: str, count: int = 8) -> list:
+    def get_historical_earnings_dates(self, ticker: str, count: int = 8) -> List[date]:
         """
         获取历史财报日期 (yfinance → 本地 CSV 降级)
 
@@ -111,7 +111,7 @@ class MarketDataProvider:
         # 二级: 本地 CSV Fallback
         return self._load_earnings_from_csv(ticker, count)
 
-    def _load_earnings_from_csv(self, ticker: str, count: int) -> list:
+    def _load_earnings_from_csv(self, ticker: str, count: int) -> List[date]:
         """从本地 CSV 加载财报日期"""
         csv_path = self.config.get("data", {}).get(
             "earnings_csv_path",

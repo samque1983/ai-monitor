@@ -128,16 +128,28 @@ class TestGetHistoricalEarningsDates:
     def test_yfinance_success(self, MockTicker):
         """yfinance 成功返回历史财报日期"""
         mock_t = MockTicker.return_value
+        # Use past dates that will pass the filter
         mock_t.earnings_dates = pd.DataFrame(
             {"EPS Estimate": [1.0, 1.1, 1.2]},
-            index=pd.to_datetime(["2026-04-25", "2026-01-20", "2025-10-15"]),
+            index=pd.to_datetime(["2025-04-25", "2025-01-20", "2024-10-15"]),
         )
 
         provider = MarketDataProvider()
         result = provider.get_historical_earnings_dates("AAPL", count=3)
 
-        assert len(result) <= 3
+        # Verify count
+        assert len(result) == 3
+        # Verify type
         assert all(isinstance(d, date) for d in result)
+        # Verify descending order (most recent first)
+        assert result == sorted(result, reverse=True)
+        # Verify past dates only
+        today = date.today()
+        assert all(d < today for d in result)
+        # Verify actual values
+        assert result[0] == date(2025, 4, 25)  # Most recent
+        assert result[1] == date(2025, 1, 20)
+        assert result[2] == date(2024, 10, 15)
 
     @patch("src.market_data.yf.Ticker")
     def test_yfinance_fails_fallback_to_csv(self, MockTicker):
