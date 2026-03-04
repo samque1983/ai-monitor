@@ -16,8 +16,11 @@ Every source file must have a corresponding test file:
 - `src/market_data.py` → `tests/test_market_data.py`
 - `src/data_engine.py` → `tests/test_data_engine.py`
 - `src/scanners.py` → `tests/test_scanners.py`
+- `src/dividend_scanners.py` → `tests/test_dividend_scanners.py`
 - `src/report.py` → `tests/test_report.py`
 - `src/iv_store.py` → `tests/test_iv_store.py`
+- `src/dividend_store.py` → `tests/test_dividend_store.py`
+- `src/financial_service.py` → `tests/test_financial_service.py`
 - `src/main.py` → `tests/test_integration.py` (integration test)
 
 ### 3. Contract Validation
@@ -153,3 +156,6 @@ Raw Data → data-explorer (清洗) → Financial Service Skill (建模) → Ind
 - Financial data integrity: `req/GLOBAL_MASTER.md` Section II
 - Error isolation: `req/GLOBAL_MASTER.md` Section III
 - Data validation: `docs/specs/indicators.md` → `validate_price_df()`
+
+
+总的产品思路，在这个文档： https://docs.google.com/document/d/1c9swfHGRLTRZlUbKwsljh4F5rDzDyBHT/edit?usp=sharing&ouid=101023108605675986021&rtpof=true&sd=true
