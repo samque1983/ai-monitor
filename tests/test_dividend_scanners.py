@@ -1,5 +1,6 @@
 # tests/test_dividend_scanners.py
 import pytest
+import pandas as pd
 from datetime import date
 from unittest.mock import MagicMock, patch
 from src.data_engine import TickerData
@@ -235,6 +236,145 @@ class TestScanDividendBuySignal:
         expected_yield = (3.50 / 46.0) * 100
         assert abs(signal.current_yield - expected_yield) < 0.01, \
             f"Current yield should be {expected_yield:.2f}%, got {signal.current_yield:.2f}%"
+
+        # Clean up
+        store.close()
+
+
+class TestScanDividendSellPut:
+    """测试高股息Sell Put期权策略扫描器"""
+
+    def test_scan_dividend_sell_put_selects_strike_by_yield(self):
+        """测试：基于目标股息率选择行权价（不是APY优化）"""
+        # Arrange
+        from src.dividend_scanners import scan_dividend_sell_put
+
+        # Mock provider
+        mock_provider = MagicMock()
+
+        # Mock option chain with 3 strikes: 32.0, 33.0, 34.0
+        mock_provider.get_options_chain.return_value = pd.DataFrame({
+            'strike': [32.0, 33.0, 34.0],
+            'bid': [1.20, 1.10, 1.00],
+            'dte': [60, 60, 60],
+            'expiration': [date(2026, 5, 3), date(2026, 5, 3), date(2026, 5, 3)]
+        })
+
+        # Create mock TickerData
+        ticker_data = make_ticker(
+            ticker="XYZ",
+            last_price=35.0,
+            dividend_yield=6.71  # 2.35 / 35.0 * 100
+        )
+
+        # Test parameters
+        annual_dividend = 2.35
+        target_yield = 7.3  # Expected target_strike = 2.35 / 0.073 = 32.19 → selects $32
+
+        # Act
+        result = scan_dividend_sell_put(
+            ticker_data=ticker_data,
+            provider=mock_provider,
+            annual_dividend=annual_dividend,
+            target_yield_percentile=90,  # Not used in strike selection
+            target_yield=target_yield,
+            min_dte=45,
+            max_dte=90
+        )
+
+        # Assert
+        assert result is not None, "Should return option details"
+        assert result['strike'] == 32.0, "Should select $32 strike (closest to target_strike=32.19)"
+        assert result['bid'] == 1.20
+        assert result['dte'] == 60
+        assert result['expiration'] == date(2026, 5, 3)
+
+        # Verify APY calculation (for display only, not for filtering)
+        # APY = (bid / strike) * (365 / dte) * 100
+        expected_apy = (1.20 / 32.0) * (365 / 60) * 100
+        assert abs(result['apy'] - expected_apy) < 0.01, \
+            f"APY should be {expected_apy:.2f}%, got {result['apy']:.2f}%"
+
+    def test_scan_dividend_buy_signal_includes_option_strategy_for_us_market(self, tmp_path):
+        """测试：美国市场触发买入信号时，应包含期权策略"""
+        # Arrange
+        db_path = str(tmp_path / "test_dividend.db")
+        store = DividendStore(db_path)
+
+        # 填充历史数据：股息率历史高位
+        ticker = "XYZ"
+        historical_yields = [
+            ("2021-03-01", 3.0, 1.50, 50.0),
+            ("2022-03-01", 4.0, 2.00, 50.0),
+            ("2023-03-01", 5.0, 2.50, 50.0),
+            ("2024-03-01", 6.0, 3.00, 50.0),
+            ("2025-03-01", 7.0, 3.50, 50.0),
+        ]
+        for date_str, div_yield, annual_div, price in historical_yields:
+            store.save_dividend_history(
+                ticker=ticker,
+                date=date.fromisoformat(date_str),
+                dividend_yield=div_yield,
+                annual_dividend=annual_div,
+                price=price
+            )
+
+        # Mock provider
+        mock_provider = MagicMock()
+        mock_provider.should_skip_options.return_value = False  # US market
+
+        # 当前价格低 → 股息率高 (7.5%)
+        mock_provider.get_price_data.return_value = {
+            "close": [46.0],
+            "date": ["2026-03-04"]
+        }
+        # 年度股息 = 3.50
+        mock_provider.get_dividend_history.return_value = [
+            {"date": "2025-12-15", "amount": 0.875},
+            {"date": "2025-09-15", "amount": 0.875},
+            {"date": "2025-06-15", "amount": 0.875},
+            {"date": "2025-03-15", "amount": 0.875},
+        ]
+
+        # Mock option chain
+        mock_provider.get_options_chain.return_value = pd.DataFrame({
+            'strike': [32.0, 33.0, 34.0],
+            'bid': [1.20, 1.10, 1.00],
+            'dte': [60, 60, 60],
+            'expiration': [date(2026, 5, 3), date(2026, 5, 3), date(2026, 5, 3)]
+        })
+
+        # Config with option strategy enabled
+        config = {
+            "dividend_scanners": {
+                "min_yield": 4.0,
+                "min_yield_percentile": 90,
+                "option": {
+                    "enabled": True,
+                    "target_strike_percentile": 90,
+                    "min_dte": 45,
+                    "max_dte": 90,
+                }
+            }
+        }
+
+        # Act
+        pool = [ticker]
+        results = scan_dividend_buy_signal(
+            pool=pool,
+            provider=mock_provider,
+            store=store,
+            config=config
+        )
+
+        # Assert
+        assert len(results) == 1, "Should trigger one buy signal"
+        signal = results[0]
+        assert signal.signal_type == "OPTION", "Signal type should be OPTION for US market with options enabled"
+        assert signal.option_details is not None, "Option details should be populated"
+        assert signal.option_details['strike'] == 32.0, "Should select $32 strike"
+        assert signal.option_details['bid'] == 1.20
+        assert signal.option_details['dte'] == 60
 
         # Clean up
         store.close()

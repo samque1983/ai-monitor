@@ -295,18 +295,48 @@ def scan_dividend_buy_signal(
                     free_cash_flow=None,
                 )
 
+                # Step 7: 尝试添加期权策略（仅美国市场）
+                option_details = None
+                signal_type = "STOCK"
+
+                # 检查是否启用期权策略
+                option_config = scanner_config.get("option", {})
+                if option_config.get("enabled", False) and not provider.should_skip_options(ticker):
+                    # 计算目标股息率（基于历史分位数）
+                    target_strike_percentile = option_config.get("target_strike_percentile", 90)
+                    # 使用yield_percentile作为target_yield
+                    target_yield = yield_percentile
+
+                    # 调用scan_dividend_sell_put获取期权详情
+                    option_details = scan_dividend_sell_put(
+                        ticker_data=ticker_data,
+                        provider=provider,
+                        annual_dividend=annual_dividend,
+                        target_yield_percentile=target_strike_percentile,
+                        target_yield=target_yield,
+                        min_dte=option_config.get("min_dte", 45),
+                        max_dte=option_config.get("max_dte", 90),
+                    )
+
+                    if option_details:
+                        signal_type = "OPTION"
+                        logger.debug(
+                            f"{ticker}: Option strategy added - strike=${option_details['strike']:.2f}, "
+                            f"apy={option_details['apy']:.2f}%"
+                        )
+
                 signal = DividendBuySignal(
                     ticker_data=ticker_data,
-                    signal_type="STOCK",
+                    signal_type=signal_type,
                     current_yield=current_yield,
                     yield_percentile=yield_percentile,
-                    option_details=None
+                    option_details=option_details
                 )
 
                 results.append(signal)
                 logger.info(
                     f"{ticker}: Buy signal triggered - yield={current_yield:.2f}% "
-                    f"(percentile={yield_percentile:.1f}%)"
+                    f"(percentile={yield_percentile:.1f}%), signal_type={signal_type}"
                 )
             else:
                 logger.debug(
@@ -321,3 +351,106 @@ def scan_dividend_buy_signal(
 
     logger.info(f"Daily scan complete: {len(results)}/{len(pool)} signals triggered")
     return results
+
+
+def scan_dividend_sell_put(
+    ticker_data: TickerData,
+    provider: "MarketDataProvider",
+    annual_dividend: float,
+    target_yield_percentile: float,
+    target_yield: float,
+    min_dte: int = 45,
+    max_dte: int = 90,
+) -> Optional[Dict[str, Any]]:
+    """高股息Sell Put期权策略扫描
+
+    核心逻辑：基于目标股息率计算目标行权价，而非APY优化。
+    适用场景：当股息率处于历史高位（价格低位）时，通过Sell Put获得额外现金流。
+
+    工作流程：
+    1. 计算目标行权价：target_strike = annual_dividend / (target_yield / 100)
+    2. 获取期权链：从provider获取min_dte到max_dte范围内的Put期权
+    3. 选择最接近目标行权价的期权：min(options, key=lambda opt: abs(opt['strike'] - target_strike))
+    4. 计算APY（仅用于展示）：(bid / strike) * (365 / dte) * 100
+
+    Args:
+        ticker_data: TickerData对象
+        provider: MarketDataProvider实例
+        annual_dividend: 年度股息金额
+        target_yield_percentile: 目标股息率分位数（用于记录，不影响行权价选择）
+        target_yield: 目标股息率（百分比，如7.3表示7.3%）
+        min_dte: 最小到期天数（默认45天）
+        max_dte: 最大到期天数（默认90天）
+
+    Returns:
+        包含期权详情的字典：
+        - strike: 行权价
+        - bid: 卖出价
+        - dte: 到期天数
+        - expiration: 到期日
+        - apy: 年化收益率（百分比）
+        如果无可用期权或发生错误，返回None
+
+    Examples:
+        >>> # 年度股息2.35美元，目标股息率7.3%
+        >>> # 目标行权价 = 2.35 / 0.073 = 32.19
+        >>> # 如果期权链有32, 33, 34三个行权价，则选择32（最接近32.19）
+        >>> result = scan_dividend_sell_put(
+        ...     ticker_data=ticker_data,
+        ...     provider=provider,
+        ...     annual_dividend=2.35,
+        ...     target_yield_percentile=90,
+        ...     target_yield=7.3,
+        ...     min_dte=45,
+        ...     max_dte=90
+        ... )
+        >>> result['strike']
+        32.0
+        >>> result['apy']  # (1.20 / 32.0) * (365 / 60) * 100
+        22.81
+    """
+    ticker = ticker_data.ticker
+
+    try:
+        # Step 1: 计算目标行权价
+        target_strike = annual_dividend / (target_yield / 100)
+        logger.debug(
+            f"{ticker}: Target strike = {annual_dividend:.2f} / {target_yield}% = ${target_strike:.2f}"
+        )
+
+        # Step 2: 获取期权链
+        option_chain = provider.get_options_chain(ticker, dte_min=min_dte, dte_max=max_dte)
+        if option_chain.empty:
+            logger.debug(f"{ticker}: No options available in DTE range {min_dte}-{max_dte}")
+            return None
+
+        # Step 3: 选择最接近目标行权价的期权
+        option_chain['strike_diff'] = abs(option_chain['strike'] - target_strike)
+        closest_option = option_chain.loc[option_chain['strike_diff'].idxmin()]
+
+        strike = float(closest_option['strike'])
+        bid = float(closest_option['bid'])
+        dte = int(closest_option['dte'])
+        expiration = closest_option['expiration']
+
+        # Step 4: 计算APY（仅用于展示）
+        apy = (bid / strike) * (365 / dte) * 100
+
+        result = {
+            'strike': strike,
+            'bid': bid,
+            'dte': dte,
+            'expiration': expiration,
+            'apy': apy,
+        }
+
+        logger.info(
+            f"{ticker}: Sell Put selected - strike=${strike:.2f}, bid=${bid:.2f}, "
+            f"dte={dte}, apy={apy:.2f}% (target_strike=${target_strike:.2f})"
+        )
+
+        return result
+
+    except Exception as e:
+        logger.error(f"{ticker}: Error in scan_dividend_sell_put - {e}", exc_info=True)
+        return None
