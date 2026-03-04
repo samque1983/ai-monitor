@@ -1,8 +1,8 @@
 # src/market_data.py
 import logging
 import os
-from datetime import date, datetime
-from typing import List, Optional
+from datetime import date, datetime, timedelta
+from typing import List, Optional, Dict, Any
 import pandas as pd
 import yfinance as yf
 from src.data_loader import classify_market
@@ -258,6 +258,106 @@ class MarketDataProvider:
 
         except Exception as e:
             logger.warning(f"IV momentum failed for {ticker}: {e}")
+            return None
+
+    def get_dividend_history(self, ticker: str, years: int = 5) -> Optional[List[Dict[str, Any]]]:
+        """
+        获取股息历史数据
+
+        从 yfinance 获取过去 N 年的股息记录。
+
+        参数:
+        - ticker: 股票代码
+        - years: 回溯年数（默认 5 年）
+
+        返回:
+        - List[Dict]: [{date: datetime.date, amount: float}, ...] 按时间升序
+        - None: 无数据或发生错误
+
+        注意:
+        - 自动过滤到 cutoff_date = datetime.now() - timedelta(days=years * 365)
+        - years < 1 时触发警告并返回 None
+        """
+        if years < 1:
+            logger.warning(f"Invalid years parameter: {years}. Must be >= 1.")
+            return None
+
+        try:
+            yticker = yf.Ticker(ticker)
+            dividends = yticker.dividends
+
+            if dividends is None or dividends.empty:
+                logger.warning(f"No dividend data for {ticker}")
+                return None
+
+            cutoff_date = datetime.now() - timedelta(days=years * 365)
+            filtered = dividends[dividends.index >= cutoff_date]
+
+            if filtered.empty:
+                return None
+
+            result = []
+            for div_date, amount in filtered.items():
+                result.append({
+                    "date": div_date.to_pydatetime().date(),
+                    "amount": float(amount)
+                })
+
+            return result
+
+        except Exception as e:
+            logger.warning(f"Failed to fetch dividend history for {ticker}: {e}")
+            return None
+
+    def get_fundamentals(self, ticker: str) -> Optional[Dict[str, Any]]:
+        """
+        获取基本面数据
+
+        从 yfinance 的 info 中提取关键财务指标。
+
+        参数:
+        - ticker: 股票代码
+
+        返回:
+        - Dict: {
+            payout_ratio: float (百分比, 如 25.0 表示 25%),
+            roe: float (百分比),
+            debt_to_equity: float,
+            industry: str,
+            sector: str,
+            free_cash_flow: float
+          }
+        - None: 发生错误
+
+        注意:
+        - payout_ratio 和 roe 从小数转为百分比（×100）
+        - 缺失字段使用 None
+        """
+        try:
+            yticker = yf.Ticker(ticker)
+            info = yticker.info
+
+            # Extract fields with .get() for safety
+            payout_ratio = info.get("payoutRatio")
+            roe = info.get("returnOnEquity")
+
+            # Convert to percentage if present
+            if payout_ratio is not None:
+                payout_ratio = payout_ratio * 100
+            if roe is not None:
+                roe = roe * 100
+
+            return {
+                "payout_ratio": payout_ratio,
+                "roe": roe,
+                "debt_to_equity": info.get("debtToEquity"),
+                "industry": info.get("industry"),
+                "sector": info.get("sector"),
+                "free_cash_flow": info.get("freeCashflow")
+            }
+
+        except Exception as e:
+            logger.warning(f"Failed to fetch fundamentals for {ticker}: {e}")
             return None
 
     def disconnect(self):
