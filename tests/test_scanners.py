@@ -19,6 +19,18 @@ def make_ticker(**kwargs) -> TickerData:
         rsi14=40.0, iv_rank=25.0, iv_momentum=None,
         prev_close=99.0,
         earnings_date=date(2026, 4, 25), days_to_earnings=64,
+        # Phase 2: 高股息新增字段
+        dividend_yield=None,
+        dividend_yield_5y_percentile=None,
+        dividend_quality_score=None,
+        consecutive_years=None,
+        dividend_growth_5y=None,
+        payout_ratio=None,
+        roe=None,
+        debt_to_equity=None,
+        industry=None,
+        sector=None,
+        free_cash_flow=None,
     )
     defaults.update(kwargs)
     return TickerData(**defaults)

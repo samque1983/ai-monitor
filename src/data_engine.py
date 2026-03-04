@@ -26,6 +26,19 @@ class TickerData:
     earnings_date: Optional[date]
     days_to_earnings: Optional[int]
 
+    # Phase 2: 高股息新增字段
+    dividend_yield: Optional[float] = None
+    dividend_yield_5y_percentile: Optional[float] = None
+    dividend_quality_score: Optional[float] = None
+    consecutive_years: Optional[int] = None
+    dividend_growth_5y: Optional[float] = None
+    payout_ratio: Optional[float] = None
+    roe: Optional[float] = None
+    debt_to_equity: Optional[float] = None
+    industry: Optional[str] = None
+    sector: Optional[str] = None
+    free_cash_flow: Optional[float] = None
+
 
 @dataclass
 class EarningsGap:
