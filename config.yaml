@@ -18,6 +18,11 @@ scanners:
   earnings_gap_days: 3
   earnings_lookback: 8
 
+dividend_scanners:
+  min_quality_score: 70
+  min_consecutive_years: 5
+  max_payout_ratio: 100
+
 reports:
   output_dir: "reports"
   log_dir: "logs"
