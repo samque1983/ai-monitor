@@ -255,9 +255,12 @@ class TestGetDividendHistory:
     def test_get_dividend_history(self, MockTicker):
         """获取股息历史数据"""
         mock_t = MockTicker.return_value
-        # Mock 6 dividends from 2020-2025 (cutoff will filter based on current date - 5 years)
+        # Mock 6 dividends from 2020-2025 (current date: 2026-03-04)
+        # Using years=6 to ensure cutoff includes 2020 data
+        # Cutoff: 2026-03-04 - 2190 days = 2020-03-04
+        # First dividend must be >= 2020-03-04 to pass filter
         mock_dividends = pd.Series({
-            pd.Timestamp("2020-02-07"): 0.50,
+            pd.Timestamp("2020-05-07"): 0.50,
             pd.Timestamp("2021-02-05"): 0.53,
             pd.Timestamp("2022-02-04"): 0.56,
             pd.Timestamp("2023-02-10"): 0.59,
@@ -267,17 +270,17 @@ class TestGetDividendHistory:
         mock_t.dividends = mock_dividends
 
         provider = MarketDataProvider()
-        result = provider.get_dividend_history("AAPL", years=5)
+        result = provider.get_dividend_history("AAPL", years=6)
 
         assert result is not None
-        # Verify we got dividend entries
-        assert len(result) > 0
-        # Verify first entry is from 2020 or later
-        assert result[0]["date"].year >= 2020
-        # Verify amount structure
-        assert result[0]["amount"] > 0
-        # Verify last entry
-        assert result[-1]["amount"] > 0
+        # Verify exact count as per spec
+        assert len(result) == 6
+        # Verify first entry exact year as per spec
+        assert result[0]["date"].year == 2020
+        # Verify first entry exact amount as per spec
+        assert result[0]["amount"] == 0.50
+        # Verify last entry exact amount as per spec
+        assert result[-1]["amount"] == 0.63
 
 
 class TestGetFundamentals:
