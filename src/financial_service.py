@@ -45,8 +45,8 @@ class FinancialServiceAnalyzer:
     - 降级到规则化评分（当服务不可用时）
 
     规则化评分逻辑：
-    - stability_score = min(100, consecutive_years*10 + min(dividend_growth*2, 30))
-    - health_score = roe_score + debt_score + payout_score
+    - stability_score = max(0, min(100, consecutive_years*10 + min(dividend_growth*2, 30)))
+    - health_score = min(100, roe_score + debt_score + payout_score)
     - defensiveness_score = 50.0 (固定值，无行业分析能力)
     - overall_score = stability*0.4 + health*0.4 + defensiveness*0.2
     """
@@ -100,11 +100,13 @@ class FinancialServiceAnalyzer:
         """规则化评分逻辑（降级方案）
 
         评分公式：
-        - stability_score = min(100, consecutive_years*10 + min(dividend_growth*2, 30))
-        - health_score = roe_score + debt_score + payout_score
+        - stability_score = max(0, min(100, consecutive_years*10 + min(dividend_growth*2, 30)))
+          - max(0, ...) 确保非负（防止负增长导致负分）
+        - health_score = min(100, roe_score + debt_score + payout_score)
           - roe_score = min(roe, 30)
           - debt_score = max(0, 30 - debt_to_equity*20)
           - payout_score = 40 if payout_ratio < 70 else 20
+          - min(100, ...) 确保不超过100分
         - defensiveness_score = 50.0 (固定值，无行业分析)
         - overall_score = stability*0.4 + health*0.4 + defensiveness*0.2
 
@@ -124,13 +126,15 @@ class FinancialServiceAnalyzer:
 
         # 1. 计算稳定性评分
         # consecutive_years每年+10分，dividend_growth最多贡献30分
-        stability_score = min(100.0, consecutive_years * 10 + min(dividend_growth * 2, 30))
+        # 使用max确保非负（防止负增长导致负分）
+        stability_score = max(0.0, min(100.0, consecutive_years * 10 + min(dividend_growth * 2, 30)))
 
         # 2. 计算财务健康度评分
         roe_score = min(roe, 30.0)  # ROE最多30分
         debt_score = max(0.0, 30.0 - debt_to_equity * 20)  # 负债率惩罚
         payout_score = 40.0 if payout_ratio < 70 else 20.0  # 派息率健康度
-        health_score = roe_score + debt_score + payout_score
+        # Cap at 100 for consistency with stability_score
+        health_score = min(100.0, roe_score + debt_score + payout_score)
 
         # 3. 行业防御性评分（固定50分，fallback无行业分析能力）
         defensiveness_score = 50.0
