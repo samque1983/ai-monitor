@@ -18,6 +18,8 @@ Every source file must have a corresponding test file:
 - `src/scanners.py` → `tests/test_scanners.py`
 - `src/report.py` → `tests/test_report.py`
 - `src/iv_store.py` → `tests/test_iv_store.py`
+- `src/dividend_store.py` → `tests/test_dividend_store.py`
+- `src/financial_service.py` → `tests/test_financial_service.py`
 - `src/main.py` → `tests/test_integration.py` (integration test)
 
 ### 3. Contract Validation
