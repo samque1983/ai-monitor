@@ -12,7 +12,9 @@ Dividend Scanners Module (Phase 2 High Dividend)
 - scan_high_dividend_sell_put: 高股息Sell Put策略 (Task 3.3)
 """
 from typing import TYPE_CHECKING, List, Optional, Dict, Any
+from dataclasses import dataclass
 import logging
+from datetime import datetime, timedelta
 from src.data_engine import TickerData
 from src.financial_service import (
     calculate_consecutive_years,
@@ -22,8 +24,19 @@ from src.financial_service import (
 if TYPE_CHECKING:
     from src.market_data import MarketDataProvider
     from src.financial_service import FinancialServiceAnalyzer
+    from src.dividend_store import DividendStore
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class DividendBuySignal:
+    """股息买入信号数据类"""
+    ticker_data: TickerData
+    signal_type: str  # "STOCK" | "OPTION"
+    current_yield: float
+    yield_percentile: float
+    option_details: Optional[Dict[str, Any]] = None
 
 
 def scan_dividend_pool_weekly(
@@ -167,4 +180,144 @@ def scan_dividend_pool_weekly(
             continue
 
     logger.info(f"Weekly scan complete: {len(results)}/{len(universe)} tickers qualified")
+    return results
+
+
+def scan_dividend_buy_signal(
+    pool: List[str],
+    provider: "MarketDataProvider",
+    store: "DividendStore",
+    config: dict,
+) -> List[DividendBuySignal]:
+    """每日监控股息买入信号
+
+    六步工作流：
+    1. 遍历pool中的tickers
+    2. 获取当前价格（最近5天数据）
+    3. 获取股息历史（最近1年）
+    4. 计算当前股息率 = (年度股息 / 最新价格) * 100
+    5. 从store获取股息率历史分位数
+    6. 判断触发条件：current_yield >= min_yield AND yield_percentile >= min_yield_percentile
+
+    Args:
+        pool: ticker列表（来自DividendStore的当前池）
+        provider: MarketDataProvider实例
+        store: DividendStore实例（用于获取历史分位数）
+        config: 配置字典，包含：
+            - min_yield: 最低股息率阈值（默认4.0）
+            - min_yield_percentile: 最低历史分位数（默认90）
+
+    Returns:
+        触发买入信号的DividendBuySignal列表
+
+    Examples:
+        >>> signals = scan_dividend_buy_signal(
+        ...     pool=["AAPL", "MSFT"],
+        ...     provider=market_provider,
+        ...     store=dividend_store,
+        ...     config={"dividend_scanners": {"min_yield": 4.0, "min_yield_percentile": 90}}
+        ... )
+        >>> len(signals)
+        1
+        >>> signals[0].signal_type
+        'STOCK'
+    """
+    # 提取配置参数
+    scanner_config = config.get("dividend_scanners", {})
+    min_yield = scanner_config.get("min_yield", 4.0)
+    min_yield_percentile = scanner_config.get("min_yield_percentile", 90)
+
+    results = []
+
+    for ticker in pool:
+        try:
+            # Step 1: 获取当前价格（最近5天）
+            price_data = provider.get_price_data(ticker, period='5d')
+            if not price_data or 'close' not in price_data or len(price_data['close']) == 0:
+                logger.debug(f"{ticker}: No price data available, skipping")
+                continue
+
+            last_price = price_data['close'][-1]
+            if last_price <= 0:
+                logger.warning(f"{ticker}: Invalid last price {last_price}, skipping")
+                continue
+
+            # Step 2: 获取股息历史（最近1年）
+            dividend_history = provider.get_dividend_history(ticker, years=1)
+            if not dividend_history:
+                logger.debug(f"{ticker}: No dividend history, skipping")
+                continue
+
+            # Step 3: 计算年度股息（sum last 1 year）
+            one_year_ago = datetime.now() - timedelta(days=365)
+            annual_dividend = sum(
+                div['amount']
+                for div in dividend_history
+                if datetime.fromisoformat(div['date']) >= one_year_ago
+            )
+
+            if annual_dividend <= 0:
+                logger.debug(f"{ticker}: Annual dividend is {annual_dividend}, skipping")
+                continue
+
+            # Step 4: 计算当前股息率
+            current_yield = (annual_dividend / last_price) * 100
+
+            # Step 5: 获取历史分位数
+            yield_percentile = store.get_yield_percentile(ticker, current_yield)
+
+            # Step 6: 判断触发条件
+            if current_yield >= min_yield and yield_percentile >= min_yield_percentile:
+                # 创建TickerData对象（简化版，只包含必要字段）
+                ticker_data = TickerData(
+                    ticker=ticker,
+                    name=ticker,  # 简化：使用ticker作为name
+                    market="US",  # 简化：默认US市场
+                    last_price=last_price,
+                    ma200=None,
+                    ma50w=None,
+                    rsi14=None,
+                    iv_rank=None,
+                    iv_momentum=None,
+                    prev_close=0.0,
+                    earnings_date=None,
+                    days_to_earnings=None,
+                    dividend_yield=current_yield,
+                    dividend_yield_5y_percentile=yield_percentile,
+                    dividend_quality_score=None,
+                    consecutive_years=None,
+                    dividend_growth_5y=None,
+                    payout_ratio=None,
+                    roe=None,
+                    debt_to_equity=None,
+                    industry=None,
+                    sector=None,
+                    free_cash_flow=None,
+                )
+
+                signal = DividendBuySignal(
+                    ticker_data=ticker_data,
+                    signal_type="STOCK",
+                    current_yield=current_yield,
+                    yield_percentile=yield_percentile,
+                    option_details=None
+                )
+
+                results.append(signal)
+                logger.info(
+                    f"{ticker}: Buy signal triggered - yield={current_yield:.2f}% "
+                    f"(percentile={yield_percentile:.1f}%)"
+                )
+            else:
+                logger.debug(
+                    f"{ticker}: No signal - yield={current_yield:.2f}% "
+                    f"(percentile={yield_percentile:.1f}%), "
+                    f"min_yield={min_yield}, min_percentile={min_yield_percentile}"
+                )
+
+        except Exception as e:
+            logger.error(f"{ticker}: Error in daily scan - {e}", exc_info=True)
+            continue
+
+    logger.info(f"Daily scan complete: {len(results)}/{len(pool)} signals triggered")
     return results

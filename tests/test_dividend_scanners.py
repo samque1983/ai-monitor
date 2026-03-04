@@ -3,8 +3,9 @@ import pytest
 from datetime import date
 from unittest.mock import MagicMock, patch
 from src.data_engine import TickerData
-from src.dividend_scanners import scan_dividend_pool_weekly
+from src.dividend_scanners import scan_dividend_pool_weekly, scan_dividend_buy_signal, DividendBuySignal
 from src.financial_service import DividendQualityScore
+from src.dividend_store import DividendStore
 
 
 def make_ticker(**kwargs) -> TickerData:
@@ -158,3 +159,82 @@ class TestScanDividendPoolWeekly:
 
         # Assert
         assert len(results) == 0, "Should exclude ticker with payout_ratio > 100"
+
+
+class TestScanDividendBuySignal:
+    """测试每日股息买入信号扫描器"""
+
+    def test_scan_dividend_buy_signal_triggers_on_high_yield(self, tmp_path):
+        """测试：股息率达到历史高位时触发买入信号"""
+        # Arrange
+        db_path = str(tmp_path / "test_dividend.db")
+        store = DividendStore(db_path)
+
+        # 填充历史数据：5年的股息率历史 (3.0, 4.0, 5.0, 6.0, 7.0)
+        ticker = "AAPL"
+        historical_yields = [
+            ("2021-03-01", 3.0, 1.50, 50.0),
+            ("2022-03-01", 4.0, 2.00, 50.0),
+            ("2023-03-01", 5.0, 2.50, 50.0),
+            ("2024-03-01", 6.0, 3.00, 50.0),
+            ("2025-03-01", 7.0, 3.50, 50.0),
+        ]
+        for date_str, div_yield, annual_div, price in historical_yields:
+            store.save_dividend_history(
+                ticker=ticker,
+                date=date.fromisoformat(date_str),
+                dividend_yield=div_yield,
+                annual_dividend=annual_div,
+                price=price
+            )
+
+        # Mock provider
+        mock_provider = MagicMock()
+        # 当前价格低 → 股息率高 (7.5%)
+        mock_provider.get_price_data.return_value = {
+            "close": [45.0, 46.0, 47.0, 46.5, 46.0],
+            "date": ["2026-02-28", "2026-03-01", "2026-03-02", "2026-03-03", "2026-03-04"]
+        }
+        # 年度股息 = 3.50
+        mock_provider.get_dividend_history.return_value = [
+            {"date": "2025-12-15", "amount": 0.875},
+            {"date": "2025-09-15", "amount": 0.875},
+            {"date": "2025-06-15", "amount": 0.875},
+            {"date": "2025-03-15", "amount": 0.875},
+        ]
+
+        # Config
+        config = {
+            "dividend_scanners": {
+                "min_yield": 4.0,
+                "min_yield_percentile": 90,
+            }
+        }
+
+        # Act
+        pool = [ticker]
+        results = scan_dividend_buy_signal(
+            pool=pool,
+            provider=mock_provider,
+            store=store,
+            config=config
+        )
+
+        # Assert
+        assert len(results) == 1, "Should trigger one buy signal"
+        signal = results[0]
+        assert isinstance(signal, DividendBuySignal)
+        assert signal.ticker_data.ticker == "AAPL"
+        assert signal.signal_type == "STOCK"
+        assert signal.current_yield > 4.0, "Current yield should be > 4.0"
+        assert signal.yield_percentile >= 90, "Yield percentile should be >= 90"
+        assert signal.option_details is None, "Option details should be None for STOCK signal"
+
+        # 验证计算正确性
+        # annual_dividend = 3.50, last_price = 46.0 → current_yield = (3.50 / 46.0) * 100 = 7.61%
+        expected_yield = (3.50 / 46.0) * 100
+        assert abs(signal.current_yield - expected_yield) < 0.01, \
+            f"Current yield should be {expected_yield:.2f}%, got {signal.current_yield:.2f}%"
+
+        # Clean up
+        store.close()
