@@ -121,6 +121,44 @@ class DividendStore:
         cursor.execute("SELECT ticker FROM dividend_pool")
         return [row[0] for row in cursor.fetchall()]
 
+    def save_dividend_history(self, ticker: str, date: date, dividend_yield: float, annual_dividend: float, price: float):
+        """保存单个历史股息数据点"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            INSERT OR REPLACE INTO dividend_history (
+                ticker, date, dividend_yield, annual_dividend, price
+            ) VALUES (?, ?, ?, ?, ?)
+        """, (
+            ticker,
+            date.isoformat(),
+            dividend_yield,
+            annual_dividend,
+            price
+        ))
+        self.conn.commit()
+
+    def get_yield_percentile(self, ticker: str, current_yield: float) -> float:
+        """计算当前股息率在5年历史中的分位数"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT dividend_yield FROM dividend_history
+            WHERE ticker = ?
+            ORDER BY date DESC
+        """, (ticker,))
+
+        historical_yields = [row[0] for row in cursor.fetchall()]
+
+        if not historical_yields:
+            logger.warning(f"No historical dividend data for {ticker}, returning default percentile 50.0")
+            return 50.0
+
+        # 计算分位数：低于当前收益率的历史值占比
+        # 高百分位数 = 当前收益率高 = 股票便宜
+        count_below_or_equal = len([y for y in historical_yields if y <= current_yield])
+        percentile = (count_below_or_equal / len(historical_yields)) * 100
+
+        return percentile
+
     def close(self):
         """关闭数据库连接"""
         if self.conn:
