@@ -11,9 +11,14 @@ Financial Service 封装层
 
 核心类：
 - FinancialServiceAnalyzer: 金融服务分析器
+
+工具函数：
+- calculate_consecutive_years: 计算派息连续年限
+- calculate_dividend_growth_rate: 计算股息复合增长率
 """
 from dataclasses import dataclass
 from typing import List, Dict, Any, Optional
+from datetime import date, datetime
 import logging
 
 logger = logging.getLogger(__name__)
@@ -169,3 +174,140 @@ class FinancialServiceAnalyzer:
             defensiveness_score=defensiveness_score,
             risk_flags=risk_flags
         )
+
+
+def calculate_consecutive_years(dividend_history: List[Dict[str, Any]]) -> int:
+    """计算派息连续年限
+
+    从最近一年往前倒推，检查每个日历年是否至少有1次派息。
+    遇到第一个无派息年份时停止计数。
+
+    Args:
+        dividend_history: 股息历史记录列表，每条记录包含：
+            - date: 日期字符串 ('YYYY-MM-DD') 或 date 对象
+            - amount: 派息金额
+
+    Returns:
+        连续派息年限（整数）。若无历史记录则返回0。
+
+    Examples:
+        >>> history = [
+        ...     {'date': '2020-03-15', 'amount': 0.5},
+        ...     {'date': '2020-06-15', 'amount': 0.5},
+        ...     {'date': '2021-03-15', 'amount': 0.5},
+        ... ]
+        >>> calculate_consecutive_years(history)
+        2
+    """
+    if not dividend_history:
+        return 0
+
+    # 提取所有年份
+    years_with_dividends = set()
+    for record in dividend_history:
+        dividend_date = record.get('date')
+        if not dividend_date:
+            continue
+
+        # 处理字符串日期和date对象
+        if isinstance(dividend_date, str):
+            year = int(dividend_date.split('-')[0])
+        elif isinstance(dividend_date, (date, datetime)):
+            year = dividend_date.year
+        else:
+            continue
+
+        years_with_dividends.add(year)
+
+    if not years_with_dividends:
+        return 0
+
+    # 从最近一年往前倒推
+    max_year = max(years_with_dividends)
+    consecutive_count = 0
+
+    for year in range(max_year, max_year - 100, -1):  # 最多检查100年
+        if year in years_with_dividends:
+            consecutive_count += 1
+        else:
+            break  # 遇到第一个无派息年份，停止计数
+
+    return consecutive_count
+
+
+def calculate_dividend_growth_rate(dividend_history: List[Dict[str, Any]], years: int = 5) -> float:
+    """计算股息复合增长率 (CAGR)
+
+    按日历年汇总年度股息，计算首尾年份的CAGR。
+    公式: CAGR = (End / Start)^(1 / years) - 1
+
+    Args:
+        dividend_history: 股息历史记录列表，每条记录包含：
+            - date: 日期字符串 ('YYYY-MM-DD') 或 date 对象
+            - amount: 派息金额
+        years: 保留参数（兼容性），实际使用数据中的实际年限
+
+    Returns:
+        CAGR百分比（例如8.45表示8.45%），保留2位小数。
+        若数据不足（少于2年）或开始金额为0，则返回0.0。
+
+    Examples:
+        >>> history = [
+        ...     {'date': '2020-03-15', 'amount': 0.5},
+        ...     {'date': '2020-06-15', 'amount': 0.5},  # 2020总计: 1.0
+        ...     {'date': '2025-03-15', 'amount': 0.625},
+        ...     {'date': '2025-06-15', 'amount': 0.625},  # 2025总计: 1.25
+        ... ]
+        >>> calculate_dividend_growth_rate(history)
+        4.56  # (1.25/1.0)^(1/5) - 1 = 0.0456 = 4.56%
+    """
+    if not dividend_history:
+        return 0.0
+
+    # 按日历年汇总股息
+    yearly_dividends = {}
+    for record in dividend_history:
+        dividend_date = record.get('date')
+        amount = record.get('amount', 0.0)
+
+        if not dividend_date or amount is None:
+            continue
+
+        # 处理字符串日期和date对象
+        if isinstance(dividend_date, str):
+            year = int(dividend_date.split('-')[0])
+        elif isinstance(dividend_date, (date, datetime)):
+            year = dividend_date.year
+        else:
+            continue
+
+        if year not in yearly_dividends:
+            yearly_dividends[year] = 0.0
+        yearly_dividends[year] += amount
+
+    if len(yearly_dividends) < 2:
+        return 0.0  # 数据不足，无法计算CAGR
+
+    # 获取首尾年份
+    sorted_years = sorted(yearly_dividends.keys())
+    start_year = sorted_years[0]
+    end_year = sorted_years[-1]
+
+    start_amount = yearly_dividends[start_year]
+    end_amount = yearly_dividends[end_year]
+
+    if start_amount <= 0:
+        return 0.0  # 起始金额为0或负数，无法计算增长率
+
+    # 计算实际年限
+    actual_years = end_year - start_year
+    if actual_years == 0:
+        return 0.0  # 同一年的数据
+
+    # 计算CAGR: (End/Start)^(1/years) - 1
+    cagr_decimal = (end_amount / start_amount) ** (1.0 / actual_years) - 1.0
+
+    # 转换为百分比并保留2位小数
+    cagr_percentage = round(cagr_decimal * 100, 2)
+
+    return cagr_percentage

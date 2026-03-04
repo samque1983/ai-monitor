@@ -4,9 +4,16 @@ Tests for financial_service.py
 Tests cover:
 - DividendQualityScore dataclass structure
 - FinancialServiceAnalyzer fallback scoring logic
+- Dividend metric utility functions (calculate_consecutive_years, calculate_dividend_growth_rate)
 """
 import pytest
-from src.financial_service import DividendQualityScore, FinancialServiceAnalyzer
+from datetime import date
+from src.financial_service import (
+    DividendQualityScore,
+    FinancialServiceAnalyzer,
+    calculate_consecutive_years,
+    calculate_dividend_growth_rate
+)
 
 
 def test_dividend_quality_score_dataclass():
@@ -166,3 +173,76 @@ def test_risk_flag_generation():
     }
     score_healthy = analyzer.analyze_dividend_quality('TEST_HEALTHY', fundamentals_healthy)
     assert len(score_healthy.risk_flags) == 0
+
+
+def test_calculate_consecutive_years():
+    """测试连续派息年限计算（季度派息，2020-2025）"""
+    # 模拟季度派息：每年4次，2020-2025共6年
+    dividend_history = [
+        {'date': '2020-03-15', 'amount': 0.50},
+        {'date': '2020-06-15', 'amount': 0.50},
+        {'date': '2020-09-15', 'amount': 0.50},
+        {'date': '2020-12-15', 'amount': 0.50},
+        {'date': '2021-03-15', 'amount': 0.52},
+        {'date': '2021-06-15', 'amount': 0.52},
+        {'date': '2021-09-15', 'amount': 0.52},
+        {'date': '2021-12-15', 'amount': 0.52},
+        {'date': '2022-03-15', 'amount': 0.55},
+        {'date': '2022-06-15', 'amount': 0.55},
+        {'date': '2022-09-15', 'amount': 0.55},
+        {'date': '2022-12-15', 'amount': 0.55},
+        {'date': '2023-03-15', 'amount': 0.60},
+        {'date': '2023-06-15', 'amount': 0.60},
+        {'date': '2023-09-15', 'amount': 0.60},
+        {'date': '2023-12-15', 'amount': 0.60},
+        {'date': '2024-03-15', 'amount': 0.65},
+        {'date': '2024-06-15', 'amount': 0.65},
+        {'date': '2024-09-15', 'amount': 0.65},
+        {'date': '2024-12-15', 'amount': 0.65},
+        {'date': '2025-03-15', 'amount': 0.70},
+        {'date': '2025-06-15', 'amount': 0.70},
+        {'date': '2025-09-15', 'amount': 0.70},
+        {'date': '2025-12-15', 'amount': 0.70},
+    ]
+
+    years = calculate_consecutive_years(dividend_history)
+
+    # 验证连续年限 >= 5年（2020-2025至少5年）
+    assert years >= 5, f"Expected at least 5 consecutive years, got {years}"
+
+
+def test_calculate_dividend_growth_rate():
+    """测试股息增长率计算（2020: 0.50→2025: 0.75）"""
+    # 模拟年度股息增长：2020年$2.00 → 2025年$3.00
+    dividend_history = [
+        {'date': '2020-03-15', 'amount': 0.50},
+        {'date': '2020-06-15', 'amount': 0.50},
+        {'date': '2020-09-15', 'amount': 0.50},
+        {'date': '2020-12-15', 'amount': 0.50},
+        {'date': '2021-03-15', 'amount': 0.54},
+        {'date': '2021-06-15', 'amount': 0.54},
+        {'date': '2021-09-15', 'amount': 0.54},
+        {'date': '2021-12-15', 'amount': 0.54},
+        {'date': '2022-03-15', 'amount': 0.58},
+        {'date': '2022-06-15', 'amount': 0.58},
+        {'date': '2022-09-15', 'amount': 0.58},
+        {'date': '2022-12-15', 'amount': 0.58},
+        {'date': '2023-03-15', 'amount': 0.64},
+        {'date': '2023-06-15', 'amount': 0.64},
+        {'date': '2023-09-15', 'amount': 0.64},
+        {'date': '2023-12-15', 'amount': 0.64},
+        {'date': '2024-03-15', 'amount': 0.69},
+        {'date': '2024-06-15', 'amount': 0.69},
+        {'date': '2024-09-15', 'amount': 0.69},
+        {'date': '2024-12-15', 'amount': 0.69},
+        {'date': '2025-03-15', 'amount': 0.75},
+        {'date': '2025-06-15', 'amount': 0.75},
+        {'date': '2025-09-15', 'amount': 0.75},
+        {'date': '2025-12-15', 'amount': 0.75},
+    ]
+
+    cagr = calculate_dividend_growth_rate(dividend_history)
+
+    # 验证CAGR在合理范围 [8.0, 10.0]
+    # 理论值：(3.00/2.00)^(1/5) - 1 = 0.0845 = 8.45%
+    assert 8.0 <= cagr <= 10.0, f"Expected CAGR in [8.0, 10.0], got {cagr:.2f}%"
