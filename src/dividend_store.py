@@ -1,7 +1,7 @@
 import sqlite3
 import logging
 from datetime import date, datetime
-from typing import List, Dict, Any, Optional
+from typing import List
 from src.data_engine import TickerData
 
 logger = logging.getLogger(__name__)
@@ -14,7 +14,6 @@ class DividendStore:
         """初始化数据库连接并创建表"""
         self.db_path = db_path
         self.conn = sqlite3.connect(db_path)
-        self.conn.row_factory = sqlite3.Row  # Enable dict-like access
         self._create_tables()
         logger.info(f"DividendStore initialized with database: {db_path}")
 
@@ -64,7 +63,7 @@ class DividendStore:
         """)
 
         self.conn.commit()
-        logger.debug("Database tables created successfully")
+        logger.info("Database tables created successfully")
 
     def save_pool(self, tickers: List[TickerData], version: str):
         """保存股票池（替换式更新）"""
@@ -72,7 +71,7 @@ class DividendStore:
 
         # Step 1: Delete old pool
         cursor.execute("DELETE FROM dividend_pool")
-        logger.debug("Cleared existing dividend pool")
+        logger.info("Cleared existing dividend pool")
 
         # Step 2: Insert new tickers
         for ticker in tickers:
@@ -119,11 +118,11 @@ class DividendStore:
     def get_current_pool(self) -> List[str]:
         """获取当前池子的ticker列表"""
         cursor = self.conn.cursor()
-        cursor.execute("SELECT ticker FROM dividend_pool ORDER BY ticker")
+        cursor.execute("SELECT ticker FROM dividend_pool")
         return [row[0] for row in cursor.fetchall()]
 
     def close(self):
         """关闭数据库连接"""
         if self.conn:
             self.conn.close()
-            logger.debug(f"Database connection closed: {self.db_path}")
+            logger.info(f"Database connection closed: {self.db_path}")
