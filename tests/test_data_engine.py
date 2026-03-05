@@ -288,3 +288,46 @@ class TestComputeEarningsGaps:
         result = compute_earnings_gaps("AAPL", earnings_dates, prices)
         # 只有1个有效样本,应返回 None (min_samples=2)
         assert result is None
+
+
+class TestTickerDataDividendFields:
+    def test_ticker_data_has_dividend_fields(self):
+        """Phase 2: TickerData应包含股息相关字段"""
+        ticker = TickerData(
+            ticker="AAPL",
+            name="Apple Inc.",
+            market="US",
+            last_price=150.0,
+            ma200=145.0,
+            ma50w=148.0,
+            rsi14=55.0,
+            iv_rank=30.0,
+            iv_momentum=12.5,
+            prev_close=149.0,
+            earnings_date=None,
+            days_to_earnings=None,
+            # Phase 2新增字段
+            dividend_yield=2.5,
+            dividend_yield_5y_percentile=85.0,
+            dividend_quality_score=88.0,
+            consecutive_years=10,
+            dividend_growth_5y=8.5,
+            payout_ratio=25.0,
+            roe=28.0,
+            debt_to_equity=1.2,
+            industry="Technology",
+            sector="Information Technology",
+            free_cash_flow=95000000000.0
+        )
+
+        assert ticker.dividend_yield == 2.5
+        assert ticker.dividend_yield_5y_percentile == 85.0
+        assert ticker.dividend_quality_score == 88.0
+        assert ticker.consecutive_years == 10
+        assert ticker.dividend_growth_5y == 8.5
+        assert ticker.payout_ratio == 25.0
+        assert ticker.roe == 28.0
+        assert ticker.debt_to_equity == 1.2
+        assert ticker.industry == "Technology"
+        assert ticker.sector == "Information Technology"
+        assert ticker.free_cash_flow == 95000000000.0

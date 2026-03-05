@@ -2,7 +2,7 @@
 """Apple-style HTML report renderer for the ai-monitor scanner."""
 from datetime import date
 from html import escape as _html_escape
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from src.data_engine import TickerData, EarningsGap
 from src.scanners import SellPutSignal
@@ -267,7 +267,159 @@ footer {
     table { font-size: 13px; }
     table td { padding: 4px 4px; }
 }
+/* 高股息防御双打 */
+.dividend-pool-summary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 14px 18px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 14px;
+}
+.dividend-signals-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
+}
+.dividend-card {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    color: #e0e0e0;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+}
+.dividend-card .dc-header { margin-bottom: 14px; }
+.dividend-card .dc-ticker {
+    font-size: 20px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 4px;
+}
+.dividend-card .dc-yield {
+    font-size: 14px;
+    color: #a8d8ea;
+}
+.dividend-card .dc-dim {
+    background: rgba(255,255,255,0.07);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin: 8px 0;
+    font-size: 13px;
+}
+.dividend-card .dc-dim h4 {
+    font-size: 13px;
+    font-weight: 600;
+    color: #c0c0e0;
+    margin-bottom: 6px;
+}
+.dividend-card .dc-dim p { margin: 2px 0; }
+.dividend-card .dc-combined {
+    font-size: 15px;
+    font-weight: 700;
+    color: #ffd700;
+}
+.dividend-card .dc-warn { color: #ff9f43; }
 """
+
+
+def _dividend_card(signal: Any) -> str:
+    """Render a single six-dimension dividend buy-signal card."""
+    td = signal.ticker_data
+    cy = signal.current_yield
+    pct = signal.yield_percentile
+    ticker = _escape(td.ticker)
+
+    qs = f"{td.dividend_quality_score:.0f}/100" if td.dividend_quality_score is not None else "N/A"
+    pr = td.payout_ratio
+    if pr is not None:
+        pr_warn = ' <span class="dc-warn">⚠️ 接近警戒线</span>' if pr > 80 else " ✓"
+        pr_str = f"{pr:.1f}%{pr_warn}"
+    else:
+        pr_str = "N/A"
+
+    earnings_str = str(td.earnings_date) if td.earnings_date else "N/A"
+    parts = [
+        '<div class="dividend-card">',
+        '  <div class="dc-header">',
+        f'    <div class="dc-ticker">{ticker} 🛡️</div>',
+        f'    <div class="dc-yield">当前股息率: <strong>{cy:.2f}%</strong>'
+        f' (5年历史{pct:.0f}分位)</div>',
+        "  </div>",
+        # Dim 1: valuation
+        '  <div class="dc-dim">',
+        "    <h4>1️⃣ 基本面估值</h4>",
+        f"    <p>当前价: ${td.last_price:.2f}</p>",
+        "  </div>",
+        # Dim 2: risk
+        '  <div class="dc-dim">',
+        "    <h4>2️⃣ 风险分级</h4>",
+        f"    <p>综合评分: {qs}</p>",
+        f"    <p>派息率: {pr_str}</p>",
+        "  </div>",
+        # Dim 3: events
+        '  <div class="dc-dim">',
+        "    <h4>3️⃣ 关键事件</h4>",
+        f"    <p>下次财报: {_escape(earnings_str)}</p>",
+        "  </div>",
+        # Dim 4: action
+        '  <div class="dc-dim">',
+        "    <h4>4️⃣ 建议操作</h4>",
+        f"    <p>📈 现货买入: ${td.last_price:.2f} (股息率{cy:.2f}%)</p>",
+    ]
+
+    opt = signal.option_details
+    if opt:
+        combined = cy + opt["apy"]
+        parts += [
+            f"    <p>📊 Sell Put ${opt['strike']:.0f} Strike ({opt['dte']}DTE)</p>",
+            f"    <p>Premium: ${opt['bid']:.2f} → 年化{opt['apy']:.1f}%</p>",
+            f'    <p class="dc-combined">综合年化: {combined:.1f}%</p>',
+        ]
+
+    parts += [
+        "  </div>",
+        # Dim 5: worst case
+        '  <div class="dc-dim">',
+        "    <h4>5️⃣ 最坏情景</h4>",
+    ]
+    if opt:
+        cost = opt["strike"] - opt["bid"]
+        parts.append(f"    <p>行权成本: ${cost:.2f}</p>")
+    else:
+        parts.append("    <p>股息率已达历史高位，现货持有</p>")
+
+    parts += [
+        "  </div>",
+        # Dim 6: monitoring
+        '  <div class="dc-dim">',
+        "    <h4>6️⃣ AI监控承诺</h4>",
+        "    <ul style='padding-left:16px;margin:4px 0;font-size:12px'>",
+        "      <li>✓ 派息率&gt;100%时立即预警</li>",
+        "      <li>✓ 财报前7天提醒</li>",
+        "      <li>✓ 股息率回落至中位数时提示</li>",
+        "    </ul>",
+        "  </div>",
+        "</div>",
+    ]
+    return "\n".join(parts)
+
+
+def _dividend_section(signals: List[Any], pool_summary: Optional[Dict[str, Any]]) -> str:
+    """Render the 高股息防御双打 section."""
+    count = pool_summary.get("count", 0) if pool_summary else 0
+    last_update = pool_summary.get("last_update", "N/A") if pool_summary else "N/A"
+
+    parts = [
+        '<div class="card">',
+        "<h2>高股息防御双打</h2>",
+        f'<div class="dividend-pool-summary">当前池子: <strong>{count}只标的</strong>'
+        f" · 最近更新: <strong>{_escape(str(last_update))}</strong></div>",
+        '<div class="dividend-signals-grid">',
+    ]
+    for sig in signals:
+        parts.append(_dividend_card(sig))
+    parts += ["</div>", "</div>"]
+    return "\n".join(parts)
 
 
 def format_html_report(
@@ -285,6 +437,8 @@ def format_html_report(
     earnings_gaps: Optional[list] = None,
     earnings_gap_ticker_map: Optional[dict] = None,
     elapsed_seconds: float = 0.0,
+    dividend_signals: Optional[List[Any]] = None,
+    dividend_pool_summary: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Render the scan results as a self-contained Apple-style HTML page."""
     day_cn_map = {
@@ -364,6 +518,10 @@ def format_html_report(
     parts.append("<h2>财报 Gap 预警</h2>")
     parts.append(_earnings_gap_table(gaps_list, gap_map))
     parts.append("</div>")
+
+    # --- Card: High Dividend Defense (Phase 2, conditional) ---
+    if dividend_signals:
+        parts.append(_dividend_section(dividend_signals, dividend_pool_summary))
 
     # --- Card: Skipped (conditional) ---
     if skipped_list:

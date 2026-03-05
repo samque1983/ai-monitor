@@ -4,6 +4,7 @@ from datetime import date
 from src.data_engine import TickerData, EarningsGap
 from src.scanners import SellPutSignal
 from src.html_report import format_html_report
+from src.dividend_scanners import DividendBuySignal
 
 
 def make_ticker(**kwargs) -> TickerData:
@@ -13,6 +14,18 @@ def make_ticker(**kwargs) -> TickerData:
         rsi14=40.0, iv_rank=25.0, iv_momentum=None,
         prev_close=99.0,
         earnings_date=date(2026, 4, 25), days_to_earnings=64,
+        # Phase 2: 高股息新增字段
+        dividend_yield=None,
+        dividend_yield_5y_percentile=None,
+        dividend_quality_score=None,
+        consecutive_years=None,
+        dividend_growth_5y=None,
+        payout_ratio=None,
+        roe=None,
+        debt_to_equity=None,
+        industry=None,
+        sector=None,
+        free_cash_flow=None,
     )
     defaults.update(kwargs)
     return TickerData(**defaults)
@@ -180,3 +193,106 @@ class TestEarningsGapCard:
 
         assert "财报 Gap 预警" in html
         assert "AAPL" in html
+
+
+class TestDividendSection:
+    """Task 4.1 + 4.2: HTML报告应包含高股息防御双打章节"""
+
+    def _base_kwargs(self):
+        return dict(
+            scan_date=date(2026, 3, 5),
+            data_source="yfinance",
+            universe_count=10,
+            iv_low=[], iv_high=[],
+            ma200_bullish=[], ma200_bearish=[],
+            leaps=[], sell_puts=[],
+            elapsed_seconds=1.0,
+        )
+
+    def test_dividend_section_present_when_signals_provided(self):
+        """提供dividend_signals时，HTML应包含高股息防御双打章节"""
+        signal = DividendBuySignal(
+            ticker_data=make_ticker(
+                ticker="ENB",
+                last_price=34.5,
+                dividend_yield=6.8,
+                dividend_yield_5y_percentile=92.0,
+                dividend_quality_score=85.0,
+                payout_ratio=78.0,
+            ),
+            signal_type="OPTION",
+            current_yield=6.8,
+            yield_percentile=92.0,
+            option_details={"strike": 33.0, "bid": 0.45, "dte": 60, "apy": 8.2},
+        )
+
+        html = format_html_report(
+            **self._base_kwargs(),
+            dividend_signals=[signal],
+            dividend_pool_summary={"count": 23, "last_update": "2026-03-03"},
+        )
+
+        assert "高股息防御双打" in html
+        assert "ENB" in html
+        assert "6.8" in html   # dividend yield
+        assert "92" in html    # percentile
+        assert "23" in html    # pool count
+
+    def test_dividend_section_absent_when_no_signals(self):
+        """不提供dividend_signals时，不应渲染股息章节（heading标签）"""
+        html = format_html_report(**self._base_kwargs())
+        assert "<h2>高股息防御双打</h2>" not in html
+
+    def test_dividend_card_shows_option_details(self):
+        """期权策略信号的卡片应显示strike/dte/apy"""
+        signal = DividendBuySignal(
+            ticker_data=make_ticker(
+                ticker="XYZ",
+                last_price=50.0,
+                dividend_yield=5.5,
+                dividend_yield_5y_percentile=91.0,
+                payout_ratio=60.0,
+                dividend_quality_score=80.0,
+            ),
+            signal_type="OPTION",
+            current_yield=5.5,
+            yield_percentile=91.0,
+            option_details={"strike": 48.0, "bid": 0.60, "dte": 45, "apy": 10.1},
+        )
+
+        html = format_html_report(
+            **self._base_kwargs(),
+            dividend_signals=[signal],
+            dividend_pool_summary={"count": 5, "last_update": "2026-03-03"},
+        )
+
+        assert "48" in html    # strike
+        assert "45" in html    # dte
+        assert "10.1" in html  # apy
+
+    def test_dividend_card_payout_warning(self):
+        """派息率>80%应在卡片中显示警告标志"""
+        signal = DividendBuySignal(
+            ticker_data=make_ticker(
+                ticker="RISKY",
+                last_price=20.0,
+                dividend_yield=8.0,
+                dividend_yield_5y_percentile=95.0,
+                payout_ratio=85.0,
+                dividend_quality_score=72.0,
+            ),
+            signal_type="STOCK",
+            current_yield=8.0,
+            yield_percentile=95.0,
+            option_details=None,
+        )
+
+        html = format_html_report(
+            **self._base_kwargs(),
+            dividend_signals=[signal],
+            dividend_pool_summary={"count": 1, "last_update": "2026-03-05"},
+        )
+
+        assert "RISKY" in html
+        assert "85" in html   # payout ratio shown
+        assert "⚠️" in html   # warning emoji for high payout

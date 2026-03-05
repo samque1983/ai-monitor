@@ -248,3 +248,64 @@ class TestGetIVMomentum:
 
         result = provider.get_iv_momentum("AAPL")
         assert result is None
+
+
+class TestGetDividendHistory:
+    @patch("src.market_data.yf.Ticker")
+    def test_get_dividend_history(self, MockTicker):
+        """获取股息历史数据"""
+        mock_t = MockTicker.return_value
+        # Mock 6 dividends from 2020-2025 (current date: 2026-03-04)
+        # Using years=6 to ensure cutoff includes 2020 data
+        # Cutoff: 2026-03-04 - 2190 days = 2020-03-04
+        # First dividend must be >= 2020-03-04 to pass filter
+        mock_dividends = pd.Series({
+            pd.Timestamp("2020-05-07"): 0.50,
+            pd.Timestamp("2021-02-05"): 0.53,
+            pd.Timestamp("2022-02-04"): 0.56,
+            pd.Timestamp("2023-02-10"): 0.59,
+            pd.Timestamp("2024-02-09"): 0.61,
+            pd.Timestamp("2025-02-07"): 0.63,
+        })
+        mock_t.dividends = mock_dividends
+
+        provider = MarketDataProvider()
+        result = provider.get_dividend_history("AAPL", years=6)
+
+        assert result is not None
+        # Verify exact count as per spec
+        assert len(result) == 6
+        # Verify first entry exact year as per spec
+        assert result[0]["date"].year == 2020
+        # Verify first entry exact amount as per spec
+        assert result[0]["amount"] == 0.50
+        # Verify last entry exact amount as per spec
+        assert result[-1]["amount"] == 0.63
+
+
+class TestGetFundamentals:
+    @patch("src.market_data.yf.Ticker")
+    def test_get_fundamentals(self, MockTicker):
+        """获取基本面数据"""
+        mock_t = MockTicker.return_value
+        mock_t.info = {
+            "payoutRatio": 0.25,
+            "returnOnEquity": 0.28,
+            "debtToEquity": 1.5,
+            "industry": "Technology",
+            "sector": "Information Technology",
+            "freeCashflow": 90000000000,
+            "trailingPE": 25.0,  # Extra field should be ignored
+        }
+
+        provider = MarketDataProvider()
+        result = provider.get_fundamentals("AAPL")
+
+        assert result is not None
+        assert result["payout_ratio"] == pytest.approx(25.0)  # Converted to percentage
+        assert result["roe"] == pytest.approx(28.0)  # Converted to percentage
+        assert result["debt_to_equity"] == 1.5
+        assert result["industry"] == "Technology"
+        assert result["sector"] == "Information Technology"
+        assert result["free_cash_flow"] == 90000000000
+        assert "trailingPE" not in result  # Should only include specified fields
