@@ -20,14 +20,14 @@ scanners:
   earnings_lookback: 8
 
 dividend_scanners:
-  enabled: false           # 设为true启用高股息防御双打扫描
-  min_quality_score: 70
-  min_consecutive_years: 5
-  max_payout_ratio: 100
-  min_yield: 4.0
-  min_yield_percentile: 90
+  enabled: false               # 设为 true 启用高股息防御双打扫描
+  min_quality_score: 70        # 最低质量评分
+  min_consecutive_years: 5     # 最低连续派息年限
+  max_payout_ratio: 100        # 最大派息率 (%)
+  min_yield: 4.0               # 最低股息率触发阈值 (%)
+  min_yield_percentile: 90     # 5年历史分位数触发阈值
   option:
-    enabled: false
+    enabled: false             # 是否生成 Sell Put 期权策略
     target_strike_percentile: 90
     min_dte: 45
     max_dte: 90
