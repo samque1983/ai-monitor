@@ -20,6 +20,9 @@ from src.scanners import (
 from src.report import format_report
 from src.html_report import format_html_report
 from src.email_stub import send_email
+from src.dividend_store import DividendStore
+from src.financial_service import FinancialServiceAnalyzer
+from src.dividend_scanners import scan_dividend_pool_weekly, scan_dividend_buy_signal
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +115,35 @@ def run_scan(config_path: str = "config.yaml"):
             except Exception as e:
                 logger.error(f"Sell Put scan failed for {td.ticker}: {e}")
 
-    # Step 5: Generate report
+    # Step 5: Dividend scanner (Phase 2, optional)
+    dividend_signals = []
+    dividend_pool_summary = None
+    div_config = config.get("dividend_scanners", {})
+    if div_config.get("enabled", False):
+        db_path = config.get("data", {}).get("dividend_db_path", "data/dividend_pool.db")
+        dividend_store = DividendStore(db_path)
+        financial_service = FinancialServiceAnalyzer()
+        try:
+            current_pool = dividend_store.get_current_pool()
+            if current_pool:
+                dividend_signals = scan_dividend_buy_signal(
+                    pool=current_pool,
+                    provider=provider,
+                    store=dividend_store,
+                    config=config,
+                )
+                pool_count = len(current_pool)
+                dividend_pool_summary = {
+                    "count": pool_count,
+                    "last_update": str(date.today()),
+                }
+                logger.info(f"Dividend scan: {len(dividend_signals)} buy signals from pool of {pool_count}")
+        except Exception as e:
+            logger.error(f"Dividend scan failed: {e}", exc_info=True)
+        finally:
+            dividend_store.close()
+
+    # Step 6: Generate report
     elapsed = time.time() - start_time
     report = format_report(
         scan_date=today,
@@ -146,6 +177,8 @@ def run_scan(config_path: str = "config.yaml"):
         earnings_gap_ticker_map=earnings_gap_ticker_map,
         skipped=skipped,
         elapsed_seconds=elapsed,
+        dividend_signals=dividend_signals or None,
+        dividend_pool_summary=dividend_pool_summary,
     )
 
     # Step 6: Output

@@ -12,6 +12,7 @@ data:
   iv_history_db: "data/iv_history.db"
   price_period: "1y"
   earnings_csv_path: "data/earnings_calendar.csv"
+  dividend_db_path: "data/dividend_pool.db"
 
 scanners:
   iv_momentum_threshold: 30
@@ -19,9 +20,18 @@ scanners:
   earnings_lookback: 8
 
 dividend_scanners:
+  enabled: false           # 设为true启用高股息防御双打扫描
   min_quality_score: 70
   min_consecutive_years: 5
   max_payout_ratio: 100
+  min_yield: 4.0
+  min_yield_percentile: 90
+  option:
+    enabled: false
+    target_strike_percentile: 90
+    min_dte: 45
+    max_dte: 90
+
 
 reports:
   output_dir: "reports"
