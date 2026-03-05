@@ -372,8 +372,10 @@ class TestScanDividendSellPut:
         signal = results[0]
         assert signal.signal_type == "OPTION", "Signal type should be OPTION for US market with options enabled"
         assert signal.option_details is not None, "Option details should be populated"
-        assert signal.option_details['strike'] == 32.0, "Should select $32 strike"
-        assert signal.option_details['bid'] == 1.20
+        # current_yield=7.61%, yield_percentile=100, target_yield=7.61*(90/100)=6.85%
+        # target_strike=3.50/0.0685=51.1 → closest among [32,33,34] is 34
+        assert signal.option_details['strike'] == 34.0, "Should select closest available strike to target_strike"
+        assert signal.option_details['bid'] == 1.00
         assert signal.option_details['dte'] == 60
 
         # Clean up
