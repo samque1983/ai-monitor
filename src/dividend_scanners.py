@@ -111,7 +111,7 @@ def scan_dividend_pool_weekly(
                 continue
 
             # Step 4: 硬排除 - 派息率超过max_payout_ratio
-            payout_ratio = fundamentals.get("payout_ratio", 0.0)
+            payout_ratio = fundamentals.get("payout_ratio") or 0.0
             if payout_ratio > max_payout_ratio:
                 logger.info(
                     f"{ticker}: Payout ratio {payout_ratio:.1f}% > {max_payout_ratio}%, excluded"

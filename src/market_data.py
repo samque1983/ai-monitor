@@ -291,6 +291,10 @@ class MarketDataProvider:
                 return None
 
             cutoff_date = datetime.now() - timedelta(days=years * 365)
+            # yfinance returns tz-aware index; make cutoff_date compatible
+            if hasattr(dividends.index, 'tz') and dividends.index.tz is not None:
+                import pytz
+                cutoff_date = cutoff_date.replace(tzinfo=pytz.utc)
             filtered = dividends[dividends.index >= cutoff_date]
 
             if filtered.empty:

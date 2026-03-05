@@ -122,22 +122,22 @@ class FinancialServiceAnalyzer:
         Returns:
             DividendQualityScore对象
         """
-        # 提取必需字段
-        consecutive_years = fundamentals.get('consecutive_years', 0)
-        dividend_growth = fundamentals.get('dividend_growth_5y', 0.0)
-        roe = fundamentals.get('roe', 0.0)
-        debt_to_equity = fundamentals.get('debt_to_equity', 0.0)
-        payout_ratio = fundamentals.get('payout_ratio', 0.0)
+        # 提取必需字段（or 0 处理 key 存在但值为 None 的情况）
+        consecutive_years = fundamentals.get('consecutive_years') or 0
+        dividend_growth = fundamentals.get('dividend_growth_5y') or 0.0
+        roe = fundamentals.get('roe') or 0.0
+        debt_to_equity = fundamentals.get('debt_to_equity') or 0.0
+        payout_ratio = fundamentals.get('payout_ratio') or 0.0
 
         # 1. 计算稳定性评分
         # consecutive_years每年+10分，dividend_growth最多贡献30分
         # 使用max确保非负（防止负增长导致负分）
         stability_score = max(0.0, min(100.0, consecutive_years * 10 + min(dividend_growth * 2, 30)))
 
-        # 2. 计算财务健康度评分
-        roe_score = min(roe, 30.0)  # ROE最多30分
-        debt_score = max(0.0, 30.0 - debt_to_equity * 20)  # 负债率惩罚
-        payout_score = 40.0 if payout_ratio < 70 else 20.0  # 派息率健康度
+        # 2. 计算财务健康度评分（None 值用中性分替代）
+        roe_score = min(roe or 0.0, 30.0)  # ROE最多30分
+        debt_score = max(0.0, 30.0 - (debt_to_equity or 0.0) * 20)  # 负债率惩罚
+        payout_score = 40.0 if (payout_ratio or 0.0) < 70 else 20.0  # 派息率健康度
         # Cap at 100 for consistency with stability_score
         health_score = min(100.0, roe_score + debt_score + payout_score)
 
