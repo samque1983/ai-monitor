@@ -304,8 +304,8 @@ def scan_dividend_buy_signal(
                 if option_config.get("enabled", False) and not provider.should_skip_options(ticker):
                     # 计算目标股息率（基于历史分位数）
                     target_strike_percentile = option_config.get("target_strike_percentile", 90)
-                    # 使用yield_percentile作为target_yield
-                    target_yield = yield_percentile
+                    # 计算目标股息率：当前股息率 × (目标分位数 / 当前分位数)
+                    target_yield = current_yield * (target_strike_percentile / yield_percentile) if yield_percentile > 0 else current_yield
 
                     # 调用scan_dividend_sell_put获取期权详情
                     option_details = scan_dividend_sell_put(
