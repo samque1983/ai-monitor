@@ -268,6 +268,10 @@ footer {
     table td { padding: 4px 4px; }
 }
 /* 高股息防御双打 */
+.info-badge { color: #58a6ff; text-decoration: none; font-size: 0.85rem;
+              border: 1px solid #30363d; border-radius: 50%; padding: 0 0.3rem;
+              margin-left: 0.4rem; vertical-align: middle; }
+.info-badge:hover { background: #161b22; }
 .dividend-pool-summary {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
@@ -411,7 +415,7 @@ def _dividend_section(signals: List[Any], pool_summary: Optional[Dict[str, Any]]
 
     parts = [
         '<div class="card">',
-        "<h2>高股息防御双打</h2>",
+        '<h2>高股息防御双打 <a href="dividend_pool.html" class="info-badge" title="查看选股逻辑与完整池子">ⓘ</a></h2>',
         f'<div class="dividend-pool-summary">当前池子: <strong>{count}只标的</strong>'
         f" · 最近更新: <strong>{_escape(str(last_update))}</strong></div>",
         '<div class="dividend-signals-grid">',

@@ -296,3 +296,27 @@ class TestDividendSection:
         assert "RISKY" in html
         assert "85" in html   # payout ratio shown
         assert "⚠️" in html   # warning emoji for high payout
+
+    def test_dividend_section_has_info_badge_linking_to_pool_page(self):
+        """Dividend section heading must have ⓘ badge linking to dividend_pool.html."""
+        signal = DividendBuySignal(
+            ticker_data=make_ticker(
+                ticker="KO",
+                last_price=60.0,
+                dividend_yield=4.5,
+                dividend_yield_5y_percentile=93.0,
+                dividend_quality_score=85.0,
+                payout_ratio=65.0,
+            ),
+            signal_type="STOCK",
+            current_yield=4.5,
+            yield_percentile=93.0,
+            option_details=None,
+        )
+        html = format_html_report(
+            **self._base_kwargs(),
+            dividend_signals=[signal],
+            dividend_pool_summary={"count": 30, "last_update": "2026-03"},
+        )
+        assert 'href="dividend_pool.html"' in html
+        assert 'ⓘ' in html or '&#9432;' in html
