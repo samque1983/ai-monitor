@@ -352,7 +352,14 @@ class MarketDataProvider:
                 roe = roe * 100
 
             dividend_yield_raw = info.get("dividendYield")
-            dividend_yield = dividend_yield_raw * 100 if dividend_yield_raw is not None else None
+            if dividend_yield_raw is None:
+                dividend_yield = None
+            elif dividend_yield_raw > 1.0:
+                # yfinance returns HK/CN dividendYield already as percentage (e.g. 5.43 = 5.43%)
+                dividend_yield = float(dividend_yield_raw)
+            else:
+                # US stocks: decimal format (e.g. 0.035 = 3.5%)
+                dividend_yield = dividend_yield_raw * 100
 
             company_name = info.get("longName") or info.get("shortName") or ticker
 

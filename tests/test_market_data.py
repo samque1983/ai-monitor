@@ -338,3 +338,16 @@ class TestGetFundamentals:
         result = provider.get_fundamentals("TEST")
         assert result["dividend_yield"] is None
         assert result["company_name"] == "TEST"  # falls back to ticker
+
+    @patch("src.market_data.yf.Ticker")
+    def test_get_fundamentals_dividend_yield_already_percentage(self, MockTicker):
+        """yfinance returns dividendYield > 1 for HK/CN stocks (already percentage).
+        get_fundamentals() must NOT multiply by 100 again."""
+        mock_t = MockTicker.return_value
+        mock_t.info = {
+            "dividendYield": 5.43,   # yfinance returns 5.43 meaning 5.43%
+            "longName": "HSBC Holdings",
+        }
+        provider = MarketDataProvider()
+        result = provider.get_fundamentals("0005.HK")
+        assert result["dividend_yield"] == pytest.approx(5.43)  # must stay 5.43%, not 543%

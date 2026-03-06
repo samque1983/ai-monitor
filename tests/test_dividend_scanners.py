@@ -514,3 +514,39 @@ def test_scan_sets_payout_type_on_ticker_data(mock_provider, mock_fs, config):
     assert len(result) == 1
     assert result[0].payout_type == "FCF"
     assert result[0].payout_ratio == pytest.approx(64.0)
+
+
+def test_scan_sets_correct_market_for_hk_ticker(mock_provider, mock_fs, config):
+    """HK tickers (.HK suffix) must have market='HK', not 'US'."""
+    mock_provider.get_dividend_history.return_value = _history_5yr()
+    mock_provider.get_fundamentals.return_value = {
+        "dividend_yield": 5.5,
+        "payout_ratio": 55.0,
+        "roe": 12.0,
+        "debt_to_equity": 1.0,
+        "sector": "Financial Services",
+        "free_cash_flow": 10_000_000,
+        "company_name": "HSBC Holdings",
+    }
+    mock_fs.analyze_dividend_quality.return_value = _mock_score(75.0)
+    result = scan_dividend_pool_weekly(["0005.HK"], mock_provider, mock_fs, config)
+    assert len(result) == 1
+    assert result[0].market == "HK"
+
+
+def test_scan_sets_correct_market_for_cn_ticker(mock_provider, mock_fs, config):
+    """CN tickers (.SS/.SZ suffix) must have market='CN'."""
+    mock_provider.get_dividend_history.return_value = _history_5yr()
+    mock_provider.get_fundamentals.return_value = {
+        "dividend_yield": 4.5,
+        "payout_ratio": 31.0,
+        "roe": 14.0,
+        "debt_to_equity": 0.8,
+        "sector": "Financial Services",
+        "free_cash_flow": 50_000_000,
+        "company_name": "工商银行",
+    }
+    mock_fs.analyze_dividend_quality.return_value = _mock_score(73.0)
+    result = scan_dividend_pool_weekly(["601398.SS"], mock_provider, mock_fs, config)
+    assert len(result) == 1
+    assert result[0].market == "CN"

@@ -16,6 +16,7 @@ from dataclasses import dataclass
 import logging
 from datetime import datetime, timedelta
 from src.data_engine import TickerData
+from src.data_loader import classify_market
 from src.financial_service import (
     calculate_consecutive_years,
     calculate_dividend_growth_rate,
@@ -169,7 +170,7 @@ def scan_dividend_pool_weekly(
             ticker_data = TickerData(
                 ticker=ticker,
                 name=fundamentals.get("company_name", ticker),
-                market=provider.config.get("default_market", "US"),
+                market=classify_market(ticker),
                 last_price=0.0,
                 ma200=None,
                 ma50w=None,
