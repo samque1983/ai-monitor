@@ -408,6 +408,97 @@ def _dividend_card(signal: Any) -> str:
     return "\n".join(parts)
 
 
+def _render_cards_section(cards) -> str:
+    if not cards:
+        return ""
+    rows = []
+    for card in cards:
+        ticker = card.get("ticker", "")
+        strategy = card.get("strategy", "")
+        strategy_label = "Sell Put 收租" if strategy == "SELL_PUT" else "高股息双打"
+        v = card.get("valuation", {})
+        iron = v.get("iron_floor", "—")
+        fair = v.get("fair_value", "—")
+        logic = v.get("logic_summary", "")
+        fundamentals = card.get("fundamentals", {})
+
+        crosses = card.get("crosses_earnings", False)
+        dual_plan_html = ""
+        if crosses and card.get("protected_plan"):
+            pp = card["protected_plan"]
+            np_ = card.get("naked_plan", {})
+            dual_plan_html = f"""
+            <div class="dual-plan">
+              <div class="plan-item recommended">
+                <span class="plan-label">方案A（推荐）· Bull Put Spread</span>
+                <span>{pp.get('desc','')} | 权利金 ${pp.get('net_premium',0):.2f} | 最大亏损 ${pp.get('max_loss',0):.2f}/股</span>
+                <span class="plan-note">{pp.get('note','')}</span>
+              </div>
+              <div class="plan-item">
+                <span class="plan-label">方案B · Naked Sell Put</span>
+                <span>{np_.get('desc','')} | 权利金 ${np_.get('net_premium',0):.2f} | 最大亏损 ${np_.get('max_loss',0):.2f}/股</span>
+                <span class="plan-note">{np_.get('note','')}</span>
+              </div>
+            </div>"""
+
+        detail_id = f"detail_{ticker}_{strategy}"
+        rows.append(f"""
+        <div class="card">
+          <div class="card-header">
+            <span class="strategy-badge">{strategy_label}</span>
+            <span class="ticker">{ticker}</span>
+          </div>
+          <div class="card-body">
+            <p class="trigger">📍 {card.get('trigger_reason','')}</p>
+            <p class="action"><strong>{card.get('action','')}</strong> — {card.get('one_line_logic','')}</p>
+            {dual_plan_html}
+            <div class="valuation-summary">
+              💡 铁底 ${iron} | 公允价 ${fair}
+              <p class="logic-summary">{logic}</p>
+              <button class="detail-toggle" onclick="document.getElementById('{detail_id}').classList.toggle('hidden')">
+                查看详细分析 ▼
+              </button>
+              <div id="{detail_id}" class="detail-panel hidden">
+                <pre>{fundamentals}</pre>
+              </div>
+            </div>
+            <div class="risk-row">
+              🛑 止盈: {card.get('take_profit','')} &nbsp; 🔴 止损: {card.get('stop_loss','')}
+            </div>
+            <div class="max-loss">最坏亏损: ${card.get('max_loss_usd',0):.1f}/股</div>
+          </div>
+        </div>""")
+
+    return f"""
+    <section class="opportunities">
+      <h2>机会卡片</h2>
+      {"".join(rows)}
+    </section>
+    <style>
+      .opportunities {{ margin: 24px 0; }}
+      .card {{ background: #fff; border-radius: 12px; padding: 20px;
+               margin: 12px 0; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }}
+      .strategy-badge {{ background: #34c759; color: #fff; border-radius: 6px;
+                         padding: 2px 8px; font-size: 12px; }}
+      .ticker {{ font-size: 20px; font-weight: 600; margin-left: 8px; }}
+      .trigger {{ color: #666; font-size: 14px; }}
+      .dual-plan {{ background: #f5f5f7; border-radius: 8px; padding: 12px; margin: 8px 0; }}
+      .plan-item {{ margin: 6px 0; }}
+      .plan-item.recommended {{ font-weight: 600; }}
+      .plan-label {{ color: #1d1d1f; }}
+      .plan-note {{ color: #666; font-size: 13px; }}
+      .valuation-summary {{ margin: 12px 0; padding: 12px;
+                            background: #f5f5f7; border-radius: 8px; }}
+      .logic-summary {{ font-size: 13px; color: #444; margin: 4px 0; }}
+      .detail-toggle {{ background: none; border: none; color: #0071e3;
+                        cursor: pointer; font-size: 13px; padding: 4px 0; }}
+      .detail-panel {{ background: #fff; border-radius: 6px; padding: 8px;
+                       margin-top: 8px; font-size: 12px; overflow-x: auto; }}
+      .hidden {{ display: none; }}
+      .max-loss {{ color: #ff3b30; font-size: 14px; font-weight: 500; }}
+    </style>"""
+
+
 def _dividend_section(signals: List[Any], pool_summary: Optional[Dict[str, Any]]) -> str:
     """Render the 高股息防御双打 section."""
     count = pool_summary.get("count", 0) if pool_summary else 0
@@ -443,6 +534,7 @@ def format_html_report(
     elapsed_seconds: float = 0.0,
     dividend_signals: Optional[List[Any]] = None,
     dividend_pool_summary: Optional[Dict[str, Any]] = None,
+    opportunity_cards: Optional[List[Dict]] = None,
 ) -> str:
     """Render the scan results as a self-contained Apple-style HTML page."""
     day_cn_map = {
@@ -526,6 +618,11 @@ def format_html_report(
     # --- Card: High Dividend Defense (Phase 2, conditional) ---
     if dividend_signals:
         parts.append(_dividend_section(dividend_signals, dividend_pool_summary))
+
+    # --- Opportunity Cards (conditional) ---
+    cards_html = _render_cards_section(opportunity_cards or [])
+    if cards_html:
+        parts.append(cards_html)
 
     # --- Card: Skipped (conditional) ---
     if skipped_list:

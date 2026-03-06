@@ -241,3 +241,33 @@ class TestEarningsGapSection:
 
         assert "财报 Gap 预警" in report
         assert "无符合条件的标的" in report
+
+
+def test_html_report_includes_opportunity_cards():
+    from datetime import date
+    from src.html_report import format_html_report
+
+    cards = [{
+        "ticker": "AAPL", "strategy": "SELL_PUT",
+        "trigger_reason": "跌入便宜区间",
+        "action": "卖出 6月 $170 Put",
+        "one_line_logic": "安全垫充足",
+        "key_params": {"strike": 170, "dte": 60, "premium": 1.6, "apy": 11.8},
+        "win_scenarios": [{"prob": 0.85, "desc": "安全收租"}],
+        "valuation": {"iron_floor": 163.5, "fair_value": 182.5,
+                      "logic_summary": "EPS × PE 估值"},
+        "fundamentals": {"moat": "iOS 生态"},
+        "events": [], "take_profit": "赚80%止盈",
+        "stop_loss": "营收恶化", "max_loss_usd": 9.1, "max_loss_pct": 0.09,
+    }]
+    html = format_html_report(
+        scan_date=date(2026, 3, 6), data_source="IBKR",
+        universe_count=22, iv_low=[], iv_high=[],
+        ma200_bullish=[], ma200_bearish=[], leaps=[],
+        sell_puts=[], elapsed_seconds=1.0,
+        opportunity_cards=cards,
+    )
+    assert "AAPL" in html
+    assert "Sell Put 收租" in html or "SELL_PUT" in html
+    assert "铁底" in html
+    assert "查看详细分析" in html
