@@ -1,6 +1,6 @@
 import sqlite3
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import List, Dict
 from src.data_engine import TickerData
 
@@ -234,7 +234,6 @@ class DividendStore:
 
     def save_defensiveness_score(self, sector: str, industry: str, score: float, rationale: str):
         """Persist defensiveness score with 30-day TTL."""
-        from datetime import timedelta
         expires = (date.today() + timedelta(days=30)).isoformat()
         cursor = self.conn.cursor()
         cursor.execute(

@@ -29,6 +29,7 @@ def test_dividend_store_init_creates_tables():
     assert 'dividend_pool' in tables
     assert 'dividend_history' in tables
     assert 'screening_versions' in tables
+    assert 'defensiveness_cache' in tables
 
 
 def test_save_and_get_pool():
