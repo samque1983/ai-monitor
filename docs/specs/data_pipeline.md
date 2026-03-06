@@ -63,13 +63,48 @@ class MarketDataProvider:
 ```
 
 ### Data Source Fallback Chain
-1. **IBKR Gateway** (优先，实时数据)
-2. **yfinance** (主要，历史数据)
-3. **earnings_calendar.csv** (fallback，财报日期)
+
+| Method | Primary | Fallback |
+|--------|---------|---------|
+| `get_price_data` | IBKR `reqHistoricalData` (1 day) | yfinance `download` |
+| `get_weekly_price_data` | IBKR `reqHistoricalData` (1 week) | yfinance `download` interval=1wk |
+| `get_options_chain` | IBKR `reqSecDefOptParams` + `reqTickers` | yfinance `option_chain` |
+| `get_earnings_date` | IBKR `reqFundamentalData('CalendarReport')` | yfinance `calendar` |
+| `get_dividend_history` | — | yfinance only |
+| `get_fundamentals` | — | yfinance only |
+| `get_historical_earnings_dates` | — | yfinance → earnings_calendar.csv |
+
+**Fallback pattern** (all IBKR-primary methods):
+```python
+if self.ibkr:
+    try:
+        return self._ibkr_<method>(...)
+    except Exception as e:
+        logger.warning(f"IBKR failed, falling back: {e}")
+return self._yf_<method>(...)
+```
+
+### IBKR Contract Creation (`_make_contract`)
+
+```python
+# US:  Stock(ticker, 'SMART', 'USD')
+# HK:  Stock(symbol_no_suffix, 'SEHK', 'HKD')   e.g. 0700.HK → 0700
+# CN .SS: Stock(symbol, 'SSE',  'CNH')            e.g. 600900.SS → 600900
+# CN .SZ: Stock(symbol, 'SZSE', 'CNH')            e.g. 000001.SZ → 000001
+```
+
+### IBKR Period Map (`_PERIOD_MAP`)
+
+```python
+{"5d": "5 D", "1mo": "1 M", "3mo": "3 M",
+ "6mo": "6 M", "1y": "1 Y", "2y": "2 Y",
+ "5y": "5 Y", "10y": "10 Y"}
+```
+Default: `"1 Y"` if period not in map.
 
 ### Timeout Configuration
 - yfinance: **30 秒超时**（应对周末 API 不稳定）
-- IBKR: 30 秒连接超时
+- IBKR: 30 秒连接超时（`config.yaml` → `ibkr.timeout`）
 
 ### Error Isolation
 - 单个 ticker 失败 → 返回 `None`，继续处理其他
@@ -142,6 +177,8 @@ data:
 **Coverage**:
 - Market classification (US/HK/CN)
 - Ticker normalization (BRK.B, A-shares)
+- IBKR primary / yfinance fallback for price, weekly price, options chain, earnings date
+- `_make_contract` routing for US/HK/CN/.SS/.SZ
 - Earnings CSV fallback
 - IV momentum calculation
 - Data sufficiency checks
