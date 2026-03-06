@@ -150,3 +150,33 @@ def test_get_last_scan_date_returns_latest_version_date(tmp_path):
     result = store.get_last_scan_date()
     assert result == date(2026, 3, 1)
     store.close()
+
+
+def test_save_and_get_defensiveness_score(tmp_path):
+    store = DividendStore(str(tmp_path / "test.db"))
+    # Not yet cached → returns None
+    assert store.get_defensiveness_score("Utilities", "Electric Utilities") is None
+
+    store.save_defensiveness_score("Utilities", "Electric Utilities", 85.0, "需求刚性，无周期风险")
+    result = store.get_defensiveness_score("Utilities", "Electric Utilities")
+    assert result is not None
+    score, rationale = result
+    assert score == 85.0
+    assert "刚性" in rationale
+    store.close()
+
+
+def test_defensiveness_score_expired(tmp_path):
+    from datetime import date, timedelta
+    store = DividendStore(str(tmp_path / "test.db"))
+    # Save with a past expiry date directly via SQL
+    cursor = store.conn.cursor()
+    expired = (date.today() - timedelta(days=1)).isoformat()
+    cursor.execute(
+        "INSERT INTO defensiveness_cache (sector, industry, score, rationale, expires) VALUES (?,?,?,?,?)",
+        ("Technology", "Software", 40.0, "高周期性", expired),
+    )
+    store.conn.commit()
+    # Expired → returns None
+    assert store.get_defensiveness_score("Technology", "Software") is None
+    store.close()

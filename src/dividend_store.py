@@ -75,6 +75,17 @@ class DividendStore:
             )
         """)
 
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS defensiveness_cache (
+                sector   TEXT NOT NULL,
+                industry TEXT NOT NULL,
+                score    REAL NOT NULL,
+                rationale TEXT,
+                expires  TEXT NOT NULL,
+                PRIMARY KEY (sector, industry)
+            )
+        """)
+
         self.conn.commit()
         logger.info("Database tables created successfully")
 
@@ -205,6 +216,32 @@ class DividendStore:
         percentile = (count_below_or_equal / len(historical_yields)) * 100
 
         return percentile
+
+    def get_defensiveness_score(self, sector: str, industry: str):
+        """Return (score, rationale) if cached and not expired, else None."""
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT score, rationale, expires FROM defensiveness_cache WHERE sector=? AND industry=?",
+            (sector, industry),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        score, rationale, expires = row
+        if expires < date.today().isoformat():
+            return None
+        return score, rationale
+
+    def save_defensiveness_score(self, sector: str, industry: str, score: float, rationale: str):
+        """Persist defensiveness score with 30-day TTL."""
+        from datetime import timedelta
+        expires = (date.today() + timedelta(days=30)).isoformat()
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "INSERT OR REPLACE INTO defensiveness_cache (sector, industry, score, rationale, expires) VALUES (?,?,?,?,?)",
+            (sector, industry, score, rationale, expires),
+        )
+        self.conn.commit()
 
     def close(self):
         """关闭数据库连接"""
