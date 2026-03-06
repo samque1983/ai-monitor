@@ -57,10 +57,10 @@ class FinancialServiceAnalyzer:
     - 优先使用Claude Financial Service进行深度分析（Task 2.2+实现）
     - 降级到规则化评分（当服务不可用时）
 
-    规则化评分逻辑：
+    评分逻辑：
     - stability_score = max(0, min(100, consecutive_years*10 + min(dividend_growth*2, 30)))
     - health_score = min(100, roe_score + debt_score + payout_score)
-    - defensiveness_score = 50.0 (固定值，无行业分析能力)
+    - defensiveness_score = Claude API 打分（api_key 已设置时）；否则固定 50.0
     - overall_score = stability*0.4 + health*0.4 + defensiveness*0.2
     """
 
@@ -186,7 +186,7 @@ class FinancialServiceAnalyzer:
           - debt_score = max(0, 30 - debt_to_equity*20)
           - payout_score = 40 if payout_ratio < 70 else 20
           - min(100, ...) 确保不超过100分
-        - defensiveness_score = 50.0 (固定值，无行业分析)
+        - defensiveness_score = defensiveness_override（来自 LLM）；未提供时固定 50.0
         - overall_score = stability*0.4 + health*0.4 + defensiveness*0.2
 
         Args:
