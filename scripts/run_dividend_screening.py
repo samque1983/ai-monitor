@@ -52,12 +52,15 @@ def main():
     config_path = sys.argv[1] if len(sys.argv) > 1 else "config.yaml"
     config = load_config(config_path)
 
-    logger.info("=== 高股息防御双打 - 每周筛选 ===")
+    logger.info("=== 高股息养老股池 - 月度筛选 ===")
 
-    # 加载 universe
-    logger.info("Loading universe from CSV...")
-    tickers, _ = fetch_universe(config["csv_url"])
-    logger.info(f"Universe: {len(tickers)} tickers")
+    # 加载 universe（固定种子池）
+    universe = config.get("dividend_universe", [])
+    if not universe:
+        logger.error("No dividend_universe configured in config.yaml")
+        sys.exit(1)
+    tickers = universe
+    logger.info(f"Universe: {len(tickers)} tickers from dividend_universe config")
 
     # 初始化 provider
     iv_db_path = config["data"]["iv_history_db"]
@@ -86,9 +89,22 @@ def main():
             config=config,
         )
 
-        # 保存结果
-        version = f"weekly_{date.today().isoformat()}"
+        # 保存结果（月度版本）
+        version = f"monthly_{date.today().strftime('%Y-%m')}"
         store.save_pool(pool, version=version)
+
+        # 生成 dividend_pool.html
+        from src.dividend_pool_page import generate_dividend_pool_page
+        versions = store.list_versions()
+        pool_records = store.get_pool_by_version(version)
+        pool_html = generate_dividend_pool_page(versions, pool_records, version)
+
+        reports_dir = config.get("reports", {}).get("output_dir", "reports")
+        os.makedirs(reports_dir, exist_ok=True)
+        pool_page_path = os.path.join(reports_dir, "dividend_pool.html")
+        with open(pool_page_path, "w", encoding="utf-8") as f:
+            f.write(pool_html)
+        logger.info(f"Pool page saved: {pool_page_path}")
 
         logger.info(f"=== 筛选完成 ===")
         logger.info(f"入池标的数: {len(pool)}")
