@@ -89,8 +89,8 @@ def scan_dividend_pool_weekly(
 
     for ticker in universe:
         try:
-            # Step 1: 获取股息历史（5年）
-            dividend_history = provider.get_dividend_history(ticker, years=5)
+            # Step 1: 获取股息历史（10年，确保ETF等标的有足够历史数据用于CAGR计算）
+            dividend_history = provider.get_dividend_history(ticker, years=10)
             if not dividend_history:
                 logger.debug(f"{ticker}: No dividend history, skipping")
                 continue

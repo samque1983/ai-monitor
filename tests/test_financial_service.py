@@ -234,6 +234,25 @@ def test_fcf_payout_fallback_when_free_cash_flow_missing():
     assert result.effective_payout_ratio == pytest.approx(75.0)
 
 
+def test_dividend_growth_rate_excludes_partial_current_year():
+    """CAGR must exclude the current calendar year (may be incomplete)."""
+    from datetime import date as _date
+    current_year = _date.today().year
+    history = [
+        {"date": "2020-07-01", "amount": 1.0},
+        {"date": "2021-07-01", "amount": 1.1},
+        {"date": "2022-07-01", "amount": 1.2},
+        {"date": "2023-07-01", "amount": 1.3},
+        {"date": "2024-07-01", "amount": 1.4},
+        {"date": f"{current_year}-02-01", "amount": 0.3},  # partial current year
+    ]
+    cagr = calculate_dividend_growth_rate(history)
+    # With fix: uses 2020–2024, CAGR = (1.4/1.0)^(1/4)-1 ≈ 8.78% > 0
+    # Without fix: uses 2020–current_year, end=0.3 → large negative CAGR
+    assert cagr > 0, f"Should exclude partial current year, got {cagr:.2f}%"
+    assert 8.0 <= cagr <= 10.0, f"Expected ~8.78%, got {cagr:.2f}%"
+
+
 def test_calculate_consecutive_years():
     """测试连续派息年限计算（季度派息，2020-2025）"""
     # 模拟季度派息：每年4次，2020-2025共6年

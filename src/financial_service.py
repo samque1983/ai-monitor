@@ -305,6 +305,12 @@ def calculate_dividend_growth_rate(dividend_history: List[Dict[str, Any]], years
             yearly_dividends[year] = 0.0
         yearly_dividends[year] += amount
 
+    # Exclude current calendar year (may be incomplete / partial-year data)
+    current_year = date.today().year
+    complete_years = {y: v for y, v in yearly_dividends.items() if y < current_year}
+    if len(complete_years) >= 2:
+        yearly_dividends = complete_years
+
     if len(yearly_dividends) < 2:
         return 0.0  # 数据不足，无法计算CAGR
 

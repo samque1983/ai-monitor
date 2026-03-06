@@ -550,3 +550,21 @@ def test_scan_sets_correct_market_for_cn_ticker(mock_provider, mock_fs, config):
     result = scan_dividend_pool_weekly(["601398.SS"], mock_provider, mock_fs, config)
     assert len(result) == 1
     assert result[0].market == "CN"
+
+
+def test_scan_fetches_10_years_of_dividend_history(mock_provider, mock_fs, config):
+    """scan_dividend_pool_weekly must request 10 years of history (not 5) to
+    give ETFs and slower-growing stocks enough data for CAGR calculation."""
+    mock_provider.get_dividend_history.return_value = _history_5yr()
+    mock_provider.get_fundamentals.return_value = {
+        "dividend_yield": 3.5,
+        "payout_ratio": 60.0,
+        "roe": 15.0,
+        "debt_to_equity": 0.5,
+        "sector": "Consumer Staples",
+        "free_cash_flow": 10_000_000,
+        "company_name": "Test Co",
+    }
+    mock_fs.analyze_dividend_quality.return_value = _mock_score(75.0)
+    scan_dividend_pool_weekly(["SCHD"], mock_provider, mock_fs, config)
+    mock_provider.get_dividend_history.assert_called_once_with("SCHD", years=10)
