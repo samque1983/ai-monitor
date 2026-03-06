@@ -19,10 +19,20 @@ class MarketDataProvider:
         self.ibkr_config = ibkr_config
         self.iv_store: Optional[IVStore] = None
         self.config: dict = config or {}  # Accept config parameter
+        self._yf_session = self._make_yf_session()
         if ibkr_config:
             self.ibkr = self._try_connect_ibkr(ibkr_config)
         if iv_db_path:
             self.iv_store = IVStore(iv_db_path)
+
+    def _make_yf_session(self):
+        """Create a curl_cffi session with SSL verification disabled (handles corporate proxy)."""
+        try:
+            from curl_cffi import requests as cffi_requests
+            return cffi_requests.Session(impersonate="chrome", verify=False)
+        except Exception as e:
+            logger.debug(f"curl_cffi session creation failed, using default: {e}")
+            return None
 
     _PERIOD_MAP = {
         "5d": "5 D", "1mo": "1 M", "3mo": "3 M",
@@ -119,7 +129,7 @@ class MarketDataProvider:
     def _yf_price_data(self, ticker: str, period: str) -> pd.DataFrame:
         """Fetch price data from yfinance."""
         try:
-            df = yf.download(ticker, period=period, progress=False, timeout=30)
+            df = yf.download(ticker, period=period, progress=False, timeout=30, session=self._yf_session)
             if df.empty:
                 logger.warning(f"No price data for {ticker}")
             return df
@@ -171,7 +181,7 @@ class MarketDataProvider:
     def _yf_weekly_price_data(self, ticker: str, period: str) -> pd.DataFrame:
         """Fetch weekly OHLCV from yfinance."""
         try:
-            df = yf.download(ticker, period=period, interval="1wk", progress=False, timeout=30)
+            df = yf.download(ticker, period=period, interval="1wk", progress=False, timeout=30, session=self._yf_session)
             return df
         except Exception as e:
             logger.error(f"yfinance weekly data failed for {ticker}: {e}")
@@ -289,7 +299,7 @@ class MarketDataProvider:
             except Exception as e:
                 logger.warning(f"IBKR earnings date failed for {ticker}, falling back: {e}")
         try:
-            t = yf.Ticker(ticker)
+            t = yf.Ticker(ticker, session=self._yf_session)
             cal = t.calendar
             if isinstance(cal, dict) and "Earnings Date" in cal:
                 dates = cal["Earnings Date"]
@@ -318,7 +328,7 @@ class MarketDataProvider:
 
         # 一级: yfinance
         try:
-            t = yf.Ticker(ticker)
+            t = yf.Ticker(ticker, session=self._yf_session)
             ed = t.earnings_dates
             if ed is not None and not ed.empty:
                 today = date.today()
@@ -381,7 +391,7 @@ class MarketDataProvider:
     def _yf_options_chain(self, ticker: str, dte_min: int, dte_max: int) -> pd.DataFrame:
         """Fetch put options from yfinance, filtered by DTE."""
         try:
-            t = yf.Ticker(ticker)
+            t = yf.Ticker(ticker, session=self._yf_session)
             expirations = t.options
             if not expirations:
                 return pd.DataFrame()
@@ -410,7 +420,7 @@ class MarketDataProvider:
         if self.should_skip_options(ticker):
             return None
         try:
-            t = yf.Ticker(ticker)
+            t = yf.Ticker(ticker, session=self._yf_session)
             current_price = t.info.get("regularMarketPrice") or t.info.get("previousClose")
             if not current_price:
                 return None
@@ -455,7 +465,7 @@ class MarketDataProvider:
 
         try:
             # 获取当前 IV
-            t = yf.Ticker(ticker)
+            t = yf.Ticker(ticker, session=self._yf_session)
             current_price = t.info.get("regularMarketPrice") or t.info.get("previousClose")
             if not current_price:
                 return None
@@ -508,7 +518,7 @@ class MarketDataProvider:
             return None
 
         try:
-            yticker = yf.Ticker(ticker)
+            yticker = yf.Ticker(ticker, session=self._yf_session)
             dividends = yticker.dividends
 
             if dividends is None or dividends.empty:
@@ -563,7 +573,7 @@ class MarketDataProvider:
         - 缺失字段使用 None
         """
         try:
-            yticker = yf.Ticker(ticker)
+            yticker = yf.Ticker(ticker, session=self._yf_session)
             info = yticker.info
 
             # Extract fields with .get() for safety
@@ -576,15 +586,21 @@ class MarketDataProvider:
             if roe is not None:
                 roe = roe * 100
 
+            # Prefer trailingAnnualDividendYield (always decimal) when non-zero;
+            # fall back to dividendYield which is usually in percentage format for yfinance 1.x
+            trailing = info.get("trailingAnnualDividendYield")
             dividend_yield_raw = info.get("dividendYield")
-            if dividend_yield_raw is None:
-                dividend_yield = None
-            elif dividend_yield_raw > 1.0:
-                # yfinance returns HK/CN dividendYield already as percentage (e.g. 5.43 = 5.43%)
-                dividend_yield = float(dividend_yield_raw)
+            if trailing and trailing > 0:
+                dividend_yield = round(trailing * 100, 4)
+            elif dividend_yield_raw is not None:
+                if dividend_yield_raw > 1.0:
+                    # Already in percentage format (e.g. 5.43 = 5.43%)
+                    dividend_yield = float(dividend_yield_raw)
+                else:
+                    # Decimal format (e.g. 0.035 = 3.5%)
+                    dividend_yield = dividend_yield_raw * 100
             else:
-                # US stocks: decimal format (e.g. 0.035 = 3.5%)
-                dividend_yield = dividend_yield_raw * 100
+                dividend_yield = None
 
             company_name = info.get("longName") or info.get("shortName") or ticker
 
