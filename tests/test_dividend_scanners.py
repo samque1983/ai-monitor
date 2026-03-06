@@ -9,6 +9,41 @@ from src.financial_service import DividendQualityScore
 from src.dividend_store import DividendStore
 
 
+def _history_5yr():
+    """Helper: 5 years of annual dividends, stable at 1.0/yr."""
+    return [{"date": f"{year}-03-01", "amount": 1.0} for year in range(2021, 2026)]
+
+
+def _mock_score(score: float) -> DividendQualityScore:
+    return DividendQualityScore(
+        overall_score=score, stability_score=score, health_score=score,
+        defensiveness_score=50.0, risk_flags=[],
+    )
+
+
+@pytest.fixture
+def mock_provider():
+    p = MagicMock()
+    p.config = {"default_market": "US"}
+    return p
+
+
+@pytest.fixture
+def mock_fs():
+    return MagicMock()
+
+
+@pytest.fixture
+def config():
+    return {
+        "dividend_scanners": {
+            "min_quality_score": 70,
+            "min_consecutive_years": 5,
+            "max_payout_ratio": 100,
+        }
+    }
+
+
 def make_ticker(**kwargs) -> TickerData:
     """Helper to create TickerData with sensible defaults."""
     defaults = dict(
@@ -380,3 +415,102 @@ class TestScanDividendSellPut:
 
         # Clean up
         store.close()
+
+
+def test_scan_excludes_low_yield_tickers(mock_provider, mock_fs, config):
+    """Tickers with dividend_yield < 2.0% must be excluded from pool."""
+    mock_provider.get_dividend_history.return_value = _history_5yr()
+    mock_provider.get_fundamentals.return_value = {
+        "dividend_yield": 1.5,    # below 2% threshold
+        "payout_ratio": 40.0,
+        "roe": 15.0,
+        "debt_to_equity": 0.5,
+        "sector": "Consumer Staples",
+        "industry": "Beverages",
+        "free_cash_flow": 5_000_000,
+        "company_name": "Low Yield Co",
+    }
+    mock_fs.analyze_dividend_quality.return_value = _mock_score(80.0)
+    result = scan_dividend_pool_weekly(["LOW_YIELD"], mock_provider, mock_fs, config)
+    assert result == []
+
+
+def test_scan_excludes_negative_growth_tickers(mock_provider, mock_fs, config):
+    """Tickers with 5yr dividend growth < 0% must be excluded."""
+    declining_history = [
+        {"date": "2021-03-01", "amount": 1.0},
+        {"date": "2022-03-01", "amount": 1.0},
+        {"date": "2023-03-01", "amount": 0.9},
+        {"date": "2024-03-01", "amount": 0.8},
+        {"date": "2025-03-01", "amount": 0.7},
+    ]
+    mock_provider.get_dividend_history.return_value = declining_history
+    mock_provider.get_fundamentals.return_value = {
+        "dividend_yield": 4.0,
+        "payout_ratio": 60.0,
+        "roe": 10.0,
+        "debt_to_equity": 0.5,
+        "sector": "Utilities",
+        "free_cash_flow": 5_000_000,
+        "company_name": "Declining Co",
+    }
+    mock_fs.analyze_dividend_quality.return_value = _mock_score(75.0)
+    result = scan_dividend_pool_weekly(["NEG_GROWTH"], mock_provider, mock_fs, config)
+    assert result == []
+
+
+def test_scan_passes_annual_dividend_to_financial_service(mock_provider, mock_fs, config):
+    """annual_dividend (most recent year) must be in fundamentals passed to FS."""
+    history = [
+        # 5 consecutive years to pass min_consecutive_years filter
+        {"date": "2020-03-01", "amount": 0.4},
+        {"date": "2021-03-01", "amount": 0.4},
+        {"date": "2022-03-01", "amount": 0.4},
+        {"date": "2023-03-01", "amount": 0.4},
+        # 2024: quarterly payments, total = 2.0 (most recent full year)
+        {"date": "2024-03-01", "amount": 0.5},
+        {"date": "2024-06-01", "amount": 0.5},
+        {"date": "2024-09-01", "amount": 0.5},
+        {"date": "2024-12-01", "amount": 0.5},
+    ]
+    mock_provider.get_dividend_history.return_value = history
+    mock_provider.get_fundamentals.return_value = {
+        "dividend_yield": 3.5,
+        "payout_ratio": 60.0,
+        "roe": 15.0,
+        "debt_to_equity": 0.5,
+        "sector": "Consumer Staples",
+        "free_cash_flow": 10_000_000,
+        "company_name": "Test Co",
+    }
+    mock_fs.analyze_dividend_quality.return_value = _mock_score(80.0)
+    scan_dividend_pool_weekly(["TEST"], mock_provider, mock_fs, config)
+
+    call_args = mock_fs.analyze_dividend_quality.call_args
+    fundamentals_passed = call_args[1]["fundamentals"] if call_args[1] else call_args[0][1]
+    assert "annual_dividend" in fundamentals_passed
+    assert fundamentals_passed["annual_dividend"] == pytest.approx(2.0)  # 4 × 0.5
+
+
+def test_scan_sets_payout_type_on_ticker_data(mock_provider, mock_fs, config):
+    """payout_type from quality_score_result must be set on returned TickerData."""
+    mock_provider.get_dividend_history.return_value = _history_5yr()
+    mock_provider.get_fundamentals.return_value = {
+        "dividend_yield": 7.0,
+        "payout_ratio": 115.0,
+        "roe": 10.0,
+        "debt_to_equity": 1.2,
+        "sector": "Energy",
+        "free_cash_flow": 10_000_000,
+        "company_name": "Pipeline Co",
+    }
+    fcf_score = DividendQualityScore(
+        overall_score=78.0, stability_score=80.0, health_score=76.0,
+        defensiveness_score=80.0, risk_flags=[],
+        payout_type="FCF", effective_payout_ratio=64.0,
+    )
+    mock_fs.analyze_dividend_quality.return_value = fcf_score
+    result = scan_dividend_pool_weekly(["ENB"], mock_provider, mock_fs, config)
+    assert len(result) == 1
+    assert result[0].payout_type == "FCF"
+    assert result[0].payout_ratio == pytest.approx(64.0)

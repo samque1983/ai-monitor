@@ -104,25 +104,49 @@ def scan_dividend_pool_weekly(
                 )
                 continue
 
+            # New: hard filter — no negative growth
+            if dividend_growth_5y < 0:
+                logger.debug(f"{ticker}: Dividend growth {dividend_growth_5y:.1f}% < 0, skipping")
+                continue
+
             # Step 3: 获取基本面数据
             fundamentals = provider.get_fundamentals(ticker)
             if not fundamentals:
                 logger.warning(f"{ticker}: No fundamentals data, skipping")
                 continue
 
-            # Step 4: 硬排除 - 派息率超过max_payout_ratio
-            payout_ratio = fundamentals.get("payout_ratio") or 0.0
-            if payout_ratio > max_payout_ratio:
-                logger.info(
-                    f"{ticker}: Payout ratio {payout_ratio:.1f}% > {max_payout_ratio}%, excluded"
-                )
+            # New: hard filter — minimum yield 2%
+            dividend_yield = fundamentals.get("dividend_yield") or 0.0
+            if dividend_yield < 2.0:
+                logger.debug(f"{ticker}: Dividend yield {dividend_yield:.1f}% < 2%, skipping")
                 continue
 
+            # Step 4: 计算 TTM 年度股息（用于 FCF 派息率）
+            one_year_ago = datetime.now() - timedelta(days=365)
+            def _to_dt(d):
+                raw = d['date']
+                if isinstance(raw, str):
+                    return datetime.fromisoformat(raw)
+                return datetime.combine(raw, datetime.min.time())
+
+            annual_dividend_ttm = sum(
+                d['amount'] for d in dividend_history if _to_dt(d) >= one_year_ago
+            )
+            if annual_dividend_ttm > 0:
+                annual_dividend = annual_dividend_ttm
+            else:
+                # 无近期数据：使用最近一个完整年的派息总额
+                yearly: dict = {}
+                for d in dividend_history:
+                    year = _to_dt(d).year
+                    yearly[year] = yearly.get(year, 0) + d['amount']
+                annual_dividend = yearly[max(yearly)] if yearly else 0.0
+
             # Step 5: 调用Financial Service评分
-            # 将连续年限和增长率添加到fundamentals
             fundamentals_with_stats = fundamentals.copy()
             fundamentals_with_stats["consecutive_years"] = consecutive_years
             fundamentals_with_stats["dividend_growth_5y"] = dividend_growth_5y
+            fundamentals_with_stats["annual_dividend"] = annual_dividend
 
             quality_score_result = financial_service.analyze_dividend_quality(
                 ticker=ticker,
@@ -141,27 +165,28 @@ def scan_dividend_pool_weekly(
                 )
                 continue
 
-            # Step 7: 创建TickerData对象（placeholder values for non-dividend fields）
+            # Step 7: 创建TickerData对象
             ticker_data = TickerData(
                 ticker=ticker,
-                name=fundamentals.get("company_name", ticker),  # Fallback to ticker if no name
-                market=provider.config.get("default_market", "US"),  # Use provider config or default
-                last_price=0.0,  # Placeholder - will be filled by main pipeline if needed
+                name=fundamentals.get("company_name", ticker),
+                market=provider.config.get("default_market", "US"),
+                last_price=0.0,
                 ma200=None,
                 ma50w=None,
                 rsi14=None,
                 iv_rank=None,
                 iv_momentum=None,
-                prev_close=0.0,  # Placeholder
+                prev_close=0.0,
                 earnings_date=None,
                 days_to_earnings=None,
                 # Dividend fields (populated)
                 dividend_yield=fundamentals.get("dividend_yield"),
-                dividend_yield_5y_percentile=None,  # Will be calculated in daily scan
+                dividend_yield_5y_percentile=None,
                 dividend_quality_score=quality_score_result.overall_score,
                 consecutive_years=consecutive_years,
                 dividend_growth_5y=dividend_growth_5y,
-                payout_ratio=payout_ratio,
+                payout_ratio=quality_score_result.effective_payout_ratio,
+                payout_type=quality_score_result.payout_type,
                 roe=fundamentals.get("roe"),
                 debt_to_equity=fundamentals.get("debt_to_equity"),
                 industry=fundamentals.get("industry"),
