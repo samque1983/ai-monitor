@@ -165,7 +165,6 @@ def run_scan(config_path: str = "config.yaml"):
     card_config = config.get("card_engine", {})
     if card_config.get("enabled", False):
         try:
-            import os
             if not card_config.get("anthropic_api_key"):
                 card_config["anthropic_api_key"] = os.environ.get("ANTHROPIC_API_KEY", "")
             if not card_config.get("dingtalk_webhook"):
