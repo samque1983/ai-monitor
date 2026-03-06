@@ -133,3 +133,10 @@ def test_weekly_scan_not_triggered_within_7_days(tmp_path):
     last_scan = store.get_last_scan_date()
     assert (date.today() - last_scan).days < 7
     store.close()
+
+
+def test_main_card_engine_disabled_by_default():
+    """card_engine disabled by default — no CardEngine import errors."""
+    from src.config import load_config
+    config = load_config("config.yaml")
+    assert config.get("card_engine", {}).get("enabled", False) is False

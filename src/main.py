@@ -23,6 +23,7 @@ from src.email_stub import send_email
 from src.dividend_store import DividendStore
 from src.financial_service import FinancialServiceAnalyzer
 from src.dividend_scanners import scan_dividend_pool_weekly, scan_dividend_buy_signal
+from src.card_engine import CardEngine
 
 logger = logging.getLogger(__name__)
 
@@ -159,6 +160,27 @@ def run_scan(config_path: str = "config.yaml"):
         finally:
             dividend_store.close()
 
+    # Step 5.5: Opportunity card generation (reasoning layer)
+    opportunity_cards = []
+    card_config = config.get("card_engine", {})
+    if card_config.get("enabled", False):
+        try:
+            import os
+            if not card_config.get("anthropic_api_key"):
+                card_config["anthropic_api_key"] = os.environ.get("ANTHROPIC_API_KEY", "")
+            if not card_config.get("dingtalk_webhook"):
+                card_config["dingtalk_webhook"] = os.environ.get("DINGTALK_WEBHOOK", "")
+            card_engine = CardEngine(config)
+            opportunity_cards = card_engine.process_signals(
+                sell_put_signals=sell_put_results,
+                dividend_signals=dividend_signals,
+            )
+            card_engine.push_dingtalk(opportunity_cards)
+            logger.info(f"Card engine: {len(opportunity_cards)} cards generated")
+            card_engine.close()
+        except Exception as e:
+            logger.error(f"Card engine failed: {e}", exc_info=True)
+
     # Step 6: Generate report
     elapsed = time.time() - start_time
     report = format_report(
@@ -195,6 +217,7 @@ def run_scan(config_path: str = "config.yaml"):
         elapsed_seconds=elapsed,
         dividend_signals=dividend_signals or None,
         dividend_pool_summary=dividend_pool_summary,
+        opportunity_cards=opportunity_cards or None,
     )
 
     # Step 6: Output
