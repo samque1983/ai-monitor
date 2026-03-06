@@ -21,10 +21,13 @@ class DividendStore:
         """创建必需的数据库表（含 schema 迁移）"""
         cursor = self.conn.cursor()
 
-        # Migrate old schema if it exists (ticker was sole PK, no version column)
+        # Migrate old schema if needed:
+        # - v1: ticker TEXT PRIMARY KEY, no version column
+        # - v1.5: has version column but as plain TEXT (not PK), no payout_type
+        # - v2 (current): PRIMARY KEY (ticker, version), has payout_type
         cursor.execute("PRAGMA table_info(dividend_pool)")
         cols = {row[1] for row in cursor.fetchall()}
-        if cols and 'version' not in cols:
+        if cols and ('version' not in cols or 'payout_type' not in cols):
             cursor.execute("DROP TABLE IF EXISTS dividend_pool")
             logger.info("Migrated dividend_pool table: old schema dropped")
 
