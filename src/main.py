@@ -123,7 +123,12 @@ def run_scan(config_path: str = "config.yaml"):
     if div_config.get("enabled", False):
         db_path = config.get("data", {}).get("dividend_db_path", "data/dividend_pool.db")
         dividend_store = DividendStore(db_path)
-        financial_service = FinancialServiceAnalyzer()
+        financial_service = FinancialServiceAnalyzer(
+            enabled=div_config.get("enabled", False),
+            fallback_to_rules=True,
+            api_key=config.get("card_engine", {}).get("anthropic_api_key") or os.environ.get("ANTHROPIC_API_KEY", ""),
+            store=dividend_store,
+        )
         try:
             # Weekly refresh: run pool scan if empty or last scan >= 7 days ago
             last_scan = dividend_store.get_last_scan_date()
