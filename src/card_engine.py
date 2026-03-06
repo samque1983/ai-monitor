@@ -2,10 +2,7 @@
 import json
 import logging
 import os
-from datetime import datetime, date, timedelta
 from typing import List, Dict, Any, Optional, Tuple
-
-import requests
 
 from src.card_store import CardStore
 
