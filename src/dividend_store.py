@@ -1,7 +1,7 @@
 import sqlite3
 import logging
 from datetime import date, datetime
-from typing import List
+from typing import List, Dict
 from src.data_engine import TickerData
 
 logger = logging.getLogger(__name__)
@@ -18,25 +18,35 @@ class DividendStore:
         logger.info(f"DividendStore initialized with database: {db_path}")
 
     def _create_tables(self):
-        """创建必需的数据库表"""
+        """创建必需的数据库表（含 schema 迁移）"""
         cursor = self.conn.cursor()
 
-        # Table 1: dividend_pool - 当前股票池
+        # Migrate old schema if it exists (ticker was sole PK, no version column)
+        cursor.execute("PRAGMA table_info(dividend_pool)")
+        cols = {row[1] for row in cursor.fetchall()}
+        if cols and 'version' not in cols:
+            cursor.execute("DROP TABLE IF EXISTS dividend_pool")
+            logger.info("Migrated dividend_pool table: old schema dropped")
+
+        # Table 1: dividend_pool - 版本化股票池
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS dividend_pool (
-                ticker TEXT PRIMARY KEY,
+                ticker TEXT NOT NULL,
+                version TEXT NOT NULL,
                 name TEXT,
                 market TEXT,
                 quality_score REAL,
                 consecutive_years INTEGER,
                 dividend_growth_5y REAL,
                 payout_ratio REAL,
+                payout_type TEXT,
+                dividend_yield REAL,
                 roe REAL,
                 debt_to_equity REAL,
                 industry TEXT,
                 sector TEXT,
                 added_date TEXT,
-                version TEXT
+                PRIMARY KEY (ticker, version)
             )
         """)
 
@@ -66,38 +76,31 @@ class DividendStore:
         logger.info("Database tables created successfully")
 
     def save_pool(self, tickers: List[TickerData], version: str):
-        """保存股票池（替换式更新）"""
+        """保存股票池（按版本存储，保留历史版本）"""
         cursor = self.conn.cursor()
 
-        # Step 1: Delete old pool
-        cursor.execute("DELETE FROM dividend_pool")
-        logger.info("Cleared existing dividend pool")
+        # Delete only this version's records (preserve other versions)
+        cursor.execute("DELETE FROM dividend_pool WHERE version = ?", (version,))
 
-        # Step 2: Insert new tickers
         for ticker in tickers:
             cursor.execute("""
                 INSERT INTO dividend_pool (
-                    ticker, name, market, quality_score, consecutive_years,
-                    dividend_growth_5y, payout_ratio, roe, debt_to_equity,
-                    industry, sector, added_date, version
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ticker, version, name, market, quality_score,
+                    consecutive_years, dividend_growth_5y, payout_ratio,
+                    payout_type, dividend_yield, roe, debt_to_equity,
+                    industry, sector, added_date
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                ticker.ticker,
-                ticker.name,
-                ticker.market,
-                ticker.dividend_quality_score,
-                ticker.consecutive_years,
-                ticker.dividend_growth_5y,
-                ticker.payout_ratio,
-                ticker.roe,
-                ticker.debt_to_equity,
-                ticker.industry,
-                ticker.sector,
+                ticker.ticker, version, ticker.name, ticker.market,
+                ticker.dividend_quality_score, ticker.consecutive_years,
+                ticker.dividend_growth_5y, ticker.payout_ratio,
+                getattr(ticker, 'payout_type', None),
+                getattr(ticker, 'dividend_yield', None),
+                ticker.roe, ticker.debt_to_equity,
+                ticker.industry, ticker.sector,
                 date.today().isoformat(),
-                version
             ))
 
-        # Step 3: Record screening version
         quality_scores = [t.dividend_quality_score for t in tickers if t.dividend_quality_score is not None]
         avg_score = sum(quality_scores) / len(quality_scores) if quality_scores else 0.0
 
@@ -105,21 +108,52 @@ class DividendStore:
             INSERT OR REPLACE INTO screening_versions (
                 version, created_at, tickers_count, avg_quality_score
             ) VALUES (?, ?, ?, ?)
-        """, (
-            version,
-            datetime.now().isoformat(),
-            len(tickers),
-            avg_score
-        ))
+        """, (version, datetime.now().isoformat(), len(tickers), avg_score))
 
         self.conn.commit()
-        logger.info(f"Saved {len(tickers)} tickers to dividend pool (version: {version})")
+        logger.info(f"Saved {len(tickers)} tickers to pool (version: {version})")
 
     def get_current_pool(self) -> List[str]:
-        """获取当前池子的ticker列表"""
+        """获取最新版本的ticker列表"""
         cursor = self.conn.cursor()
-        cursor.execute("SELECT ticker FROM dividend_pool")
+        cursor.execute("""
+            SELECT ticker FROM dividend_pool
+            WHERE version = (
+                SELECT version FROM screening_versions
+                ORDER BY created_at DESC LIMIT 1
+            )
+        """)
         return [row[0] for row in cursor.fetchall()]
+
+    def list_versions(self) -> List[Dict]:
+        """Return all screening versions sorted by created_at DESC."""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT version, created_at, tickers_count, avg_quality_score
+            FROM screening_versions
+            ORDER BY created_at DESC
+        """)
+        return [
+            {"version": row[0], "created_at": row[1],
+             "tickers_count": row[2], "avg_quality_score": row[3]}
+            for row in cursor.fetchall()
+        ]
+
+    def get_pool_by_version(self, version: str) -> List[Dict]:
+        """Return full pool records for a given version, sorted by quality_score DESC."""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT ticker, name, market, quality_score, consecutive_years,
+                   dividend_growth_5y, payout_ratio, payout_type, dividend_yield,
+                   roe, debt_to_equity, industry, sector
+            FROM dividend_pool
+            WHERE version = ?
+            ORDER BY quality_score DESC
+        """, (version,))
+        cols = ["ticker", "name", "market", "quality_score", "consecutive_years",
+                "dividend_growth_5y", "payout_ratio", "payout_type", "dividend_yield",
+                "roe", "debt_to_equity", "industry", "sector"]
+        return [dict(zip(cols, row)) for row in cursor.fetchall()]
 
     def save_dividend_history(self, ticker: str, date: date, dividend_yield: float, annual_dividend: float, price: float):
         """保存单个历史股息数据点"""
