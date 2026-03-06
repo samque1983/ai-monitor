@@ -24,6 +24,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+FCF_PAYOUT_SECTORS = {"Energy", "Utilities", "Real Estate"}
+
+
 @dataclass
 class DividendQualityScore:
     """股息质量评分结果
@@ -34,12 +37,16 @@ class DividendQualityScore:
         health_score: 财务健康度评分（ROE + 负债 + FCF）
         defensiveness_score: 行业防御性评分（公用事业/消费/医疗优先）
         risk_flags: 风险标记列表
+        payout_type: 使用的派息率类型 ("FCF" | "GAAP")
+        effective_payout_ratio: 实际使用的派息率
     """
     overall_score: float
     stability_score: float
     health_score: float
     defensiveness_score: float
     risk_flags: List[str]
+    payout_type: str = "GAAP"
+    effective_payout_ratio: float = 0.0
 
 
 class FinancialServiceAnalyzer:
@@ -127,7 +134,18 @@ class FinancialServiceAnalyzer:
         dividend_growth = fundamentals.get('dividend_growth_5y') or 0.0
         roe = fundamentals.get('roe') or 0.0
         debt_to_equity = fundamentals.get('debt_to_equity') or 0.0
-        payout_ratio = fundamentals.get('payout_ratio') or 0.0
+
+        # 确定行业感知的派息率
+        sector = fundamentals.get('sector') or ''
+        free_cash_flow = fundamentals.get('free_cash_flow')
+        annual_dividend = fundamentals.get('annual_dividend')
+
+        if sector in FCF_PAYOUT_SECTORS and free_cash_flow and annual_dividend and free_cash_flow > 0:
+            effective_payout_ratio = (annual_dividend / free_cash_flow) * 100
+            payout_type = "FCF"
+        else:
+            effective_payout_ratio = fundamentals.get('payout_ratio') or 0.0
+            payout_type = "GAAP"
 
         # 1. 计算稳定性评分
         # consecutive_years每年+10分，dividend_growth最多贡献30分
@@ -137,7 +155,7 @@ class FinancialServiceAnalyzer:
         # 2. 计算财务健康度评分（None 值用中性分替代）
         roe_score = min(roe or 0.0, 30.0)  # ROE最多30分
         debt_score = max(0.0, 30.0 - (debt_to_equity or 0.0) * 20)  # 负债率惩罚
-        payout_score = 40.0 if (payout_ratio or 0.0) < 70 else 20.0  # 派息率健康度
+        payout_score = 40.0 if effective_payout_ratio < 70 else 20.0  # 派息率健康度
         # Cap at 100 for consistency with stability_score
         health_score = min(100.0, roe_score + debt_score + payout_score)
 
@@ -153,9 +171,9 @@ class FinancialServiceAnalyzer:
 
         # 5. 生成风险标记
         risk_flags = []
-        if payout_ratio > 100:
+        if effective_payout_ratio > 100:
             risk_flags.append("PAYOUT_RATIO_CRITICAL")
-        elif payout_ratio > 80:
+        elif effective_payout_ratio > 80:
             risk_flags.append("HIGH_PAYOUT_RISK")
 
         if debt_to_equity > 2.0:
@@ -172,7 +190,9 @@ class FinancialServiceAnalyzer:
             stability_score=stability_score,
             health_score=health_score,
             defensiveness_score=defensiveness_score,
-            risk_flags=risk_flags
+            risk_flags=risk_flags,
+            payout_type=payout_type,
+            effective_payout_ratio=effective_payout_ratio,
         )
 
 

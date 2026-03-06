@@ -38,6 +38,7 @@ class TickerData:
     industry: Optional[str] = None
     sector: Optional[str] = None
     free_cash_flow: Optional[float] = None
+    payout_type: Optional[str] = None   # "FCF" | "GAAP" | None
 
 
 @dataclass

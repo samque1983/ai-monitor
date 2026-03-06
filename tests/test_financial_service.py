@@ -175,6 +175,65 @@ def test_risk_flag_generation():
     assert len(score_healthy.risk_flags) == 0
 
 
+FCF_SECTORS = ["Energy", "Utilities", "Real Estate"]
+
+
+@pytest.mark.parametrize("sector", FCF_SECTORS)
+def test_fcf_payout_used_for_capital_intensive_sectors(sector):
+    """Energy/Utilities/Real Estate must use FCF payout ratio, not GAAP."""
+    analyzer = FinancialServiceAnalyzer(enabled=False, fallback_to_rules=True)
+    fundamentals = {
+        'consecutive_years': 10,
+        'dividend_growth_5y': 3.0,
+        'roe': 12.0,
+        'debt_to_equity': 1.5,
+        'payout_ratio': 120.0,      # GAAP payout > 100 — would trigger exclusion
+        'sector': sector,
+        'free_cash_flow': 5_000_000,
+        'annual_dividend': 3_000_000,  # FCF payout = 60% — healthy
+    }
+    result = analyzer.analyze_dividend_quality("TEST", fundamentals)
+    assert result is not None
+    assert result.payout_type == "FCF"
+    assert result.effective_payout_ratio == pytest.approx(60.0)
+
+
+def test_gaap_payout_used_for_non_fcf_sectors():
+    """Consumer/Tech/Healthcare sectors must use GAAP payout ratio."""
+    analyzer = FinancialServiceAnalyzer(enabled=False, fallback_to_rules=True)
+    fundamentals = {
+        'consecutive_years': 10,
+        'dividend_growth_5y': 5.0,
+        'roe': 20.0,
+        'debt_to_equity': 0.5,
+        'payout_ratio': 65.0,
+        'sector': 'Consumer Staples',
+        'free_cash_flow': 5_000_000,
+        'annual_dividend': 3_000_000,
+    }
+    result = analyzer.analyze_dividend_quality("TEST", fundamentals)
+    assert result.payout_type == "GAAP"
+    assert result.effective_payout_ratio == pytest.approx(65.0)
+
+
+def test_fcf_payout_fallback_when_free_cash_flow_missing():
+    """FCF sector with missing free_cash_flow falls back to GAAP payout."""
+    analyzer = FinancialServiceAnalyzer(enabled=False, fallback_to_rules=True)
+    fundamentals = {
+        'consecutive_years': 8,
+        'dividend_growth_5y': 2.0,
+        'roe': 10.0,
+        'debt_to_equity': 1.0,
+        'payout_ratio': 75.0,
+        'sector': 'Utilities',
+        'free_cash_flow': None,
+        'annual_dividend': None,
+    }
+    result = analyzer.analyze_dividend_quality("TEST", fundamentals)
+    assert result.payout_type == "GAAP"
+    assert result.effective_payout_ratio == pytest.approx(75.0)
+
+
 def test_calculate_consecutive_years():
     """测试连续派息年限计算（季度派息，2020-2025）"""
     # 模拟季度派息：每年4次，2020-2025共6年
