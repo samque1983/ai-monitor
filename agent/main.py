@@ -32,6 +32,10 @@ async def lifespan(app: FastAPI):
         api_key=config.get("ANTHROPIC_API_KEY"),
         model=config.get("CLAUDE_MODEL", "claude-opus-4-6"),
     )
+    if not config.get("DINGTALK_APP_SECRET"):
+        logger.warning("DINGTALK_APP_SECRET not set — /dingtalk/webhook is unauthenticated")
+    if not config.get("SCAN_API_KEY"):
+        logger.warning("SCAN_API_KEY not set — /api/scan_results is unauthenticated")
     logger.info("Agent started")
     yield
     db.close()
