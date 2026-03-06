@@ -370,6 +370,41 @@ class TestIBKRPriceData:
             mock_ibkr.assert_called_once_with("AAPL", "1y")
             assert len(result) == 3
 
+    def test_ibkr_price_data_tries_realtime_then_delayed(self):
+        """_ibkr_price_data tries ADJUSTED_LAST first; on empty result, retries with TRADES."""
+        provider = MarketDataProvider(ibkr_config=None)
+        provider.ibkr = MagicMock()
+
+        dates = pd.date_range("2025-01-01", periods=3, freq="B")
+        fake_df = pd.DataFrame({
+            "date": [str(d.date()) for d in dates],
+            "open": [100.0, 101.0, 102.0], "high": [105.0, 106.0, 107.0],
+            "low": [95.0, 96.0, 97.0], "close": [102.0, 103.0, 104.0],
+            "volume": [1000, 1100, 1200],
+        })
+
+        fake_bars = [MagicMock()]  # non-empty list = success
+
+        # First call (ADJUSTED_LAST) → empty; second (TRADES) → data
+        provider.ibkr.reqHistoricalData.side_effect = [[], fake_bars]
+
+        with patch("ib_insync.util.df", return_value=fake_df):
+            result = provider._ibkr_price_data("AAPL", "1y")
+
+        assert provider.ibkr.reqHistoricalData.call_count == 2
+        calls = provider.ibkr.reqHistoricalData.call_args_list
+        assert calls[0][1]["whatToShow"] == "ADJUSTED_LAST"
+        assert calls[1][1]["whatToShow"] == "TRADES"
+
+    def test_ibkr_price_data_raises_when_both_fail(self):
+        """_ibkr_price_data raises ValueError when both real-time and delayed return empty."""
+        provider = MarketDataProvider(ibkr_config=None)
+        provider.ibkr = MagicMock()
+        provider.ibkr.reqHistoricalData.return_value = []
+
+        with pytest.raises(ValueError, match="No IBKR data.*tried real-time and delayed"):
+            provider._ibkr_price_data("AAPL", "1y")
+
     def test_get_price_data_falls_back_to_yfinance_when_ibkr_fails(self):
         """If _ibkr_price_data raises, get_price_data must call _yf_price_data."""
         provider = MarketDataProvider(ibkr_config=None)

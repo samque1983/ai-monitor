@@ -66,29 +66,46 @@ class MarketDataProvider:
             return Stock(ticker, "SMART", "USD")
 
     def _ibkr_price_data(self, ticker: str, period: str) -> pd.DataFrame:
-        """Fetch daily OHLCV from IBKR Gateway."""
+        """Fetch daily OHLCV from IBKR Gateway.
+
+        Tries real-time (ADJUSTED_LAST) first; falls back to delayed (TRADES)
+        if the account has no real-time subscription.
+        """
         from ib_insync import util
         contract = self._make_contract(ticker)
         duration = self._PERIOD_MAP.get(period, "1 Y")
-        bars = self.ibkr.reqHistoricalData(
-            contract,
-            endDateTime="",
-            durationStr=duration,
-            barSizeSetting="1 day",
-            whatToShow="ADJUSTED_LAST",
-            useRTH=True,
-            formatDate=1,
-        )
-        if not bars:
-            raise ValueError(f"No IBKR price data for {ticker}")
-        df = util.df(bars)
-        df = df.rename(columns={
-            "open": "Open", "high": "High", "low": "Low",
-            "close": "Close", "volume": "Volume",
-        })
-        df.index = pd.to_datetime(df["date"])
-        df.index.name = None
-        return df.drop(columns=["date"], errors="ignore")
+
+        attempts = [
+            (1, "ADJUSTED_LAST"),  # real-time / subscription
+            (3, "TRADES"),         # delayed (free, 15-min)
+        ]
+        for mkt_data_type, what_to_show in attempts:
+            try:
+                self.ibkr.reqMarketDataType(mkt_data_type)
+                bars = self.ibkr.reqHistoricalData(
+                    contract,
+                    endDateTime="",
+                    durationStr=duration,
+                    barSizeSetting="1 day",
+                    whatToShow=what_to_show,
+                    useRTH=True,
+                    formatDate=1,
+                )
+                if bars:
+                    df = util.df(bars)
+                    df = df.rename(columns={
+                        "open": "Open", "high": "High", "low": "Low",
+                        "close": "Close", "volume": "Volume",
+                    })
+                    df.index = pd.to_datetime(df["date"])
+                    df.index.name = None
+                    logger.debug(f"{ticker}: IBKR price data via {what_to_show}")
+                    return df.drop(columns=["date"], errors="ignore")
+            except Exception as e:
+                logger.debug(f"{ticker}: IBKR {what_to_show} failed: {e}")
+                continue
+
+        raise ValueError(f"No IBKR data for {ticker} (tried real-time and delayed)")
 
     def get_price_data(self, ticker: str, period: str = "1y") -> pd.DataFrame:
         """Fetch OHLCV price data. IBKR first, yfinance fallback."""
@@ -111,29 +128,45 @@ class MarketDataProvider:
             return pd.DataFrame()
 
     def _ibkr_weekly_price_data(self, ticker: str, period: str) -> pd.DataFrame:
-        """Fetch weekly OHLCV from IBKR Gateway."""
+        """Fetch weekly OHLCV from IBKR Gateway.
+
+        Tries real-time (ADJUSTED_LAST) first; falls back to delayed (TRADES).
+        """
         from ib_insync import util
         contract = self._make_contract(ticker)
         duration = self._PERIOD_MAP.get(period, "1 Y")
-        bars = self.ibkr.reqHistoricalData(
-            contract,
-            endDateTime="",
-            durationStr=duration,
-            barSizeSetting="1 week",
-            whatToShow="ADJUSTED_LAST",
-            useRTH=True,
-            formatDate=1,
-        )
-        if not bars:
-            raise ValueError(f"No IBKR weekly data for {ticker}")
-        df = util.df(bars)
-        df = df.rename(columns={
-            "open": "Open", "high": "High", "low": "Low",
-            "close": "Close", "volume": "Volume",
-        })
-        df.index = pd.to_datetime(df["date"])
-        df.index.name = None
-        return df.drop(columns=["date"], errors="ignore")
+
+        attempts = [
+            (1, "ADJUSTED_LAST"),
+            (3, "TRADES"),
+        ]
+        for mkt_data_type, what_to_show in attempts:
+            try:
+                self.ibkr.reqMarketDataType(mkt_data_type)
+                bars = self.ibkr.reqHistoricalData(
+                    contract,
+                    endDateTime="",
+                    durationStr=duration,
+                    barSizeSetting="1 week",
+                    whatToShow=what_to_show,
+                    useRTH=True,
+                    formatDate=1,
+                )
+                if bars:
+                    df = util.df(bars)
+                    df = df.rename(columns={
+                        "open": "Open", "high": "High", "low": "Low",
+                        "close": "Close", "volume": "Volume",
+                    })
+                    df.index = pd.to_datetime(df["date"])
+                    df.index.name = None
+                    logger.debug(f"{ticker}: IBKR weekly data via {what_to_show}")
+                    return df.drop(columns=["date"], errors="ignore")
+            except Exception as e:
+                logger.debug(f"{ticker}: IBKR weekly {what_to_show} failed: {e}")
+                continue
+
+        raise ValueError(f"No IBKR data for {ticker} (tried real-time and delayed)")
 
     def _yf_weekly_price_data(self, ticker: str, period: str) -> pd.DataFrame:
         """Fetch weekly OHLCV from yfinance."""
