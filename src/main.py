@@ -224,6 +224,32 @@ def run_scan(config_path: str = "config.yaml"):
         opportunity_cards=opportunity_cards or None,
     )
 
+    # Step 6.5: Push scan results to cloud agent (if configured)
+    agent_url = config.get("agent", {}).get("url", "")
+    agent_api_key = config.get("agent", {}).get("api_key", "")
+    if agent_url and sell_put_results:
+        try:
+            import requests as req_lib
+            cards_payload = [
+                {
+                    "ticker": signal.ticker,
+                    "strategy": "SELL_PUT",
+                    "trigger_reason": f"行权价 ${signal.strike}, 年化 {signal.apy:.1f}%",
+                    "action": f"卖出 ${signal.strike} Put, DTE {signal.dte}",
+                }
+                for signal, _ in sell_put_results
+            ]
+            req_lib.post(
+                f"{agent_url}/api/scan_results",
+                json={"scan_date": str(today), "results": cards_payload},
+                headers={"X-API-Key": agent_api_key},
+                verify=False,
+                timeout=10,
+            )
+            logger.info(f"Pushed {len(cards_payload)} results to agent")
+        except Exception as e:
+            logger.warning(f"Agent push failed: {e}")
+
     # Step 6: Output
     print(report)
 

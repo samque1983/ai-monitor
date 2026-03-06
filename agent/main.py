@@ -2,9 +2,11 @@
 import logging
 import os
 from contextlib import asynccontextmanager
+from typing import List, Any
 
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from agent import config
 from agent.db import AgentDB
@@ -67,3 +69,29 @@ async def dingtalk_webhook(request: Request):
         send_reply(msg["session_webhook"], "处理出错，请稍后重试。")
 
     return JSONResponse({"ok": True})
+
+
+class ScanResultsPayload(BaseModel):
+    scan_date: str
+    results: List[Any]
+
+
+def _get_db() -> AgentDB:
+    """Return the module-level db, lazily initializing if lifespan didn't run (e.g. tests)."""
+    global db
+    if db is None:
+        db_path = config.get("AGENT_DB_PATH", "data/agent.db")
+        os.makedirs(os.path.dirname(db_path) if "/" in db_path else ".", exist_ok=True)
+        db = AgentDB(db_path)
+    return db
+
+
+@app.post("/api/scan_results")
+async def push_scan_results(payload: ScanResultsPayload, request: Request):
+    api_key = config.get("SCAN_API_KEY")
+    if api_key and request.headers.get("X-API-Key") != api_key:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+
+    _get_db().save_scan_results(payload.scan_date, payload.results)
+    logger.info(f"Scan results saved: {payload.scan_date}, {len(payload.results)} signals")
+    return {"saved": len(payload.results), "scan_date": payload.scan_date}

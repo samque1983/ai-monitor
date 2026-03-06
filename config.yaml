@@ -135,3 +135,7 @@ card_engine:
   card_db_path: "data/card_store.db"
   dingtalk_webhook: ""         # set DINGTALK_WEBHOOK env var
   default_position_size: 10000
+
+agent:
+  url: ""          # e.g. https://your-app.fly.dev
+  api_key: ""      # SCAN_API_KEY
