@@ -24,6 +24,12 @@ class MarketDataProvider:
         if iv_db_path:
             self.iv_store = IVStore(iv_db_path)
 
+    _PERIOD_MAP = {
+        "5d": "5 D", "1mo": "1 M", "3mo": "3 M",
+        "6mo": "6 M", "1y": "1 Y", "2y": "2 Y",
+        "5y": "5 Y", "10y": "10 Y",
+    }
+
     def _try_connect_ibkr(self, config: dict):
         """Attempt IBKR connection. Returns IB instance or None."""
         try:
@@ -42,8 +48,55 @@ class MarketDataProvider:
             logger.warning(f"IBKR connection failed, using yfinance fallback: {e}")
             return None
 
+    def _make_contract(self, ticker: str):
+        """Create an ib_insync Contract for the given ticker."""
+        from ib_insync import Stock
+        market = classify_market(ticker)
+        if market == "HK":
+            symbol = ticker.replace(".HK", "")
+            return Stock(symbol, "SEHK", "HKD")
+        elif market == "CN":
+            if ticker.endswith(".SS"):
+                symbol = ticker.replace(".SS", "")
+                return Stock(symbol, "SSE", "CNH")
+            else:
+                symbol = ticker.replace(".SZ", "")
+                return Stock(symbol, "SZSE", "CNH")
+        else:
+            return Stock(ticker, "SMART", "USD")
+
+    def _ibkr_price_data(self, ticker: str, period: str) -> pd.DataFrame:
+        """Fetch daily OHLCV from IBKR Gateway."""
+        from ib_insync import util
+        contract = self._make_contract(ticker)
+        duration = self._PERIOD_MAP.get(period, "1 Y")
+        bars = self.ibkr.reqHistoricalData(
+            contract,
+            endDateTime="",
+            durationStr=duration,
+            barSizeSetting="1 day",
+            whatToShow="ADJUSTED_LAST",
+            useRTH=True,
+            formatDate=1,
+        )
+        if not bars:
+            raise ValueError(f"No IBKR price data for {ticker}")
+        df = util.df(bars)
+        df = df.rename(columns={
+            "open": "Open", "high": "High", "low": "Low",
+            "close": "Close", "volume": "Volume",
+        })
+        df.index = pd.to_datetime(df["date"])
+        df.index.name = None
+        return df.drop(columns=["date"], errors="ignore")
+
     def get_price_data(self, ticker: str, period: str = "1y") -> pd.DataFrame:
         """Fetch OHLCV price data. IBKR first, yfinance fallback."""
+        if self.ibkr:
+            try:
+                return self._ibkr_price_data(ticker, period)
+            except Exception as e:
+                logger.warning(f"IBKR price fetch failed for {ticker}, falling back: {e}")
         return self._yf_price_data(ticker, period)
 
     def _yf_price_data(self, ticker: str, period: str) -> pd.DataFrame:
@@ -57,8 +110,33 @@ class MarketDataProvider:
             logger.error(f"yfinance price fetch failed for {ticker}: {e}")
             return pd.DataFrame()
 
-    def get_weekly_price_data(self, ticker: str, period: str = "1y") -> pd.DataFrame:
-        """Fetch weekly OHLCV data for weekly MA calculation."""
+    def _ibkr_weekly_price_data(self, ticker: str, period: str) -> pd.DataFrame:
+        """Fetch weekly OHLCV from IBKR Gateway."""
+        from ib_insync import util
+        contract = self._make_contract(ticker)
+        duration = self._PERIOD_MAP.get(period, "1 Y")
+        bars = self.ibkr.reqHistoricalData(
+            contract,
+            endDateTime="",
+            durationStr=duration,
+            barSizeSetting="1 week",
+            whatToShow="ADJUSTED_LAST",
+            useRTH=True,
+            formatDate=1,
+        )
+        if not bars:
+            raise ValueError(f"No IBKR weekly data for {ticker}")
+        df = util.df(bars)
+        df = df.rename(columns={
+            "open": "Open", "high": "High", "low": "Low",
+            "close": "Close", "volume": "Volume",
+        })
+        df.index = pd.to_datetime(df["date"])
+        df.index.name = None
+        return df.drop(columns=["date"], errors="ignore")
+
+    def _yf_weekly_price_data(self, ticker: str, period: str) -> pd.DataFrame:
+        """Fetch weekly OHLCV from yfinance."""
         try:
             df = yf.download(ticker, period=period, interval="1wk", progress=False, timeout=30)
             return df
@@ -66,8 +144,117 @@ class MarketDataProvider:
             logger.error(f"yfinance weekly data failed for {ticker}: {e}")
             return pd.DataFrame()
 
+    def get_weekly_price_data(self, ticker: str, period: str = "1y") -> pd.DataFrame:
+        """Fetch weekly OHLCV data. IBKR first, yfinance fallback."""
+        if self.ibkr:
+            try:
+                return self._ibkr_weekly_price_data(ticker, period)
+            except Exception as e:
+                logger.warning(f"IBKR weekly fetch failed for {ticker}, falling back: {e}")
+        return self._yf_weekly_price_data(ticker, period)
+
+    def _ibkr_options_chain(self, ticker: str, dte_min: int, dte_max: int) -> pd.DataFrame:
+        """Fetch put options chain from IBKR Gateway."""
+        from ib_insync import Option, util
+
+        contract = self._make_contract(ticker)
+        self.ibkr.qualifyContracts(contract)
+
+        chains = self.ibkr.reqSecDefOptParams(
+            contract.symbol, "", contract.secType, contract.conId
+        )
+        if not chains:
+            raise ValueError(f"No option chain params for {ticker}")
+
+        chain = chains[0]
+        for c in chains:
+            if c.exchange == contract.exchange:
+                chain = c
+                break
+
+        today = date.today()
+        valid_exps = []
+        for exp_str in chain.expirations:
+            exp_date = datetime.strptime(exp_str, "%Y%m%d").date()
+            dte = (exp_date - today).days
+            if dte_min <= dte <= dte_max:
+                valid_exps.append((exp_str, exp_date, dte))
+
+        if not valid_exps:
+            raise ValueError(f"No expirations in DTE range {dte_min}-{dte_max} for {ticker}")
+
+        tickers_info = self.ibkr.reqTickers(contract)
+        current_price = tickers_info[0].marketPrice() if tickers_info else 0
+        if current_price <= 0:
+            current_price = tickers_info[0].close if tickers_info else 0
+
+        put_contracts = []
+        for exp_str, exp_date, dte in valid_exps:
+            for strike in sorted(chain.strikes):
+                if current_price > 0:
+                    if strike < current_price * 0.5 or strike > current_price * 1.5:
+                        continue
+                put_contracts.append(
+                    Option(contract.symbol, exp_str, strike, "P", chain.exchange)
+                )
+
+        if not put_contracts:
+            raise ValueError(f"No valid put contracts for {ticker}")
+
+        qualified = self.ibkr.qualifyContracts(*put_contracts)
+        tickers_data = self.ibkr.reqTickers(*qualified)
+
+        rows = []
+        exp_map = {exp_str: (exp_date, dte) for exp_str, exp_date, dte in valid_exps}
+        for t in tickers_data:
+            exp_str_key = t.contract.lastTradeDateOrContractMonth
+            exp_info = exp_map.get(exp_str_key)
+            if exp_info is None:
+                continue
+            exp_date, dte = exp_info
+            rows.append({
+                "strike": t.contract.strike,
+                "bid": t.bid if t.bid > 0 else 0.0,
+                "impliedVolatility": t.modelGreeks.impliedVol if t.modelGreeks else 0.0,
+                "dte": dte,
+                "expiration": exp_date,
+            })
+
+        if not rows:
+            raise ValueError(f"No option tickers returned for {ticker}")
+        return pd.DataFrame(rows)
+
+    def _ibkr_earnings_date(self, ticker: str) -> Optional[date]:
+        """Fetch next earnings date from IBKR CalendarReport XML."""
+        import xml.etree.ElementTree as ET
+        contract = self._make_contract(ticker)
+        self.ibkr.qualifyContracts(contract)
+        xml_data = self.ibkr.reqFundamentalData(contract, "CalendarReport")
+        if not xml_data:
+            raise ValueError(f"No IBKR CalendarReport for {ticker}")
+        root = ET.fromstring(xml_data)
+        today = date.today()
+        future_dates = []
+        for ann in root.findall(".//Announcement[@type='Earnings']"):
+            date_el = ann.find("Date")
+            if date_el is not None and date_el.text:
+                try:
+                    d = date.fromisoformat(date_el.text.strip())
+                    if d >= today:
+                        future_dates.append(d)
+                except ValueError:
+                    continue
+        if not future_dates:
+            raise ValueError(f"No future earnings dates in IBKR data for {ticker}")
+        return min(future_dates)
+
     def get_earnings_date(self, ticker: str) -> Optional[date]:
-        """Fetch next earnings date. yfinance primary."""
+        """Fetch next earnings date. IBKR first, yfinance fallback."""
+        if self.ibkr:
+            try:
+                return self._ibkr_earnings_date(ticker)
+            except Exception as e:
+                logger.warning(f"IBKR earnings date failed for {ticker}, falling back: {e}")
         try:
             t = yf.Ticker(ticker)
             cal = t.calendar
@@ -148,9 +335,14 @@ class MarketDataProvider:
         return classify_market(ticker) == "CN"
 
     def get_options_chain(self, ticker: str, dte_min: int = 45, dte_max: int = 60) -> pd.DataFrame:
-        """Fetch put options chain filtered by DTE range."""
+        """Fetch put options chain filtered by DTE range. IBKR first, yfinance fallback."""
         if self.should_skip_options(ticker):
             return pd.DataFrame()
+        if self.ibkr:
+            try:
+                return self._ibkr_options_chain(ticker, dte_min, dte_max)
+            except Exception as e:
+                logger.warning(f"IBKR options chain failed for {ticker}, falling back: {e}")
         return self._yf_options_chain(ticker, dte_min, dte_max)
 
     def _yf_options_chain(self, ticker: str, dte_min: int, dte_max: int) -> pd.DataFrame:

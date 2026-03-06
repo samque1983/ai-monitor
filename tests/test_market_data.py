@@ -351,3 +351,191 @@ class TestGetFundamentals:
         provider = MarketDataProvider()
         result = provider.get_fundamentals("0005.HK")
         assert result["dividend_yield"] == pytest.approx(5.43)  # must stay 5.43%, not 543%
+
+
+class TestIBKRPriceData:
+    def test_get_price_data_uses_ibkr_when_connected(self):
+        """When IBKR is connected, get_price_data must call _ibkr_price_data."""
+        provider = MarketDataProvider(ibkr_config=None)
+        provider.ibkr = MagicMock()  # Simulate connected IBKR
+
+        dates = pd.date_range("2025-01-01", periods=3, freq="B")
+        ibkr_df = pd.DataFrame({
+            "Open": [100, 101, 102], "High": [105, 106, 107],
+            "Low": [95, 96, 97], "Close": [102, 103, 104], "Volume": [1000, 1100, 1200],
+        }, index=dates)
+
+        with patch.object(provider, '_ibkr_price_data', return_value=ibkr_df) as mock_ibkr:
+            result = provider.get_price_data("AAPL", period="1y")
+            mock_ibkr.assert_called_once_with("AAPL", "1y")
+            assert len(result) == 3
+
+    def test_get_price_data_falls_back_to_yfinance_when_ibkr_fails(self):
+        """If _ibkr_price_data raises, get_price_data must call _yf_price_data."""
+        provider = MarketDataProvider(ibkr_config=None)
+        provider.ibkr = MagicMock()  # Simulate connected IBKR
+
+        dates = pd.date_range("2025-01-01", periods=2, freq="B")
+        yf_df = pd.DataFrame({
+            "Open": [100, 101], "High": [105, 106],
+            "Low": [95, 96], "Close": [102, 103], "Volume": [1000, 1100],
+        }, index=dates)
+
+        with patch.object(provider, '_ibkr_price_data', side_effect=Exception("IBKR error")):
+            with patch.object(provider, '_yf_price_data', return_value=yf_df) as mock_yf:
+                result = provider.get_price_data("AAPL", period="1y")
+                mock_yf.assert_called_once_with("AAPL", "1y")
+                assert len(result) == 2
+
+    def test_make_contract_us_ticker(self):
+        """US tickers map to SMART/USD Stock contracts."""
+        pytest.importorskip("ib_insync")
+        provider = MarketDataProvider(ibkr_config=None)
+        contract = provider._make_contract("AAPL")
+        assert contract.symbol == "AAPL"
+        assert contract.exchange == "SMART"
+        assert contract.currency == "USD"
+
+    def test_make_contract_hk_ticker(self):
+        """HK tickers strip .HK and use SEHK/HKD."""
+        pytest.importorskip("ib_insync")
+        provider = MarketDataProvider(ibkr_config=None)
+        contract = provider._make_contract("0700.HK")
+        assert contract.symbol == "0700"
+        assert contract.exchange == "SEHK"
+        assert contract.currency == "HKD"
+
+    def test_make_contract_cn_ss_ticker(self):
+        """CN .SS tickers strip suffix and use SSE/CNH."""
+        pytest.importorskip("ib_insync")
+        provider = MarketDataProvider(ibkr_config=None)
+        contract = provider._make_contract("600900.SS")
+        assert contract.symbol == "600900"
+        assert contract.exchange == "SSE"
+        assert contract.currency == "CNH"
+
+    def test_make_contract_cn_sz_ticker(self):
+        """CN .SZ tickers strip suffix and use SZSE/CNH."""
+        pytest.importorskip("ib_insync")
+        provider = MarketDataProvider(ibkr_config=None)
+        contract = provider._make_contract("000001.SZ")
+        assert contract.symbol == "000001"
+        assert contract.exchange == "SZSE"
+        assert contract.currency == "CNH"
+
+    def test_get_weekly_price_data_uses_ibkr_when_connected(self):
+        """When IBKR connected, get_weekly_price_data calls _ibkr_weekly_price_data."""
+        provider = MarketDataProvider(ibkr_config=None)
+        provider.ibkr = MagicMock()
+
+        dates = pd.date_range("2025-01-01", periods=3, freq="W")
+        ibkr_df = pd.DataFrame({
+            "Open": [100, 101, 102], "High": [105, 106, 107],
+            "Low": [95, 96, 97], "Close": [102, 103, 104], "Volume": [1000, 1100, 1200],
+        }, index=dates)
+
+        with patch.object(provider, '_ibkr_weekly_price_data', return_value=ibkr_df) as mock_ibkr:
+            result = provider.get_weekly_price_data("AAPL", period="1y")
+            mock_ibkr.assert_called_once_with("AAPL", "1y")
+            assert len(result) == 3
+
+    def test_get_weekly_price_data_falls_back_to_yfinance(self):
+        """If IBKR weekly fails, falls back to yfinance."""
+        provider = MarketDataProvider(ibkr_config=None)
+        provider.ibkr = MagicMock()
+
+        dates = pd.date_range("2025-01-01", periods=2, freq="W")
+        yf_df = pd.DataFrame({
+            "Open": [100, 101], "High": [105, 106],
+            "Low": [95, 96], "Close": [102, 103], "Volume": [1000, 1100],
+        }, index=dates)
+
+        with patch.object(provider, '_ibkr_weekly_price_data', side_effect=Exception("fail")):
+            with patch.object(provider, '_yf_weekly_price_data', return_value=yf_df) as mock_yf:
+                result = provider.get_weekly_price_data("AAPL")
+                mock_yf.assert_called_once()
+                assert len(result) == 2
+
+
+class TestIBKROptionsChain:
+    def test_get_options_chain_uses_ibkr_when_connected(self):
+        """When IBKR connected, get_options_chain calls _ibkr_options_chain."""
+        provider = MarketDataProvider(ibkr_config=None)
+        provider.ibkr = MagicMock()
+
+        ibkr_df = pd.DataFrame({
+            "strike": [45.0, 50.0],
+            "bid": [1.5, 1.0],
+            "impliedVolatility": [0.25, 0.28],
+            "dte": [55, 55],
+            "expiration": [date(2026, 5, 15), date(2026, 5, 15)],
+        })
+
+        with patch.object(provider, '_ibkr_options_chain', return_value=ibkr_df) as mock_ibkr:
+            result = provider.get_options_chain("AAPL", dte_min=45, dte_max=60)
+            mock_ibkr.assert_called_once_with("AAPL", 45, 60)
+            assert len(result) == 2
+
+    def test_get_options_chain_falls_back_to_yfinance(self):
+        """If IBKR options fails, falls back to yfinance."""
+        provider = MarketDataProvider(ibkr_config=None)
+        provider.ibkr = MagicMock()
+
+        yf_df = pd.DataFrame({
+            "strike": [50.0], "bid": [1.0],
+            "impliedVolatility": [0.28], "dte": [55],
+            "expiration": [date(2026, 5, 15)],
+        })
+
+        with patch.object(provider, '_ibkr_options_chain', side_effect=Exception("IBKR fail")):
+            with patch.object(provider, '_yf_options_chain', return_value=yf_df) as mock_yf:
+                result = provider.get_options_chain("AAPL")
+                mock_yf.assert_called_once()
+                assert len(result) == 1
+
+
+class TestIBKREarningsDate:
+    def test_get_earnings_date_uses_ibkr_when_connected(self):
+        """When IBKR connected, get_earnings_date calls _ibkr_earnings_date."""
+        provider = MarketDataProvider(ibkr_config=None)
+        provider.ibkr = MagicMock()
+        expected_date = date(2026, 4, 25)
+
+        with patch.object(provider, '_ibkr_earnings_date', return_value=expected_date) as mock_ibkr:
+            result = provider.get_earnings_date("AAPL")
+            mock_ibkr.assert_called_once_with("AAPL")
+            assert result == expected_date
+
+    def test_get_earnings_date_falls_back_to_yfinance(self):
+        """If IBKR earnings date fails, falls back to yfinance."""
+        provider = MarketDataProvider(ibkr_config=None)
+        provider.ibkr = MagicMock()
+        expected_date = date(2026, 4, 25)
+
+        with patch.object(provider, '_ibkr_earnings_date', side_effect=Exception("fail")):
+            with patch("src.market_data.yf.Ticker") as MockTicker:
+                MockTicker.return_value.calendar = {"Earnings Date": [datetime(2026, 4, 25)]}
+                result = provider.get_earnings_date("AAPL")
+                assert result == expected_date
+
+    def test_ibkr_earnings_date_parses_xml(self):
+        """_ibkr_earnings_date parses CalendarReport XML and returns nearest future date."""
+        provider = MarketDataProvider(ibkr_config=None)
+        provider.ibkr = MagicMock()
+
+        xml_data = """<?xml version="1.0"?>
+<CalendarReport>
+  <Announcements>
+    <Announcement type="Earnings">
+      <Date>2026-04-25</Date>
+    </Announcement>
+    <Announcement type="Earnings">
+      <Date>2025-01-20</Date>
+    </Announcement>
+  </Announcements>
+</CalendarReport>"""
+        provider.ibkr.reqFundamentalData.return_value = xml_data
+        provider.ibkr.qualifyContracts.return_value = [MagicMock()]
+
+        result = provider._ibkr_earnings_date("AAPL")
+        assert result == date(2026, 4, 25)
