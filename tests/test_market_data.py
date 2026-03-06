@@ -432,13 +432,21 @@ class TestIBKRPriceData:
         assert contract.currency == "USD"
 
     def test_make_contract_hk_ticker(self):
-        """HK tickers strip .HK and use SEHK/HKD."""
+        """HK tickers strip .HK, strip leading zeros, and use SEHK/HKD."""
         pytest.importorskip("ib_insync")
         provider = MarketDataProvider(ibkr_config=None)
         contract = provider._make_contract("0700.HK")
-        assert contract.symbol == "0700"
+        assert contract.symbol == "700"   # IBKR uses no leading zeros
         assert contract.exchange == "SEHK"
         assert contract.currency == "HKD"
+
+    def test_make_contract_hk_ticker_no_leading_zeros(self):
+        """0941.HK → 941 (strip leading zero); 2388.HK → 2388 (no change)."""
+        pytest.importorskip("ib_insync")
+        provider = MarketDataProvider(ibkr_config=None)
+        assert provider._make_contract("0941.HK").symbol == "941"
+        assert provider._make_contract("0002.HK").symbol == "2"
+        assert provider._make_contract("2388.HK").symbol == "2388"
 
     def test_make_contract_cn_ss_ticker(self):
         """CN .SS tickers strip suffix and use SSE/CNH."""

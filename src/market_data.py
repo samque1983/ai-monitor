@@ -53,7 +53,7 @@ class MarketDataProvider:
         from ib_insync import Stock
         market = classify_market(ticker)
         if market == "HK":
-            symbol = ticker.replace(".HK", "")
+            symbol = ticker.replace(".HK", "").lstrip("0") or "0"
             return Stock(symbol, "SEHK", "HKD")
         elif market == "CN":
             if ticker.endswith(".SS"):
