@@ -324,3 +324,103 @@ def test_calculate_dividend_growth_rate():
     # 验证CAGR在合理范围 [8.0, 10.0]
     # 理论值：(3.00/2.00)^(1/5) - 1 = 0.0845 = 8.45%
     assert 8.0 <= cagr <= 10.0, f"Expected CAGR in [8.0, 10.0], got {cagr:.2f}%"
+
+
+from unittest.mock import MagicMock, patch
+
+
+def _make_claude_response(score: float, rationale: str):
+    """Helper: mock anthropic messages.create response."""
+    msg = MagicMock()
+    msg.content = [MagicMock(text=f'{{"score": {score}, "rationale": "{rationale}"}}')]
+    return msg
+
+
+def test_defensiveness_score_calls_claude_when_enabled(tmp_path):
+    """When enabled=True and no cache, Claude is called and score used."""
+    from src.dividend_store import DividendStore
+    store = DividendStore(str(tmp_path / "test.db"))
+    analyzer = FinancialServiceAnalyzer(
+        enabled=True, api_key="test-key", store=store
+    )
+
+    with patch.object(analyzer, "_get_client") as mock_client_fn:
+        mock_client = MagicMock()
+        mock_client_fn.return_value = mock_client
+        mock_client.messages.create.return_value = _make_claude_response(82.0, "公用事业，需求刚性")
+
+        result = analyzer.analyze_dividend_quality("T", {
+            "consecutive_years": 10, "dividend_growth_5y": 3.0,
+            "roe": 15.0, "debt_to_equity": 0.5, "payout_ratio": 65.0,
+            "sector": "Utilities", "industry": "Electric Utilities",
+        })
+
+    assert result is not None
+    assert result.defensiveness_score == 82.0
+    mock_client.messages.create.assert_called_once()
+    store.close()
+
+
+def test_defensiveness_score_uses_cache_on_second_call(tmp_path):
+    """Second call with same sector/industry hits DB cache, Claude not called again."""
+    from src.dividend_store import DividendStore
+    store = DividendStore(str(tmp_path / "test.db"))
+    analyzer = FinancialServiceAnalyzer(
+        enabled=True, api_key="test-key", store=store
+    )
+
+    with patch.object(analyzer, "_get_client") as mock_client_fn:
+        mock_client = MagicMock()
+        mock_client_fn.return_value = mock_client
+        mock_client.messages.create.return_value = _make_claude_response(82.0, "公用事业，需求刚性")
+
+        analyzer.analyze_dividend_quality("T", {
+            "consecutive_years": 10, "dividend_growth_5y": 3.0,
+            "roe": 15.0, "debt_to_equity": 0.5, "payout_ratio": 65.0,
+            "sector": "Utilities", "industry": "Electric Utilities",
+        })
+        # Second call — same sector/industry
+        analyzer.analyze_dividend_quality("NEE", {
+            "consecutive_years": 8, "dividend_growth_5y": 6.0,
+            "roe": 12.0, "debt_to_equity": 1.0, "payout_ratio": 70.0,
+            "sector": "Utilities", "industry": "Electric Utilities",
+        })
+
+    # Claude called only once
+    assert mock_client.messages.create.call_count == 1
+    store.close()
+
+
+def test_defensiveness_score_fallback_on_claude_failure(tmp_path):
+    """When Claude raises an exception, defensiveness falls back to 50.0."""
+    from src.dividend_store import DividendStore
+    store = DividendStore(str(tmp_path / "test.db"))
+    analyzer = FinancialServiceAnalyzer(
+        enabled=True, api_key="test-key", store=store
+    )
+
+    with patch.object(analyzer, "_get_client") as mock_client_fn:
+        mock_client = MagicMock()
+        mock_client_fn.return_value = mock_client
+        mock_client.messages.create.side_effect = Exception("API error")
+
+        result = analyzer.analyze_dividend_quality("T", {
+            "consecutive_years": 10, "dividend_growth_5y": 3.0,
+            "roe": 15.0, "debt_to_equity": 0.5, "payout_ratio": 65.0,
+            "sector": "Utilities", "industry": "Electric Utilities",
+        })
+
+    assert result is not None
+    assert result.defensiveness_score == 50.0
+    store.close()
+
+
+def test_defensiveness_score_disabled_uses_fixed_50():
+    """When enabled=False, no Claude call, defensiveness is 50.0 as before."""
+    analyzer = FinancialServiceAnalyzer(enabled=False, fallback_to_rules=True)
+    result = analyzer.analyze_dividend_quality("T", {
+        "consecutive_years": 10, "dividend_growth_5y": 3.0,
+        "roe": 15.0, "debt_to_equity": 0.5, "payout_ratio": 65.0,
+        "sector": "Utilities", "industry": "Electric Utilities",
+    })
+    assert result.defensiveness_score == 50.0

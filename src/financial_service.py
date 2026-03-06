@@ -19,6 +19,7 @@ Financial Service 封装层
 from dataclasses import dataclass
 from typing import List, Dict, Any, Optional
 from datetime import date, datetime
+import json
 import logging
 
 logger = logging.getLogger(__name__)
@@ -63,15 +64,78 @@ class FinancialServiceAnalyzer:
     - overall_score = stability*0.4 + health*0.4 + defensiveness*0.2
     """
 
-    def __init__(self, enabled: bool = True, fallback_to_rules: bool = True):
+    def __init__(
+        self,
+        enabled: bool = True,
+        fallback_to_rules: bool = True,
+        api_key: str = "",
+        model: str = "claude-opus-4-6",
+        store=None,
+    ):
         """初始化Financial Service Analyzer
 
         Args:
-            enabled: 是否启用Financial Service API调用（Task 2.2+实现）
+            enabled: 是否启用Financial Service API调用
             fallback_to_rules: 服务不可用时是否降级到规则评分
+            api_key: Anthropic API key
+            model: Claude model ID
+            store: DividendStore instance for caching
         """
         self.enabled = enabled
         self.fallback_to_rules = fallback_to_rules
+        self.api_key = api_key
+        self.model = model
+        self.store = store
+        self._client = None
+
+    def _get_client(self):
+        """Lazy-init Anthropic client (same pattern as card_engine.py)."""
+        if self._client is None:
+            import anthropic
+            import httpx
+            self._client = anthropic.Anthropic(
+                api_key=self.api_key,
+                http_client=httpx.Client(verify=False),
+            )
+        return self._client
+
+    def _get_defensiveness_score(self, sector: str, industry: str) -> float:
+        """Return LLM-scored defensiveness (0-100). Falls back to 50.0 on any failure."""
+        if not sector and not industry:
+            return 50.0
+        if self.store:
+            cached = self.store.get_defensiveness_score(sector, industry)
+            if cached is not None:
+                logger.debug(f"Defensiveness cache hit: {sector}/{industry} → {cached[0]}")
+                return cached[0]
+        try:
+            client = self._get_client()
+            prompt = (
+                f"行业: {sector} / {industry}\n"
+                "评估该行业作为长期股息标的的防御性（0-100分）：\n"
+                "- 公用事业/必需消费/医疗保健 → 75-100（需求刚性，非周期）\n"
+                "- 金融/工业/通信 → 45-74（有稳定性但有周期风险）\n"
+                "- 科技/能源/材料/可选消费 → 0-44（高周期性，股息不稳定）\n"
+                '返回严格 JSON: {"score": float, "rationale": "1句话"}'
+            )
+            resp = client.messages.create(
+                model=self.model,
+                max_tokens=100,
+                system="你是专业行业分析师。只返回严格 JSON，不加任何解释或 markdown。",
+                messages=[{"role": "user", "content": prompt}],
+            )
+            raw = resp.content[0].text.strip()
+            raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+            data = json.loads(raw)
+            score = float(data["score"])
+            rationale = data.get("rationale", "")
+            if self.store:
+                self.store.save_defensiveness_score(sector, industry, score, rationale)
+            logger.info(f"Defensiveness scored: {sector}/{industry} → {score:.0f} ({rationale})")
+            return score
+        except Exception as e:
+            logger.warning(f"Defensiveness scoring failed for {sector}/{industry}: {e}, using 50.0")
+            return 50.0
 
     def analyze_dividend_quality(
         self,
@@ -96,18 +160,21 @@ class FinancialServiceAnalyzer:
         Returns:
             DividendQualityScore对象，如果数据不足返回None
         """
-        # Task 2.1: 当前所有情况都使用fallback
-        # Task 2.2+: 将实现Financial Service API调用
+        if self.enabled and self.api_key:
+            sector = fundamentals.get("sector") or ""
+            industry = fundamentals.get("industry") or ""
+            defensiveness_score = self._get_defensiveness_score(sector, industry)
+            return self._calculate_rule_based_score(ticker, fundamentals, defensiveness_override=defensiveness_score)
         if not self.fallback_to_rules:
-            logger.warning(f"{ticker}: Financial Service not implemented yet, no fallback allowed")
+            logger.warning(f"{ticker}: Financial Service disabled, no fallback allowed")
             return None
-
         return self._calculate_rule_based_score(ticker, fundamentals)
 
     def _calculate_rule_based_score(
         self,
         ticker: str,
-        fundamentals: Dict[str, Any]
+        fundamentals: Dict[str, Any],
+        defensiveness_override: float = None,
     ) -> DividendQualityScore:
         """规则化评分逻辑（降级方案）
 
@@ -159,8 +226,8 @@ class FinancialServiceAnalyzer:
         # Cap at 100 for consistency with stability_score
         health_score = min(100.0, roe_score + debt_score + payout_score)
 
-        # 3. 行业防御性评分（固定50分，fallback无行业分析能力）
-        defensiveness_score = 50.0
+        # 3. 行业防御性评分（LLM评分或固定50分）
+        defensiveness_score = defensiveness_override if defensiveness_override is not None else 50.0
 
         # 4. 综合评分（加权平均）
         overall_score = (
