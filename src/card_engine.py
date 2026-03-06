@@ -2,6 +2,7 @@
 import json
 import logging
 import os
+import requests
 from datetime import date, timedelta
 from typing import List, Dict, Any, Optional, Tuple
 
@@ -224,8 +225,76 @@ class CardEngine:
             logger.warning(f"{ticker}: dividend card generation failed: {e}")
             return None
 
+    def _format_card_markdown(self, card: Dict) -> str:
+        ticker = card.get("ticker", "")
+        strategy_label = "Sell Put 收租" if card.get("strategy") == "SELL_PUT" else "高股息双打"
+        p = card.get("key_params", {})
+        v = card.get("valuation", {})
+        events = card.get("events", [])
+        event_str = "、".join(f"{e.get('type','')} {e.get('days_away','')}天后" for e in events) or "无"
+
+        lines = [
+            f"## 🟢 {strategy_label} · {ticker}",
+            f"**触发**: {card.get('trigger_reason','')}",
+            f"**建议**: {card.get('action','')}",
+            "",
+        ]
+
+        if card.get("crosses_earnings") and card.get("protected_plan"):
+            pp = card["protected_plan"]
+            np_ = card["naked_plan"]
+            lines += [
+                f"⚠️ **跨财报 — 双方案对比**",
+                f"方案A（推荐）· {pp.get('desc','')}｜权利金 ${pp.get('net_premium',0):.2f}｜最大亏损 ${pp.get('max_loss',0):.2f}/股｜{pp.get('note','')}",
+                f"方案B · {np_.get('desc','')}｜权利金 ${np_.get('net_premium',0):.2f}｜最大亏损 ${np_.get('max_loss',0):.2f}/股｜{np_.get('note','')}",
+                "",
+            ]
+        else:
+            if p.get("strike"):
+                lines.append(f"行权价 ${p.get('strike')} | DTE {p.get('dte')}天 | 年化 {p.get('apy',0):.1f}%")
+
+        iron = v.get("iron_floor")
+        fair = v.get("fair_value")
+        logic = v.get("logic_summary", "")
+        if iron and fair:
+            lines.append(f"💡 估值: 铁底 ${iron} | 公允价 ${fair}")
+            if logic:
+                lines.append(f"  {logic}")
+
+        lines += [
+            f"⚠️ 事件: {event_str}",
+            f"🛑 止盈: {card.get('take_profit','')}",
+            f"🔴 止损: {card.get('stop_loss','')}",
+            f"最坏亏损: ${card.get('max_loss_usd',0):.1f}/股",
+        ]
+        return "\n".join(lines)
+
     def push_dingtalk(self, cards: List[Dict]):
-        pass  # implemented in Task 5
+        if not self.dingtalk_webhook or not cards:
+            return
+        for card in cards:
+            try:
+                text = self._format_card_markdown(card)
+                payload = {
+                    "msgtype": "markdown",
+                    "markdown": {
+                        "title": f"交易机会: {card.get('ticker','')}",
+                        "text": text,
+                    },
+                }
+                resp = requests.post(
+                    self.dingtalk_webhook,
+                    data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                    verify=False,
+                    timeout=10,
+                )
+                if resp.status_code == 200:
+                    logger.info(f"DingTalk pushed: {card.get('ticker')} {card.get('strategy')}")
+                else:
+                    logger.warning(f"DingTalk push failed: {resp.status_code}")
+            except Exception as e:
+                logger.warning(f"DingTalk push error: {e}")
 
     def close(self):
         self.store.close()

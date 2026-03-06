@@ -245,3 +245,36 @@ def test_process_dividend_generates_card(tmp_path):
     assert card["strategy"] == "HIGH_DIVIDEND"
     assert card["ticker"] == "ENB"
     engine.close()
+
+
+def test_push_dingtalk_sends_markdown(tmp_path):
+    config = make_config()
+    config["card_engine"]["card_db_path"] = str(tmp_path / "cards.db")
+    config["card_engine"]["dingtalk_webhook"] = "https://oapi.dingtalk.com/robot/send?access_token=test"
+    engine = CardEngine(config)
+
+    cards = [{
+        "ticker": "AAPL", "strategy": "SELL_PUT",
+        "trigger_reason": "跌入便宜区间",
+        "action": "卖出 6月 $170 Put",
+        "key_params": {"strike": 170, "dte": 60, "premium": 1.6, "apy": 11.8},
+        "win_scenarios": [{"prob": 0.85, "desc": "安全收租"}],
+        "valuation": {"iron_floor": 163.5, "fair_value": 182.5, "logic_summary": "EPS × PE"},
+        "events": [{"date": "2026-05-01", "type": "财报", "days_away": 45}],
+        "take_profit": "赚80%止盈", "stop_loss": "营收增速恶化",
+        "max_loss_usd": 9.1, "max_loss_pct": 0.09,
+        "crosses_earnings": True,
+        "protected_plan": {"desc": "Bull Put Spread", "net_premium": 0.9, "max_loss": 9.1, "note": "推荐"},
+        "naked_plan": {"desc": "Naked Sell Put", "net_premium": 1.6, "max_loss": 168.4, "note": "高风险"},
+    }]
+
+    with patch("requests.post") as mock_post:
+        mock_post.return_value.status_code = 200
+        engine.push_dingtalk(cards)
+        assert mock_post.called
+        payload = json_module.loads(mock_post.call_args[1]["data"])
+        assert payload["msgtype"] == "markdown"
+        assert "AAPL" in payload["markdown"]["text"]
+        assert "Bull Put Spread" in payload["markdown"]["text"]
+
+    engine.close()
