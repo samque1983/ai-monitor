@@ -132,3 +132,21 @@ def test_get_current_pool_uses_latest_version(tmp_path):
     pool = store.get_current_pool()
     assert set(pool) == {"PG", "JNJ"}
     store.close()
+
+
+def test_get_last_scan_date_returns_none_when_empty(tmp_path):
+    """get_last_scan_date() returns None when no versions exist."""
+    store = DividendStore(str(tmp_path / "test.db"))
+    assert store.get_last_scan_date() is None
+    store.close()
+
+
+def test_get_last_scan_date_returns_latest_version_date(tmp_path):
+    """get_last_scan_date() returns the date of the most recent saved version."""
+    store = DividendStore(str(tmp_path / "test.db"))
+    store.save_pool([_make_ticker("KO")], version="2026-01-01")
+    store.save_pool([_make_ticker("PG")], version="2026-03-01")
+
+    result = store.get_last_scan_date()
+    assert result == date(2026, 3, 1)
+    store.close()

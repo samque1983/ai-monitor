@@ -116,6 +116,16 @@ class DividendStore:
         self.conn.commit()
         logger.info(f"Saved {len(tickers)} tickers to pool (version: {version})")
 
+    def get_last_scan_date(self) -> "date | None":
+        """Return the date of the most recent screening version, or None if empty."""
+        versions = self.list_versions()
+        if not versions:
+            return None
+        try:
+            return date.fromisoformat(versions[0]["version"])
+        except (ValueError, KeyError):
+            return None
+
     def get_current_pool(self) -> List[str]:
         """获取最新版本的ticker列表"""
         cursor = self.conn.cursor()

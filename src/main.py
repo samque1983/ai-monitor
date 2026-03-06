@@ -124,6 +124,22 @@ def run_scan(config_path: str = "config.yaml"):
         dividend_store = DividendStore(db_path)
         financial_service = FinancialServiceAnalyzer()
         try:
+            # Weekly refresh: run pool scan if empty or last scan >= 7 days ago
+            last_scan = dividend_store.get_last_scan_date()
+            needs_weekly = (last_scan is None) or ((today - last_scan).days >= 7)
+            if needs_weekly:
+                reason = "no previous scan" if last_scan is None else f"last scan {last_scan} ({(today - last_scan).days}d ago)"
+                logger.info(f"Dividend weekly scan triggered: {reason}")
+                universe = config.get("dividend_universe", [])
+                weekly_results = scan_dividend_pool_weekly(
+                    universe=universe,
+                    provider=provider,
+                    financial_service=financial_service,
+                    config=config,
+                )
+                dividend_store.save_pool(weekly_results, version=str(today))
+                logger.info(f"Dividend pool updated: {len(weekly_results)} tickers (version={today})")
+
             current_pool = dividend_store.get_current_pool()
             if current_pool:
                 dividend_signals = scan_dividend_buy_signal(
@@ -135,7 +151,7 @@ def run_scan(config_path: str = "config.yaml"):
                 pool_count = len(current_pool)
                 dividend_pool_summary = {
                     "count": pool_count,
-                    "last_update": str(date.today()),
+                    "last_update": str(last_scan or today),
                 }
                 logger.info(f"Dividend scan: {len(dividend_signals)} buy signals from pool of {pool_count}")
         except Exception as e:

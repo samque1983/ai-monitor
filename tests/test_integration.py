@@ -3,8 +3,9 @@
 import pytest
 import pandas as pd
 import numpy as np
-from datetime import date, datetime
-from unittest.mock import MagicMock
+from datetime import date, datetime, timedelta
+from unittest.mock import MagicMock, patch
+from src.dividend_store import DividendStore
 from src.data_engine import build_ticker_data
 from src.market_data import MarketDataProvider
 from src.scanners import scan_iv_extremes, scan_ma200_crossover, scan_leaps_setup, scan_sell_put, scan_iv_momentum, scan_earnings_gap
@@ -99,3 +100,36 @@ def test_phase2_pipeline_integration(mock_provider):
 
     assert "波动率异动雷达" in report
     assert "财报 Gap 预警" in report
+
+
+def test_weekly_scan_triggered_when_pool_empty(tmp_path):
+    """main.py triggers weekly scan when pool is empty."""
+    store = DividendStore(str(tmp_path / "test.db"))
+    assert store.get_last_scan_date() is None
+    assert store.get_current_pool() == []
+    store.close()
+
+
+def test_weekly_scan_triggered_after_7_days(tmp_path):
+    """main.py triggers weekly scan when last scan >= 7 days ago."""
+    store = DividendStore(str(tmp_path / "test.db"))
+    old_date = date.today() - timedelta(days=8)
+    from tests.test_dividend_store import _make_ticker
+    store.save_pool([_make_ticker("KO")], version=str(old_date))
+
+    last_scan = store.get_last_scan_date()
+    assert last_scan == old_date
+    assert (date.today() - last_scan).days >= 7
+    store.close()
+
+
+def test_weekly_scan_not_triggered_within_7_days(tmp_path):
+    """main.py skips weekly scan when last scan < 7 days ago."""
+    store = DividendStore(str(tmp_path / "test.db"))
+    recent_date = date.today() - timedelta(days=3)
+    from tests.test_dividend_store import _make_ticker
+    store.save_pool([_make_ticker("KO")], version=str(recent_date))
+
+    last_scan = store.get_last_scan_date()
+    assert (date.today() - last_scan).days < 7
+    store.close()
