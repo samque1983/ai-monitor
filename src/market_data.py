@@ -351,13 +351,20 @@ class MarketDataProvider:
             if roe is not None:
                 roe = roe * 100
 
+            dividend_yield_raw = info.get("dividendYield")
+            dividend_yield = dividend_yield_raw * 100 if dividend_yield_raw is not None else None
+
+            company_name = info.get("longName") or info.get("shortName") or ticker
+
             return {
                 "payout_ratio": payout_ratio,
                 "roe": roe,
                 "debt_to_equity": info.get("debtToEquity"),
                 "industry": info.get("industry"),
                 "sector": info.get("sector"),
-                "free_cash_flow": info.get("freeCashflow")
+                "free_cash_flow": info.get("freeCashflow"),
+                "dividend_yield": dividend_yield,
+                "company_name": company_name,
             }
 
         except Exception as e:

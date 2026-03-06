@@ -309,3 +309,32 @@ class TestGetFundamentals:
         assert result["sector"] == "Information Technology"
         assert result["free_cash_flow"] == 90000000000
         assert "trailingPE" not in result  # Should only include specified fields
+
+    @patch("src.market_data.yf.Ticker")
+    def test_get_fundamentals_returns_dividend_yield(self, MockTicker):
+        """get_fundamentals() must return dividend_yield as percentage."""
+        mock_t = MockTicker.return_value
+        mock_t.info = {
+            "payoutRatio": 0.65,
+            "returnOnEquity": 0.15,
+            "debtToEquity": 0.8,
+            "industry": "Utilities",
+            "sector": "Utilities",
+            "freeCashflow": 5_000_000,
+            "dividendYield": 0.035,  # 3.5% as decimal
+            "longName": "Test Corp",
+        }
+        provider = MarketDataProvider()
+        result = provider.get_fundamentals("TEST")
+        assert result["dividend_yield"] == pytest.approx(3.5)
+        assert result["company_name"] == "Test Corp"
+
+    @patch("src.market_data.yf.Ticker")
+    def test_get_fundamentals_dividend_yield_none_when_missing(self, MockTicker):
+        """get_fundamentals() returns None for dividend_yield if not in info."""
+        mock_t = MockTicker.return_value
+        mock_t.info = {"payoutRatio": 0.5}
+        provider = MarketDataProvider()
+        result = provider.get_fundamentals("TEST")
+        assert result["dividend_yield"] is None
+        assert result["company_name"] == "TEST"  # falls back to ticker
