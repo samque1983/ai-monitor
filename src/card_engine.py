@@ -83,6 +83,7 @@ class CardEngine:
                 messages=[{"role": "user", "content": prompt}],
             )
             raw = resp.content[0].text.strip()
+            raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
             data = json.loads(raw)
 
             fundamentals = {
@@ -156,7 +157,9 @@ class CardEngine:
                 system="你是交易领航员。生成机会卡片，返回严格 JSON，不加任何 markdown 或解释。",
                 messages=[{"role": "user", "content": prompt}],
             )
-            card_data = json.loads(resp.content[0].text.strip())
+            raw = resp.content[0].text.strip()
+            raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+            card_data = json.loads(raw)
             card_data["ticker"] = ticker
             card_data["strategy"] = strategy
             card_data["valuation"] = v or {}
@@ -192,7 +195,7 @@ class CardEngine:
             prompt = (
                 f"策略: 高股息防御双打  标的: {ticker}  当前价: ${td.last_price}\n"
                 f"当前股息率: {signal.current_yield:.2f}%（历史 {signal.yield_percentile:.0f} 分位）\n"
-                f"年度股息: ${td.dividend_yield or signal.current_yield}\n"
+                f"年度股息率: {signal.current_yield:.2f}%\n"
                 + (f"期权方案: 卖 Put ${opt.get('strike')} "
                    f"权利金 ${opt.get('bid')} DTE {opt.get('dte')}天\n"
                    if opt else "信号类型: 纯股票买入\n")
@@ -210,7 +213,9 @@ class CardEngine:
                 system="你是交易领航员。生成机会卡片，返回严格 JSON，不加任何 markdown 或解释。",
                 messages=[{"role": "user", "content": prompt}],
             )
-            card_data = json.loads(resp.content[0].text.strip())
+            raw = resp.content[0].text.strip()
+            raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+            card_data = json.loads(raw)
             card_data["ticker"] = ticker
             card_data["strategy"] = strategy
             card_data["valuation"] = v or {}
