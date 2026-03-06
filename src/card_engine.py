@@ -122,14 +122,14 @@ class CardEngine:
             logger.debug(f"{ticker}: SELL_PUT card cache hit")
             return cached
 
-        # Step 1: fundamental analysis
-        f, v = self._get_analysis(
-            ticker, price=ticker_data.last_price,
-            earnings_date=ticker_data.earnings_date,
-        )
-
-        # Step 2: generate card
         try:
+            # Step 1: fundamental analysis
+            f, v = self._get_analysis(
+                ticker, price=ticker_data.last_price,
+                earnings_date=ticker_data.earnings_date,
+            )
+
+            # Step 2: generate card
             client = self._get_client()
             prompt = (
                 f"策略: Sell Put 收租  标的: {ticker}  当前价: ${ticker_data.last_price}\n"
@@ -180,12 +180,12 @@ class CardEngine:
             return cached
 
         td = signal.ticker_data
-        f, v = self._get_analysis(
-            ticker, price=td.last_price,
-            earnings_date=td.earnings_date,
-        )
-
         try:
+            f, v = self._get_analysis(
+                ticker, price=td.last_price,
+                earnings_date=td.earnings_date,
+            )
+
             client = self._get_client()
             opt = signal.option_details or {}
             prompt = (
