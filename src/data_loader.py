@@ -75,7 +75,7 @@ def fetch_universe(csv_url: str) -> Tuple[List[str], Dict[str, float]]:
 
     Raises on network/parse failure (no data = no scan).
     """
-    resp = requests.get(csv_url, timeout=30)
+    resp = requests.get(csv_url, timeout=30, verify=False)
     resp.raise_for_status()
     resp.encoding = "utf-8"
     df = pd.read_csv(io.StringIO(resp.text))
