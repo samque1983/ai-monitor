@@ -33,6 +33,93 @@ dividend_scanners:
     max_dte: 90
 
 
+# 高股息养老股种子池 — 月度筛选的候选标的
+# 排除名单 (已割息): T, MMM, KMI
+dividend_universe:
+  # === 美股 Dividend Kings (连续提息40年+) ===
+  - KO       # Coca-Cola, 61yr
+  - PG       # Procter & Gamble, 67yr
+  - JNJ      # Johnson & Johnson, 61yr
+  - CL       # Colgate-Palmolive, 61yr
+  - KMB      # Kimberly-Clark, 51yr
+  - FRT      # Federal Realty REIT, 55yr
+  - EMR      # Emerson Electric, 47yr
+  - ITW      # Illinois Tool Works, 50yr+
+
+  # === 美股 Dividend Aristocrats (连续提息25年+) ===
+  - O        # Realty Income (月付息)
+  - NEE      # NextEra Energy
+  - SO       # Southern Company
+  - DUK      # Duke Energy
+  - WEC      # WEC Energy Group
+  - ATO      # Atmos Energy
+  - HD       # Home Depot
+  - LOW      # Lowe's
+  - ABT      # Abbott Labs
+  - GD       # General Dynamics
+  - LMT      # Lockheed Martin
+
+  # === 美股 高质量高收益 ===
+  - ABBV     # AbbVie, ~3.8%
+  - VZ       # Verizon, ~6.5%
+  - ENB      # Enbridge (管道, FCF派息健康)
+  - TRP      # TC Energy (管道)
+  - MO       # Altria, ~8.5%
+  - JPM      # JPMorgan Chase
+  - BLK      # BlackRock
+  - MSFT     # Microsoft
+
+  # === 美股 股息ETF ===
+  - SCHD     # Schwab US Dividend Equity
+  - VYM      # Vanguard High Dividend Yield
+  - HDV      # iShares Core High Dividend
+  - DGRO     # iShares Dividend Growth
+  - VIG      # Vanguard Dividend Appreciation
+
+  # === 港股 公用事业 ===
+  - "0002.HK"  # CLP Holdings 中电, 80yr连续
+  - "0006.HK"  # HK Electric 港灯, 岛屿垄断
+  - "0003.HK"  # HK & China Gas 煤气
+
+  # === 港股 REIT ===
+  - "0823.HK"  # Link REIT 领展, 亚洲最大
+  - "0778.HK"  # Fortune REIT 富豪
+
+  # === 港股 银行 ===
+  - "0005.HK"  # HSBC Holdings 汇丰
+  - "0011.HK"  # Hang Seng Bank 恒生
+  - "2388.HK"  # BOC Hong Kong 中银香港
+  - "0939.HK"  # CCB 建行H股
+  - "1398.HK"  # ICBC 工行H股
+
+  # === 港股 电信/能源 ===
+  - "0941.HK"  # China Mobile 中移动
+  - "0762.HK"  # China Unicom 中联通
+  - "0267.HK"  # CNOOC 中海油
+
+  # === 港股 地产/多元 ===
+  - "0016.HK"  # Sun Hung Kai 新鸿基
+  - "0001.HK"  # CK Hutchison 长和
+
+  # === A股 国有银行 ===
+  - "601398.SS"  # 工商银行
+  - "601939.SS"  # 建设银行
+  - "601988.SS"  # 中国银行
+  - "601288.SS"  # 农业银行
+  - "600036.SS"  # 招商银行
+
+  # === A股 公用事业/能源 ===
+  - "600900.SS"  # 长江电力
+  - "600025.SS"  # 华能水电
+  - "601088.SS"  # 中国神华
+  - "600941.SS"  # 中国移动A股
+
+  # === A股 红利ETF ===
+  - "510880.SS"  # 红利ETF
+  - "515080.SS"  # 中证红利ETF
+  - "512890.SS"  # 红利低波ETF
+
+
 reports:
   output_dir: "reports"
   log_dir: "logs"
