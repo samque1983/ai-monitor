@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 class CardStore:
     def __init__(self, db_path: str):
-        self.conn = sqlite3.connect(db_path)
+        self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self._create_tables()
 
     def _create_tables(self):
@@ -29,6 +29,8 @@ class CardStore:
             fundamentals_expires  TEXT,
             valuation_expires     TEXT
         );
+        CREATE INDEX IF NOT EXISTS idx_cards_ticker_strategy
+            ON opportunity_cards(ticker, strategy);
         """)
         self.conn.commit()
 
@@ -76,9 +78,18 @@ class CardStore:
         if not row:
             return None, None
         today = datetime.now().date().isoformat()
-        f = json.loads(row[0]) if row[2] and row[2] > today else None
-        v = json.loads(row[1]) if row[3] and row[3] > today else None
+        try:
+            f = json.loads(row[0]) if row[2] and row[2] >= today else None
+        except (json.JSONDecodeError, TypeError):
+            f = None
+        try:
+            v = json.loads(row[1]) if row[3] and row[3] >= today else None
+        except (json.JSONDecodeError, TypeError):
+            v = None
         return f, v
 
     def close(self):
-        self.conn.close()
+        try:
+            self.conn.close()
+        except Exception:
+            pass
