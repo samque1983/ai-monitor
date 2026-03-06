@@ -95,13 +95,14 @@ class FinancialServiceAnalyzer:
             import httpx
             self._client = anthropic.Anthropic(
                 api_key=self.api_key,
-                http_client=httpx.Client(verify=False),
+                http_client=httpx.Client(verify=False),  # corporate proxy workaround
             )
         return self._client
 
     def _get_defensiveness_score(self, sector: str, industry: str) -> float:
         """Return LLM-scored defensiveness (0-100). Falls back to 50.0 on any failure."""
         if not sector and not industry:
+            logger.debug("Defensiveness score: sector/industry unknown, using 50.0")
             return 50.0
         if self.store:
             cached = self.store.get_defensiveness_score(sector, industry)
