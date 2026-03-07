@@ -1,5 +1,5 @@
 # fly.toml
-app = "trading-agent"
+app = "ai-monitor"
 primary_region = "nrt"
 
 [build]

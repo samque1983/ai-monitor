@@ -5,6 +5,8 @@ data/iv_history.db
 reports/*.txt
 logs/*.log
 .env
+.env.*
+!.env.*.example
 *.egg-info/
 dist/
 build/
