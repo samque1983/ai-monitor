@@ -1,8 +1,8 @@
 __pycache__/
 *.pyc
 .pytest_cache/
-data/iv_history.db
-reports/*.txt
+data/*.db
+reports/
 logs/*.log
 .env
 .env.*
