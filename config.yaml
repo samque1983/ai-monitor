@@ -137,5 +137,5 @@ card_engine:
   default_position_size: 10000
 
 agent:
-  url: ""          # e.g. https://your-app.fly.dev
-  api_key: ""      # SCAN_API_KEY
+  url: "https://ai-monitor.fly.dev"
+  api_key: ""      # set SCAN_API_KEY env var
