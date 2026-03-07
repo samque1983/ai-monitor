@@ -27,10 +27,16 @@ async def lifespan(app: FastAPI):
     db_path = config.get("AGENT_DB_PATH", "data/agent.db")
     os.makedirs(os.path.dirname(db_path) if "/" in db_path else ".", exist_ok=True)
     db = AgentDB(db_path)
+    try:
+        llm_cfg = config.get_llm_config()
+    except ValueError as e:
+        logger.warning(f"LLM not configured: {e} — AI responses will fail")
+        llm_cfg = {"provider": "anthropic", "api_key": "", "model": None}
     claude_agent = ClaudeAgent(
         db=db,
-        api_key=config.get("ANTHROPIC_API_KEY"),
-        model=config.get("CLAUDE_MODEL", "claude-opus-4-6"),
+        llm_provider=llm_cfg["provider"],
+        llm_api_key=llm_cfg["api_key"],
+        llm_model=llm_cfg["model"],
     )
     if not config.get("DINGTALK_APP_SECRET"):
         logger.warning("DINGTALK_APP_SECRET not set — /dingtalk/webhook is unauthenticated")
