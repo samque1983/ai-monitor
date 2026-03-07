@@ -47,7 +47,7 @@ class LLMClient:
         for _ in range(5):
             kwargs = dict(
                 model=self._model,
-                max_tokens=1024,
+                max_tokens=2048,
                 system=system,
                 messages=loop_messages,
             )
@@ -75,7 +75,9 @@ class LLMClient:
                 loop_messages.append({"role": "user", "content": tool_results})
                 continue
 
+            logger.warning(f"Unexpected stop_reason: {response.stop_reason!r}, returning timeout message")
             break
+        logger.warning("Tool loop exhausted (5 iterations) without final reply")
         return "处理超时，请重试。"
 
     def _chat_openai(self, system, messages, tools_schema, tool_executor):
@@ -83,7 +85,7 @@ class LLMClient:
         openai_tools = _anthropic_tools_to_openai(tools_schema) if tools_schema else []
 
         for _ in range(5):
-            kwargs = dict(model=self._model, messages=loop_messages)
+            kwargs = dict(model=self._model, messages=loop_messages, max_tokens=2048)
             if openai_tools:
                 kwargs["tools"] = openai_tools
                 kwargs["tool_choice"] = "auto"
@@ -118,7 +120,9 @@ class LLMClient:
                     })
                 continue
 
+            logger.warning(f"Unexpected finish_reason: {choice.finish_reason!r}, returning timeout message")
             break
+        logger.warning("Tool loop exhausted (5 iterations) without final reply")
         return "处理超时，请重试。"
 
 
