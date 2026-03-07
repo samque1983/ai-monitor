@@ -126,12 +126,8 @@ def make_llm_client(provider: str, api_key: str, model: str = None) -> LLMClient
     """Factory: create an LLMClient for the given provider."""
     if provider == "anthropic":
         import anthropic
-        import httpx
         model = model or "claude-opus-4-6"
-        client = anthropic.Anthropic(
-            api_key=api_key,
-            http_client=httpx.Client(verify=False),
-        )
+        client = anthropic.Anthropic(api_key=api_key)
         return LLMClient("anthropic", client, model)
 
     elif provider in ("openai", "deepseek"):
