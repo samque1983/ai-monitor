@@ -226,8 +226,8 @@ def run_scan(config_path: str = "config.yaml"):
 
     # Step 6.5: Push scan results to cloud agent (if configured)
     agent_url = config.get("agent", {}).get("url", "")
-    agent_api_key = config.get("agent", {}).get("api_key", "")
-    if agent_url and sell_put_results:
+    agent_api_key = os.environ.get("SCAN_API_KEY") or config.get("agent", {}).get("api_key", "")
+    if agent_url:
         try:
             import requests as req_lib
             cards_payload = [
@@ -243,7 +243,6 @@ def run_scan(config_path: str = "config.yaml"):
                 f"{agent_url}/api/scan_results",
                 json={"scan_date": str(today), "results": cards_payload},
                 headers={"X-API-Key": agent_api_key},
-                verify=False,
                 timeout=10,
             )
             logger.info(f"Pushed {len(cards_payload)} results to agent")

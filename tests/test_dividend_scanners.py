@@ -227,10 +227,10 @@ class TestScanDividendBuySignal:
         # Mock provider
         mock_provider = MagicMock()
         # 当前价格低 → 股息率高 (7.5%)
-        mock_provider.get_price_data.return_value = {
-            "close": [45.0, 46.0, 47.0, 46.5, 46.0],
-            "date": ["2026-02-28", "2026-03-01", "2026-03-02", "2026-03-03", "2026-03-04"]
-        }
+        import pandas as pd
+        mock_provider.get_price_data.return_value = pd.DataFrame({
+            "Close": [45.0, 46.0, 47.0, 46.5, 46.0],
+        }, index=pd.to_datetime(["2026-02-28", "2026-03-01", "2026-03-02", "2026-03-03", "2026-03-04"]))
         # 年度股息 = 3.50
         mock_provider.get_dividend_history.return_value = [
             {"date": "2025-12-15", "amount": 0.875},
@@ -359,10 +359,10 @@ class TestScanDividendSellPut:
         mock_provider.should_skip_options.return_value = False  # US market
 
         # 当前价格低 → 股息率高 (7.5%)
-        mock_provider.get_price_data.return_value = {
-            "close": [46.0],
-            "date": ["2026-03-04"]
-        }
+        import pandas as pd
+        mock_provider.get_price_data.return_value = pd.DataFrame({
+            "Close": [46.0],
+        }, index=pd.to_datetime(["2026-03-04"]))
         # 年度股息 = 3.50
         mock_provider.get_dividend_history.return_value = [
             {"date": "2025-12-15", "amount": 0.875},

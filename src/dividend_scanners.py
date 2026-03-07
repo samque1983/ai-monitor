@@ -259,11 +259,11 @@ def scan_dividend_buy_signal(
         try:
             # Step 1: 获取当前价格（最近5天）
             price_data = provider.get_price_data(ticker, period='5d')
-            if not price_data or 'close' not in price_data or len(price_data['close']) == 0:
+            if price_data is None or price_data.empty or 'Close' not in price_data.columns:
                 logger.debug(f"{ticker}: No price data available, skipping")
                 continue
 
-            last_price = price_data['close'][-1]
+            last_price = price_data['Close'].iloc[-1]
             if last_price <= 0:
                 logger.warning(f"{ticker}: Invalid last price {last_price}, skipping")
                 continue
