@@ -90,6 +90,18 @@ def _get_db() -> AgentDB:
     return db
 
 
+@app.get("/api/scan_results")
+async def get_scan_results():
+    db = _get_db()
+    row = db.conn.execute(
+        "SELECT scan_date, results_json FROM scan_results ORDER BY scan_date DESC LIMIT 1"
+    ).fetchone()
+    if not row:
+        return {"scan_date": None, "results": []}
+    import json as _json
+    return {"scan_date": row["scan_date"], "results": _json.loads(row["results_json"])}
+
+
 @app.post("/api/scan_results")
 async def push_scan_results(payload: ScanResultsPayload, request: Request):
     api_key = config.get("SCAN_API_KEY")
