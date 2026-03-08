@@ -554,15 +554,15 @@ def _polygon_aggs_response(n_bars=5):
 
 
 def test_polygon_provider_get_price_data_returns_dataframe():
-    from src.market_data import PolygonProvider
+    from src.providers.polygon import PolygonProvider
     provider = PolygonProvider(api_key="test-key")
 
     mock_resp = MagicMock()
     mock_resp.status_code = 200
     mock_resp.json.return_value = _polygon_aggs_response(5)
 
-    with patch("src.market_data.requests.get", return_value=mock_resp):
-        with patch("src.market_data.time.sleep"):  # skip rate-limit sleep in tests
+    with patch("src.providers.polygon.requests.get", return_value=mock_resp):
+        with patch("src.providers.polygon.time.sleep"):  # skip rate-limit sleep in tests
             df = provider.get_price_data("AAPL", "5d")
 
     assert not df.empty
@@ -571,7 +571,7 @@ def test_polygon_provider_get_price_data_returns_dataframe():
 
 
 def test_polygon_provider_returns_empty_on_http_error():
-    from src.market_data import PolygonProvider
+    from src.providers.polygon import PolygonProvider
     provider = PolygonProvider(api_key="test-key")
 
     mock_resp = MagicMock()
@@ -579,19 +579,19 @@ def test_polygon_provider_returns_empty_on_http_error():
     mock_resp.raise_for_status.side_effect = Exception("403 Forbidden")
     mock_resp.json.return_value = {"status": "ERROR", "error": "Forbidden"}
 
-    with patch("src.market_data.requests.get", return_value=mock_resp):
-        with patch("src.market_data.time.sleep"):
+    with patch("src.providers.polygon.requests.get", return_value=mock_resp):
+        with patch("src.providers.polygon.time.sleep"):
             df = provider.get_price_data("AAPL", "1y")
 
     assert df.empty
 
 
 def test_polygon_provider_returns_empty_on_exception():
-    from src.market_data import PolygonProvider
+    from src.providers.polygon import PolygonProvider
     provider = PolygonProvider(api_key="test-key")
 
-    with patch("src.market_data.requests.get", side_effect=Exception("network error")):
-        with patch("src.market_data.time.sleep"):
+    with patch("src.providers.polygon.requests.get", side_effect=Exception("network error")):
+        with patch("src.providers.polygon.time.sleep"):
             df = provider.get_price_data("AAPL", "1y")
 
     assert df.empty
@@ -632,7 +632,7 @@ def _polygon_financials_response():
 
 
 def test_polygon_provider_get_fundamentals_returns_dict():
-    from src.market_data import PolygonProvider
+    from src.providers.polygon import PolygonProvider
     provider = PolygonProvider(api_key="test-key")
 
     responses = {
@@ -651,8 +651,8 @@ def test_polygon_provider_get_fundamentals_returns_dict():
         mock.json.return_value = {}
         return mock
 
-    with patch("src.market_data.requests.get", side_effect=fake_get):
-        with patch("src.market_data.time.sleep"):
+    with patch("src.providers.polygon.requests.get", side_effect=fake_get):
+        with patch("src.providers.polygon.time.sleep"):
             result = provider.get_fundamentals("AAPL")
 
     assert result is not None
@@ -667,11 +667,11 @@ def test_polygon_provider_get_fundamentals_returns_dict():
 
 
 def test_polygon_provider_get_fundamentals_returns_none_on_failure():
-    from src.market_data import PolygonProvider
+    from src.providers.polygon import PolygonProvider
     provider = PolygonProvider(api_key="test-key")
 
-    with patch("src.market_data.requests.get", side_effect=Exception("network error")):
-        with patch("src.market_data.time.sleep"):
+    with patch("src.providers.polygon.requests.get", side_effect=Exception("network error")):
+        with patch("src.providers.polygon.time.sleep"):
             result = provider.get_fundamentals("AAPL")
 
     assert result is None
@@ -938,15 +938,15 @@ def _polygon_aggs_response(n_bars=5):
 
 
 def test_polygon_provider_get_price_data_returns_dataframe():
-    from src.market_data import PolygonProvider
+    from src.providers.polygon import PolygonProvider
     provider = PolygonProvider(api_key="test-key")
 
     mock_resp = MagicMock()
     mock_resp.status_code = 200
     mock_resp.json.return_value = _polygon_aggs_response(5)
 
-    with patch("src.market_data.requests.get", return_value=mock_resp):
-        with patch("src.market_data.time.sleep"):  # skip rate-limit sleep in tests
+    with patch("src.providers.polygon.requests.get", return_value=mock_resp):
+        with patch("src.providers.polygon.time.sleep"):  # skip rate-limit sleep in tests
             df = provider.get_price_data("AAPL", "5d")
 
     assert not df.empty
@@ -955,26 +955,26 @@ def test_polygon_provider_get_price_data_returns_dataframe():
 
 
 def test_polygon_provider_returns_empty_on_http_error():
-    from src.market_data import PolygonProvider
+    from src.providers.polygon import PolygonProvider
     provider = PolygonProvider(api_key="test-key")
 
     mock_resp = MagicMock()
     mock_resp.status_code = 403
     mock_resp.json.return_value = {"status": "ERROR", "error": "Forbidden"}
 
-    with patch("src.market_data.requests.get", return_value=mock_resp):
-        with patch("src.market_data.time.sleep"):
+    with patch("src.providers.polygon.requests.get", return_value=mock_resp):
+        with patch("src.providers.polygon.time.sleep"):
             df = provider.get_price_data("AAPL", "1y")
 
     assert df.empty
 
 
 def test_polygon_provider_returns_empty_on_exception():
-    from src.market_data import PolygonProvider
+    from src.providers.polygon import PolygonProvider
     provider = PolygonProvider(api_key="test-key")
 
-    with patch("src.market_data.requests.get", side_effect=Exception("network error")):
-        with patch("src.market_data.time.sleep"):
+    with patch("src.providers.polygon.requests.get", side_effect=Exception("network error")):
+        with patch("src.providers.polygon.time.sleep"):
             df = provider.get_price_data("AAPL", "1y")
 
     assert df.empty
