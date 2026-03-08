@@ -4,7 +4,7 @@ import tempfile
 import pandas as pd
 import numpy as np
 import pytest
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Optional
 from unittest.mock import patch, MagicMock, PropertyMock
 from src.market_data import MarketDataProvider
@@ -535,6 +535,229 @@ class TestIBKROptionsChain:
                 result = provider.get_options_chain("AAPL")
                 mock_yf.assert_called_once()
                 assert len(result) == 1
+
+
+# ---------------------------------------------------------------------------
+# Task 1: PolygonProvider — price data
+# ---------------------------------------------------------------------------
+
+def _polygon_aggs_response(n_bars=5):
+    """Build a fake Polygon /v2/aggs response."""
+    import time as _time
+    today = date.today()
+    results = []
+    for i in range(n_bars):
+        d = today - timedelta(days=n_bars - i)
+        epoch_ms = int(_time.mktime(d.timetuple())) * 1000
+        results.append({"t": epoch_ms, "o": 100.0, "h": 105.0, "l": 99.0, "c": 102.0, "v": 1000000})
+    return {"results": results, "status": "OK"}
+
+
+def test_polygon_provider_get_price_data_returns_dataframe():
+    from src.market_data import PolygonProvider
+    provider = PolygonProvider(api_key="test-key")
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = _polygon_aggs_response(5)
+
+    with patch("src.market_data.requests.get", return_value=mock_resp):
+        with patch("src.market_data.time.sleep"):  # skip rate-limit sleep in tests
+            df = provider.get_price_data("AAPL", "5d")
+
+    assert not df.empty
+    assert list(df.columns) == ["Open", "High", "Low", "Close", "Volume"]
+    assert len(df) == 5
+
+
+def test_polygon_provider_returns_empty_on_http_error():
+    from src.market_data import PolygonProvider
+    provider = PolygonProvider(api_key="test-key")
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 403
+    mock_resp.raise_for_status.side_effect = Exception("403 Forbidden")
+    mock_resp.json.return_value = {"status": "ERROR", "error": "Forbidden"}
+
+    with patch("src.market_data.requests.get", return_value=mock_resp):
+        with patch("src.market_data.time.sleep"):
+            df = provider.get_price_data("AAPL", "1y")
+
+    assert df.empty
+
+
+def test_polygon_provider_returns_empty_on_exception():
+    from src.market_data import PolygonProvider
+    provider = PolygonProvider(api_key="test-key")
+
+    with patch("src.market_data.requests.get", side_effect=Exception("network error")):
+        with patch("src.market_data.time.sleep"):
+            df = provider.get_price_data("AAPL", "1y")
+
+    assert df.empty
+
+
+# ---------------------------------------------------------------------------
+# Task 2: PolygonProvider — fundamentals
+# ---------------------------------------------------------------------------
+
+def _polygon_ticker_response():
+    return {
+        "results": {
+            "name": "Apple Inc.",
+            "sic_description": "Electronic Computers",
+        }
+    }
+
+
+def _polygon_financials_response():
+    return {
+        "results": [
+            {
+                "financials": {
+                    "income_statement": {
+                        "net_income": {"value": 96995000000.0}
+                    },
+                    "balance_sheet": {
+                        "equity": {"value": 62146000000.0}
+                    },
+                    "cash_flow_statement": {
+                        "net_cash_flow_from_operating_activities": {"value": 110543000000.0},
+                        "capital_expenditure": {"value": -10708000000.0},
+                    },
+                }
+            }
+        ]
+    }
+
+
+def test_polygon_provider_get_fundamentals_returns_dict():
+    from src.market_data import PolygonProvider
+    provider = PolygonProvider(api_key="test-key")
+
+    responses = {
+        "/v3/reference/tickers/AAPL": _polygon_ticker_response(),
+        "/vX/reference/financials": _polygon_financials_response(),
+    }
+
+    def fake_get(url, params=None, timeout=15):
+        mock = MagicMock()
+        mock.status_code = 200
+        mock.raise_for_status = MagicMock()
+        for path, resp in responses.items():
+            if path in url:
+                mock.json.return_value = resp
+                return mock
+        mock.json.return_value = {}
+        return mock
+
+    with patch("src.market_data.requests.get", side_effect=fake_get):
+        with patch("src.market_data.time.sleep"):
+            result = provider.get_fundamentals("AAPL")
+
+    assert result is not None
+    assert result["company_name"] == "Apple Inc."
+    assert result["industry"] == "Electronic Computers"
+    assert result["roe"] is not None
+    assert result["roe"] > 0
+    assert result["free_cash_flow"] is not None
+    # Fields Polygon can't provide → None (yfinance fills them)
+    assert result["payout_ratio"] is None
+    assert result["dividend_yield"] is None
+
+
+def test_polygon_provider_get_fundamentals_returns_none_on_failure():
+    from src.market_data import PolygonProvider
+    provider = PolygonProvider(api_key="test-key")
+
+    with patch("src.market_data.requests.get", side_effect=Exception("network error")):
+        with patch("src.market_data.time.sleep"):
+            result = provider.get_fundamentals("AAPL")
+
+    assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Task 3: TradierProvider — options chain
+# ---------------------------------------------------------------------------
+
+def _tradier_expirations_response():
+    from datetime import date as _date, timedelta as _td
+    future = _date.today() + _td(days=60)
+    return {"expirations": {"date": [future.strftime("%Y-%m-%d")]}}
+
+
+def _tradier_chain_response(expiration_str):
+    return {
+        "options": {
+            "option": [
+                {"option_type": "put", "strike": 150.0, "bid": 3.50, "symbol": "AAPL..."},
+                {"option_type": "put", "strike": 155.0, "bid": 4.20, "symbol": "AAPL..."},
+                {"option_type": "call", "strike": 160.0, "bid": 5.00, "symbol": "AAPL..."},
+            ]
+        }
+    }
+
+
+def test_tradier_provider_returns_put_options_dataframe():
+    from src.market_data import TradierProvider
+    from datetime import date as _date, timedelta as _td
+    provider = TradierProvider(api_key="test-key")
+
+    future = _date.today() + _td(days=60)
+    future_str = future.strftime("%Y-%m-%d")
+
+    expirations_resp = MagicMock()
+    expirations_resp.status_code = 200
+    expirations_resp.raise_for_status = MagicMock()
+    expirations_resp.json.return_value = _tradier_expirations_response()
+
+    chain_resp = MagicMock()
+    chain_resp.status_code = 200
+    chain_resp.raise_for_status = MagicMock()
+    chain_resp.json.return_value = _tradier_chain_response(future_str)
+
+    def fake_get(url, *args, **kwargs):
+        if "expirations" in url:
+            return expirations_resp
+        return chain_resp
+
+    with patch("src.market_data.requests.get", side_effect=fake_get):
+        df = provider.get_options_chain("AAPL", dte_min=45, dte_max=90)
+
+    assert not df.empty
+    assert set(df.columns) >= {"strike", "bid", "dte", "expiration"}
+    # Only puts, no calls
+    assert len(df) == 2
+    assert all(df["bid"] > 0)
+
+
+def test_tradier_provider_returns_empty_when_no_expirations_in_range():
+    from src.market_data import TradierProvider
+    from datetime import date as _date, timedelta as _td
+    provider = TradierProvider(api_key="test-key")
+
+    # Expiration outside dte_min/dte_max
+    near_future = _date.today() + _td(days=10)
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.raise_for_status = MagicMock()
+    resp.json.return_value = {"expirations": {"date": [near_future.strftime("%Y-%m-%d")]}}
+
+    with patch("src.market_data.requests.get", return_value=resp):
+        df = provider.get_options_chain("AAPL", dte_min=45, dte_max=90)
+
+    assert df.empty
+
+
+def test_tradier_provider_returns_empty_on_exception():
+    from src.market_data import TradierProvider
+    provider = TradierProvider(api_key="test-key")
+
+    with patch("src.market_data.requests.get", side_effect=Exception("network error")):
+        df = provider.get_options_chain("AAPL", dte_min=45, dte_max=90)
+
+    assert df.empty
 
 
 class TestIBKREarningsDate:
