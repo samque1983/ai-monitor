@@ -923,3 +923,58 @@ class TestIBKREarningsDate:
 
         result = provider._ibkr_earnings_date("AAPL")
         assert result == date(2026, 4, 25)
+
+
+def _polygon_aggs_response(n_bars=5):
+    """Build a fake Polygon /v2/aggs response."""
+    import time as _time
+    today = date.today()
+    results = []
+    for i in range(n_bars):
+        d = today - timedelta(days=n_bars - i)
+        epoch_ms = int(_time.mktime(d.timetuple())) * 1000
+        results.append({"t": epoch_ms, "o": 100.0, "h": 105.0, "l": 99.0, "c": 102.0, "v": 1000000})
+    return {"results": results, "status": "OK"}
+
+
+def test_polygon_provider_get_price_data_returns_dataframe():
+    from src.market_data import PolygonProvider
+    provider = PolygonProvider(api_key="test-key")
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = _polygon_aggs_response(5)
+
+    with patch("src.market_data.requests.get", return_value=mock_resp):
+        with patch("src.market_data.time.sleep"):  # skip rate-limit sleep in tests
+            df = provider.get_price_data("AAPL", "5d")
+
+    assert not df.empty
+    assert list(df.columns) == ["Open", "High", "Low", "Close", "Volume"]
+    assert len(df) == 5
+
+
+def test_polygon_provider_returns_empty_on_http_error():
+    from src.market_data import PolygonProvider
+    provider = PolygonProvider(api_key="test-key")
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 403
+    mock_resp.json.return_value = {"status": "ERROR", "error": "Forbidden"}
+
+    with patch("src.market_data.requests.get", return_value=mock_resp):
+        with patch("src.market_data.time.sleep"):
+            df = provider.get_price_data("AAPL", "1y")
+
+    assert df.empty
+
+
+def test_polygon_provider_returns_empty_on_exception():
+    from src.market_data import PolygonProvider
+    provider = PolygonProvider(api_key="test-key")
+
+    with patch("src.market_data.requests.get", side_effect=Exception("network error")):
+        with patch("src.market_data.time.sleep"):
+            df = provider.get_price_data("AAPL", "1y")
+
+    assert df.empty
