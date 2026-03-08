@@ -173,9 +173,11 @@ class TickerData:
 
 | Phase | 需求文档 | 状态 | 核心功能 |
 |-------|----------|------|---------|
-| Phase 1 | `req/phase_1_monitor_market.md` | ✅ 已实现 | IV Extremes, MA200 Crossover, LEAPS Setup, Sell Put Scanner |
-| Phase 2 | `req/phase_2_iv.md` | 🚧 进行中 | IV Momentum (5-day), Earnings Gap Profiler, Alert Synthesis |
-| Phase 3+ | TBD | - | - |
+| Phase 1 | `archive/phase_1_monitor_market.md` | ✅ 已实现 | IV Extremes, MA200 Crossover, LEAPS Setup, Sell Put Scanner |
+| Phase 2-IV | `archive/phase_2_iv.md` | ✅ 已实现 | IV Momentum (5-day), Earnings Gap Profiler |
+| Phase 2-Dividend | `archive/phase_2_high_dividend.md` | ✅ 已实现 | 高股息防御双打 — 每周标的池筛选 + 每日买入信号 + LLM防御性评分 |
+| Phase 3 | `archive/phase_3_clawhub.md` | ✅ 已实现 | ClawHub trading-navigator skill + Fly.io agent + 多LLM支持 |
+| Phase 4 | `req/phase_4_data_sources.md` | 📋 待实现 | 多数据源互备份 (Polygon / Tradier / yfinance) |
 
 **注意**: 详细需求以各 Phase 文档为准,本索引仅供快速导航。
 
