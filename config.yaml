@@ -14,6 +14,15 @@ data:
   earnings_csv_path: "data/earnings_calendar.csv"
   dividend_db_path: "data/dividend_pool.db"
 
+data_sources:
+  polygon:
+    enabled: true
+    api_key: ""        # set via env: POLYGON_API_KEY
+  tradier:
+    enabled: false     # set to true after getting API key
+    api_key: ""        # set via env: TRADIER_API_KEY
+    sandbox: true      # true=sandbox (delayed), false=production
+
 scanners:
   iv_momentum_threshold: 30
   earnings_gap_days: 3

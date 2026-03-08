@@ -160,6 +160,33 @@ data:
 
 ---
 
+## Multi-Datasource Routing (Phase 4)
+
+### Providers
+
+**PolygonProvider** (`src/market_data.py`)
+- `get_price_data(ticker, period) → pd.DataFrame` — daily adjusted OHLCV via `/v2/aggs`
+- `get_fundamentals(ticker) → Optional[Dict]` — name/industry via `/v3/reference/tickers`, ROE+FCF via `/vX/reference/financials`
+- Rate limit: 250ms sleep after each request (5 req/min free tier)
+- Activated via: `POLYGON_API_KEY` env var or `config.data_sources.polygon.api_key`
+
+**TradierProvider** (`src/market_data.py`)
+- `get_options_chain(ticker, dte_min, dte_max) → pd.DataFrame` — put options via `/v1/markets/options/chains`
+- 15-min delayed data (sandbox); suitable for end-of-day scanning
+- Activated via: `TRADIER_API_KEY` env var or `config.data_sources.tradier.api_key`
+
+### Priority Chains
+
+| Method | US Market | HK/CN Market |
+|--------|-----------|--------------|
+| `get_price_data` | IBKR → Polygon → yfinance | yfinance |
+| `get_options_chain` | IBKR → Tradier → yfinance | skip |
+| `get_fundamentals` | Polygon+yfinance merge → yfinance fallback | yfinance |
+
+**Fundamentals merge:** Polygon provides `company_name`, `industry`, `roe`, `free_cash_flow`. yfinance fills in `sector`, `payout_ratio`, `debt_to_equity`, `dividend_yield`.
+
+---
+
 ## Financial Data Integrity
 
 遵循 `req/GLOBAL_MASTER.md` 第 II 章要求：
