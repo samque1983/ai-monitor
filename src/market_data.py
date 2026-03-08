@@ -193,6 +193,22 @@ class MarketDataProvider:
         if iv_db_path:
             self.iv_store = IVStore(iv_db_path)
 
+        # Initialize cloud providers from config
+        ds_config = (config or {}).get("data_sources", {})
+
+        polygon_key = (
+            ds_config.get("polygon", {}).get("api_key")
+            or os.environ.get("POLYGON_API_KEY", "")
+        )
+        self._polygon: Optional[PolygonProvider] = PolygonProvider(polygon_key) if polygon_key else None
+
+        tradier_key = (
+            ds_config.get("tradier", {}).get("api_key")
+            or os.environ.get("TRADIER_API_KEY", "")
+        )
+        tradier_sandbox = ds_config.get("tradier", {}).get("sandbox", True)
+        self._tradier: Optional[TradierProvider] = TradierProvider(tradier_key, sandbox=tradier_sandbox) if tradier_key else None
+
     def _make_yf_session(self):
         """Create a curl_cffi session with SSL verification disabled (handles corporate proxy)."""
         try:
@@ -286,12 +302,17 @@ class MarketDataProvider:
         raise ValueError(f"No IBKR data for {ticker} (tried real-time and delayed)")
 
     def get_price_data(self, ticker: str, period: str = "1y") -> pd.DataFrame:
-        """Fetch OHLCV price data. IBKR first, yfinance fallback."""
+        """Fetch OHLCV. Routing: IBKR → Polygon (US only) → yfinance."""
         if self.ibkr:
             try:
                 return self._ibkr_price_data(ticker, period)
             except Exception as e:
                 logger.warning(f"IBKR price fetch failed for {ticker}, falling back: {e}")
+        if self._polygon and classify_market(ticker) == "US":
+            df = self._polygon.get_price_data(ticker, period)
+            if not df.empty:
+                logger.debug(f"{ticker}: price data via Polygon")
+                return df
         return self._yf_price_data(ticker, period)
 
     def _yf_price_data(self, ticker: str, period: str) -> pd.DataFrame:
@@ -546,7 +567,7 @@ class MarketDataProvider:
         return classify_market(ticker) == "CN"
 
     def get_options_chain(self, ticker: str, dte_min: int = 45, dte_max: int = 60) -> pd.DataFrame:
-        """Fetch put options chain filtered by DTE range. IBKR first, yfinance fallback."""
+        """Fetch put options. Routing: IBKR → Tradier (US only) → yfinance."""
         if self.should_skip_options(ticker):
             return pd.DataFrame()
         if self.ibkr:
@@ -554,6 +575,11 @@ class MarketDataProvider:
                 return self._ibkr_options_chain(ticker, dte_min, dte_max)
             except Exception as e:
                 logger.warning(f"IBKR options chain failed for {ticker}, falling back: {e}")
+        if self._tradier and classify_market(ticker) == "US":
+            df = self._tradier.get_options_chain(ticker, dte_min=dte_min, dte_max=dte_max)
+            if not df.empty:
+                logger.debug(f"{ticker}: options via Tradier")
+                return df
         return self._yf_options_chain(ticker, dte_min, dte_max)
 
     def _yf_options_chain(self, ticker: str, dte_min: int, dte_max: int) -> pd.DataFrame:
@@ -716,9 +742,9 @@ class MarketDataProvider:
             logger.warning(f"Failed to fetch dividend history for {ticker}: {e}")
             return None
 
-    def get_fundamentals(self, ticker: str) -> Optional[Dict[str, Any]]:
+    def _yf_fundamentals(self, ticker: str) -> Optional[Dict[str, Any]]:
         """
-        获取基本面数据
+        获取基本面数据 (yfinance)
 
         从 yfinance 的 info 中提取关键财务指标。
 
@@ -786,6 +812,20 @@ class MarketDataProvider:
         except Exception as e:
             logger.warning(f"Failed to fetch fundamentals for {ticker}: {e}")
             return None
+
+    def get_fundamentals(self, ticker: str) -> Optional[Dict[str, Any]]:
+        """Fetch fundamentals. Routing: Polygon → yfinance (US); yfinance (HK/CN).
+        Polygon result has None for fields it can't provide; yfinance fills them in."""
+        if self._polygon and classify_market(ticker) == "US":
+            poly = self._polygon.get_fundamentals(ticker)
+            if poly is not None:
+                # Fill None fields from yfinance
+                yf = self._yf_fundamentals(ticker) or {}
+                for key, val in poly.items():
+                    if val is None and yf.get(key) is not None:
+                        poly[key] = yf[key]
+                return poly
+        return self._yf_fundamentals(ticker)
 
     def disconnect(self):
         """Disconnect from IBKR if connected."""

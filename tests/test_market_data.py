@@ -760,6 +760,124 @@ def test_tradier_provider_returns_empty_on_exception():
     assert df.empty
 
 
+# ---------------------------------------------------------------------------
+# Task 4: Wire providers into MarketDataProvider routing
+# ---------------------------------------------------------------------------
+
+def test_market_data_provider_uses_polygon_for_us_price_when_no_ibkr():
+    """When IBKR is not connected and Polygon key is set, Polygon is used for US tickers."""
+    from src.market_data import MarketDataProvider
+
+    provider = MarketDataProvider(
+        config={"data_sources": {"polygon": {"api_key": "fake-polygon-key"}}}
+    )
+
+    mock_df = pd.DataFrame(
+        {"Open": [100.0], "High": [105.0], "Low": [99.0], "Close": [102.0], "Volume": [1e6]},
+        index=pd.to_datetime(["2026-03-07"]),
+    )
+
+    with patch.object(provider._polygon, "get_price_data", return_value=mock_df) as mock_poly:
+        df = provider.get_price_data("AAPL", "5d")
+
+    mock_poly.assert_called_once_with("AAPL", "5d")
+    assert not df.empty
+
+
+def test_market_data_provider_falls_back_to_yfinance_when_polygon_empty():
+    """When Polygon returns empty, yfinance is used."""
+    from src.market_data import MarketDataProvider
+
+    provider = MarketDataProvider(
+        config={"data_sources": {"polygon": {"api_key": "fake-polygon-key"}}}
+    )
+
+    yf_df = pd.DataFrame(
+        {"Open": [100.0], "High": [105.0], "Low": [99.0], "Close": [102.0], "Volume": [1e6]},
+        index=pd.to_datetime(["2026-03-07"]),
+    )
+
+    with patch.object(provider._polygon, "get_price_data", return_value=pd.DataFrame()):
+        with patch.object(provider, "_yf_price_data", return_value=yf_df) as mock_yf:
+            df = provider.get_price_data("AAPL", "5d")
+
+    mock_yf.assert_called_once()
+    assert not df.empty
+
+
+def test_market_data_provider_skips_polygon_for_hk_ticker():
+    """HK tickers always go to yfinance, Polygon is not called."""
+    from src.market_data import MarketDataProvider
+
+    provider = MarketDataProvider(
+        config={"data_sources": {"polygon": {"api_key": "fake-polygon-key"}}}
+    )
+
+    yf_df = pd.DataFrame(
+        {"Close": [50.0]},
+        index=pd.to_datetime(["2026-03-07"]),
+    )
+
+    with patch.object(provider._polygon, "get_price_data") as mock_poly:
+        with patch.object(provider, "_yf_price_data", return_value=yf_df):
+            provider.get_price_data("0700.HK", "5d")
+
+    mock_poly.assert_not_called()
+
+
+def test_market_data_provider_uses_tradier_for_options_fallback():
+    """When IBKR not connected and Tradier key is set, Tradier is used for options."""
+    from src.market_data import MarketDataProvider
+
+    provider = MarketDataProvider(
+        config={"data_sources": {"tradier": {"api_key": "fake-tradier-key"}}}
+    )
+
+    tradier_df = pd.DataFrame({
+        "strike": [150.0], "bid": [3.5],
+        "dte": [60], "expiration": [date.today() + timedelta(days=60)],
+    })
+
+    with patch.object(provider._tradier, "get_options_chain", return_value=tradier_df) as mock_tr:
+        df = provider.get_options_chain("AAPL", dte_min=45, dte_max=90)
+
+    mock_tr.assert_called_once_with("AAPL", dte_min=45, dte_max=90)
+    assert not df.empty
+
+
+def test_market_data_provider_merges_polygon_and_yfinance_fundamentals():
+    """Polygon provides ROE/FCF; yfinance fills None fields (payout_ratio, dividend_yield)."""
+    from src.market_data import MarketDataProvider
+
+    provider = MarketDataProvider(
+        config={"data_sources": {"polygon": {"api_key": "fake-polygon-key"}}}
+    )
+
+    polygon_result = {
+        "company_name": "Apple Inc.", "industry": "Electronic Computers",
+        "sector": None, "roe": 156.0, "free_cash_flow": 99e9,
+        "payout_ratio": None, "debt_to_equity": None, "dividend_yield": None,
+    }
+    yf_result = {
+        "company_name": "Apple Inc.", "industry": "Consumer Electronics",
+        "sector": "Technology", "roe": 150.0, "free_cash_flow": 95e9,
+        "payout_ratio": 15.0, "debt_to_equity": 1.5, "dividend_yield": 0.52,
+    }
+
+    with patch.object(provider._polygon, "get_fundamentals", return_value=polygon_result):
+        with patch.object(provider, "_yf_fundamentals", return_value=yf_result):
+            result = provider.get_fundamentals("AAPL")
+
+    assert result is not None
+    # Polygon values used where available
+    assert result["roe"] == 156.0
+    assert result["free_cash_flow"] == 99e9
+    # yfinance fills None fields
+    assert result["payout_ratio"] == 15.0
+    assert result["dividend_yield"] == 0.52
+    assert result["sector"] == "Technology"
+
+
 class TestIBKREarningsDate:
     def test_get_earnings_date_uses_ibkr_when_connected(self):
         """When IBKR connected, get_earnings_date calls _ibkr_earnings_date."""
