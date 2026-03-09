@@ -113,5 +113,6 @@ async def push_scan_results(payload: ScanResultsPayload, request: Request):
         raise HTTPException(status_code=403, detail="Invalid API key")
 
     _get_db().save_scan_results(payload.scan_date, payload.results)
+    _get_db().save_signals(payload.scan_date, payload.results)
     logger.info(f"Scan results saved: {payload.scan_date}, {len(payload.results)} signals")
     return {"saved": len(payload.results), "scan_date": payload.scan_date}
