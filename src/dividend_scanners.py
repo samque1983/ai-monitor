@@ -30,6 +30,14 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _to_dt(d: dict) -> datetime:
+    """Convert a dividend history entry's 'date' field to a datetime object."""
+    raw = d['date']
+    if isinstance(raw, str):
+        return datetime.fromisoformat(raw)
+    return datetime.combine(raw, datetime.min.time())
+
+
 @dataclass
 class DividendBuySignal:
     """股息买入信号数据类"""
@@ -124,12 +132,6 @@ def scan_dividend_pool_weekly(
 
             # Step 4: 计算 TTM 年度股息（用于 FCF 派息率）
             one_year_ago = datetime.now() - timedelta(days=365)
-            def _to_dt(d):
-                raw = d['date']
-                if isinstance(raw, str):
-                    return datetime.fromisoformat(raw)
-                return datetime.combine(raw, datetime.min.time())
-
             annual_dividend_ttm = sum(
                 d['amount'] for d in dividend_history if _to_dt(d) >= one_year_ago
             )
@@ -179,10 +181,11 @@ def scan_dividend_pool_weekly(
                     and 'Close' in price_df_5y.columns
                     and 'Dividends' in price_df_5y.columns
                 ):
-                    annual_dividend_ttm = price_df_5y['Dividends'].iloc[-252:].sum()
+                    # 252 trading days ≈ 1 calendar year
+                    price_ttm_dividends = price_df_5y['Dividends'].iloc[-252:].sum()
                     min_5y_price = price_df_5y['Close'].min()
                     if min_5y_price > 0:
-                        max_yield_5y = (annual_dividend_ttm / min_5y_price) * 100
+                        max_yield_5y = (price_ttm_dividends / min_5y_price) * 100
             except Exception as e:
                 logger.warning(f"{ticker}: Could not compute max_yield_5y - {e}")
 
