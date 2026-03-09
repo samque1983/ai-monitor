@@ -248,7 +248,7 @@ class TestScanDividendBuySignal:
         }
 
         # Act
-        pool = [ticker]
+        pool = [{"ticker": ticker, "forward_dividend_rate": None, "max_yield_5y": None, "data_version_date": str(date.today())}]
         results = scan_dividend_buy_signal(
             pool=pool,
             provider=mock_provider,
@@ -394,7 +394,7 @@ class TestScanDividendSellPut:
         }
 
         # Act
-        pool = [ticker]
+        pool = [{"ticker": ticker, "forward_dividend_rate": None, "max_yield_5y": None, "data_version_date": str(date.today())}]
         results = scan_dividend_buy_signal(
             pool=pool,
             provider=mock_provider,
@@ -645,9 +645,10 @@ def _make_buy_pool_record(
     forward_dividend_rate=2.0,
     max_yield_5y=4.0,
     data_version_date=None,
-    needs_reeval=0,
 ):
-    """Helper: build a minimal pool record dict (as returned by get_pool_records)."""
+    """Helper: build a minimal pool record dict (as returned by get_pool_records).
+    Note: needs_reeval is computed on-the-fly from data_age_days, not stored in DB.
+    """
     if data_version_date is None:
         data_version_date = str(date.today())
     return {
@@ -655,7 +656,6 @@ def _make_buy_pool_record(
         "forward_dividend_rate": forward_dividend_rate,
         "max_yield_5y": max_yield_5y,
         "data_version_date": data_version_date,
-        "needs_reeval": needs_reeval,
     }
 
 
@@ -758,3 +758,36 @@ def test_buy_signal_computes_data_age_days(tmp_path):
     store.close()
     assert len(results) == 1
     assert results[0].data_age_days == 0
+    # data is fresh → needs_reeval must be False
+    assert results[0].needs_reeval is False
+
+
+def test_buy_signal_needs_reeval_when_stale(tmp_path):
+    """needs_reeval=True when data_age_days >= 14 (stale between weekly scans)."""
+    from datetime import timedelta
+    db_path = str(tmp_path / "test.db")
+    store = DividendStore(db_path)
+    store.save_dividend_history(
+        ticker="KO", date=date.today(),
+        dividend_yield=5.0, annual_dividend=2.0, price=40.0
+    )
+
+    mock_provider = MagicMock()
+    mock_provider.get_price_data.return_value = pd.DataFrame(
+        {"Close": [40.0]},
+        index=pd.to_datetime([str(date.today())])
+    )
+    mock_provider.get_dividend_history.return_value = [
+        {"date": str(date.today()), "amount": 2.0}
+    ]
+
+    config = {"dividend_scanners": {"min_yield": 4.0, "min_yield_percentile": 0}}
+
+    stale_date = str(date.today() - timedelta(days=15))
+    pool = [_make_buy_pool_record(ticker="KO", data_version_date=stale_date)]
+    results = scan_dividend_buy_signal(pool=pool, provider=mock_provider, store=store, config=config)
+
+    store.close()
+    assert len(results) == 1
+    assert results[0].data_age_days == 15
+    assert results[0].needs_reeval is True

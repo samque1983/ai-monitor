@@ -226,11 +226,12 @@ def test_agent_payload_includes_floor_price():
         current_yield=5.0,
         yield_percentile=95.0,
         option_details=None,
+        forward_dividend_rate=2.0,
+        max_yield_5y=4.0,
         floor_price=50.0,
         floor_downside_pct=round((65.0 - 50.0) / 65.0 * 100, 1),
         data_age_days=0,
         needs_reeval=False,
-        forward_dividend_rate=2.0,
     )
 
     payload = _build_agent_payload(
@@ -255,7 +256,9 @@ def test_agent_payload_includes_floor_price():
     assert "needs_reeval" in entry
     assert "quality_breakdown" in entry
     assert "analysis_text" in entry
+    assert "max_yield_5y" in entry
     assert entry["floor_price"] == pytest.approx(50.0)
+    assert entry["max_yield_5y"] == pytest.approx(4.0)
     assert entry["data_age_days"] == 0
     assert entry["needs_reeval"] is False
     assert entry["analysis_text"] == "Strong payer."

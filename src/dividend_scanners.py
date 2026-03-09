@@ -47,6 +47,7 @@ class DividendBuySignal:
     yield_percentile: float
     option_details: Optional[Dict[str, Any]] = None
     forward_dividend_rate: Optional[float] = None
+    max_yield_5y: Optional[float] = None
     floor_price: Optional[float] = None
     floor_downside_pct: Optional[float] = None
     data_age_days: Optional[int] = None
@@ -290,12 +291,11 @@ def scan_dividend_buy_signal(
     results = []
 
     for record in pool:
-        ticker = record["ticker"] if isinstance(record, dict) else record
+        ticker = record["ticker"]
         # Extract enrichment fields from pool record
-        _fwd_div = record.get("forward_dividend_rate") if isinstance(record, dict) else None
-        _max_yield = record.get("max_yield_5y") if isinstance(record, dict) else None
-        _data_version_date_str = record.get("data_version_date") if isinstance(record, dict) else None
-        _needs_reeval = bool(record.get("needs_reeval", 0)) if isinstance(record, dict) else False
+        _fwd_div = record.get("forward_dividend_rate")
+        _max_yield = record.get("max_yield_5y")
+        _data_version_date_str = record.get("data_version_date")
 
         # Compute floor_price: forward_dividend_rate / (max_yield_5y / 100)
         _floor_price: Optional[float] = None
@@ -309,6 +309,9 @@ def scan_dividend_buy_signal(
                 _data_age_days = (date.today() - date.fromisoformat(_data_version_date_str)).days
             except (ValueError, TypeError):
                 _data_age_days = None
+
+        # needs_reeval: True if data is 14+ days old (stale between weekly scans)
+        _needs_reeval = _data_age_days is not None and _data_age_days >= 14
 
         try:
             # Step 1: 获取当前价格（最近5天）
@@ -333,7 +336,7 @@ def scan_dividend_buy_signal(
             annual_dividend = sum(
                 div['amount']
                 for div in dividend_history
-                if datetime.fromisoformat(div['date']) >= one_year_ago
+                if _to_dt(div) >= one_year_ago
             )
 
             if annual_dividend <= 0:
@@ -405,7 +408,7 @@ def scan_dividend_buy_signal(
                             f"apy={option_details['apy']:.2f}%"
                         )
 
-                # Compute floor_downside_pct using last_price
+                # Positive value = stock is X% above the floor price (downside buffer)
                 _floor_downside_pct: Optional[float] = None
                 if _floor_price is not None and last_price > 0:
                     _floor_downside_pct = round((last_price - _floor_price) / last_price * 100, 1)
@@ -417,6 +420,7 @@ def scan_dividend_buy_signal(
                     yield_percentile=yield_percentile,
                     option_details=option_details,
                     forward_dividend_rate=_fwd_div,
+                    max_yield_5y=_max_yield,
                     floor_price=_floor_price,
                     floor_downside_pct=_floor_downside_pct,
                     data_age_days=_data_age_days,
