@@ -14,6 +14,14 @@ data:
   earnings_csv_path: "data/earnings_calendar.csv"
   dividend_db_path: "data/dividend_pool.db"
 
+positions:
+  ibkr_web_api:
+    enabled: false     # set true after developer.ibkr.com approval
+  ibkr_flex:
+    enabled: true      # generate token in IBKR Account Management → Flex Queries
+    token: ""          # env: IBKR_FLEX_TOKEN
+    query_id: ""       # env: IBKR_FLEX_QUERY_ID
+
 data_sources:
   ibkr_tws:
     enabled: true      # local/intranet only; set false for cloud-only runs

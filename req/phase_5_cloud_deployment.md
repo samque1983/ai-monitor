@@ -201,20 +201,68 @@ notifications:
 
 ## 仓位数据方案
 
-IBKR Web API（无 Gateway）支持仓位查询，认证用 **RSA 私钥签名**（非 client_secret）：
+两条路，优先用 Web API，Flex 作 fallback：
 
 ```
-GET /v1/api/portfolio/accounts          → accountId
-GET /v1/api/portfolio/{accountId}/positions/0  → 持仓列表
+仓位查询路由：IBKR Web API → Flex Web Service
+```
+
+### 主路：IBKR Web API（需开发者审批）
+
+认证用 RSA 私钥签名（详见 `req/phase_4_data_sources.md`）：
+
+```
+GET /v1/api/portfolio/accounts
+GET /v1/api/portfolio/{accountId}/positions/0
   字段：ticker, position (负=空头), avgCost, mktPrice,
         unrealizedPnl, realizedPnl
-
-Sell Put 识别：position < 0 且 contract type = OPT
-  需调 /v1/api/contract/{conid}/info 确认合约类型
 ```
 
-私钥存 Fly.io secrets（`IBKR_PRIVATE_KEY`），不写入代码。
-完整认证说明见 `req/phase_4_data_sources.md`。
+私钥存 Fly.io secrets（`IBKR_PRIVATE_KEY`）。
+
+### Fallback：IBKR Flex Web Service（现在就能用）
+
+无需注册审批，在 Account Management 里生成 token 即可：
+
+```
+Step 1 — 发起请求：
+  GET https://gdcdyn.interactivebrokers.com/Universal/servlet/
+      FlexStatementService.SendRequest?t={token}&q={queryId}&v=3
+  → 返回 reference code
+
+Step 2 — 取结果（通常等 1-5 秒）：
+  GET https://gdcdyn.interactivebrokers.com/Universal/servlet/
+      FlexStatementService.GetStatement?t={token}&q={referenceCode}&v=3
+  → 返回 XML，包含仓位数据
+```
+
+**配置（config.yaml）：**
+```yaml
+positions:
+  ibkr_web_api:
+    enabled: false       # 审批通过后开
+  ibkr_flex:
+    enabled: true        # 现在就能用
+    token: ""            # env: IBKR_FLEX_TOKEN
+    query_id: ""         # env: IBKR_FLEX_QUERY_ID
+```
+
+**Flex Query 设置步骤（一次性）：**
+1. IBKR Account Management → Reports → Flex Queries
+2. 新建 Portfolio Query，勾选字段：Symbol, Position, CostBasisPrice, MarkPrice, UnrealizedPnL
+3. 保存后得到 Query ID；在 API Settings 生成 Flex Token
+4. 两者存入 Fly.io secrets
+
+**能查的字段对比：**
+
+| 字段 | Web API | Flex |
+|------|---------|------|
+| 持仓数量 | ✅ | ✅ |
+| 平均成本 | ✅ | ✅ |
+| 当前市价 | ✅ 15分钟延迟 | ✅ 收盘价 |
+| 未实现 P&L | ✅ | ✅ |
+| 合约类型（OPT/STK）| 需额外调用 | ✅ 直接返回 |
+| 实时行情 | 需订阅 | ❌ |
 
 ---
 
