@@ -44,3 +44,75 @@ def test_watchlist_update(tmp_path):
     import json
     assert json.loads(user["watchlist_json"]) == ["AAPL", "NVDA"]
     db.close()
+
+
+# ── signals table ────────────────────────────────────────────────────────────
+
+def test_save_signals_writes_rows(tmp_path):
+    from agent.db import AgentDB
+    db = AgentDB(str(tmp_path / "test.db"))
+    signals = [
+        {"signal_type": "sell_put", "ticker": "AAPL",
+         "strike": 180, "dte": 52, "bid": 3.2, "apy": 18.5},
+        {"signal_type": "iv_high", "ticker": "NVDA", "iv_rank": 85.0},
+    ]
+    count = db.save_signals("2026-03-09", signals)
+    assert count == 2
+
+
+def test_save_signals_is_idempotent(tmp_path):
+    from agent.db import AgentDB
+    db = AgentDB(str(tmp_path / "test.db"))
+    signals = [{"signal_type": "sell_put", "ticker": "AAPL", "apy": 18.5}]
+    db.save_signals("2026-03-09", signals)
+    db.save_signals("2026-03-09", signals)  # second call replaces
+    result = db.get_signals("30d")
+    assert len(result) == 1  # not 2
+
+
+def test_get_signals_filters_by_range(tmp_path):
+    from agent.db import AgentDB
+    from datetime import datetime, timedelta
+    db = AgentDB(str(tmp_path / "test.db"))
+
+    old_date = (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")
+    new_date = datetime.now().strftime("%Y-%m-%d")
+
+    db.save_signals(old_date, [{"signal_type": "iv_low", "ticker": "AAPL", "iv_rank": 15.0}])
+    db.save_signals(new_date, [{"signal_type": "sell_put", "ticker": "MSFT", "apy": 12.0}])
+
+    result_24h = db.get_signals("24h")
+    assert len(result_24h) == 1
+    assert result_24h[0]["ticker"] == "MSFT"
+
+    result_30d = db.get_signals("30d")
+    assert len(result_30d) == 2
+
+
+def test_get_signals_filters_by_category(tmp_path):
+    from agent.db import AgentDB
+    db = AgentDB(str(tmp_path / "test.db"))
+    signals = [
+        {"signal_type": "sell_put", "ticker": "AAPL", "apy": 18.5},
+        {"signal_type": "iv_high", "ticker": "NVDA", "iv_rank": 85.0},
+    ]
+    db.save_signals("2026-03-09", signals)
+
+    opps = db.get_signals("30d", category="opportunity")
+    assert len(opps) == 1
+    assert opps[0]["signal_type"] == "sell_put"
+
+    risks = db.get_signals("30d", category="risk")
+    assert len(risks) == 1
+    assert risks[0]["signal_type"] == "iv_high"
+
+
+def test_get_signals_returns_payload_as_dict(tmp_path):
+    from agent.db import AgentDB
+    db = AgentDB(str(tmp_path / "test.db"))
+    db.save_signals("2026-03-09", [
+        {"signal_type": "sell_put", "ticker": "AAPL", "strike": 180, "apy": 18.5}
+    ])
+    result = db.get_signals("30d")
+    assert isinstance(result[0]["payload"], dict)
+    assert result[0]["payload"]["apy"] == 18.5

@@ -1,7 +1,7 @@
 import sqlite3
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 
 logger = logging.getLogger(__name__)
@@ -29,6 +29,17 @@ CREATE TABLE IF NOT EXISTS conversations (
     content    TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS signals (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    scan_date   DATE NOT NULL,
+    scanned_at  TIMESTAMP NOT NULL,
+    signal_type TEXT NOT NULL,
+    category    TEXT NOT NULL,
+    ticker      TEXT NOT NULL,
+    payload     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_signals_scanned_at ON signals(scanned_at);
 """
 
 class AgentDB:
@@ -91,6 +102,62 @@ class AgentDB:
             (user_id, limit)
         ).fetchall()
         return [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
+
+    _CATEGORY_MAP = {
+        "sell_put": "opportunity",
+        "iv_low": "opportunity",
+        "leaps": "opportunity",
+        "dividend": "opportunity",
+        "ma200_bullish": "opportunity",
+        "iv_high": "risk",
+        "ma200_bearish": "risk",
+        "earnings_gap": "risk",
+        "sell_put_earnings_risk": "risk",
+        "iv_momentum": "risk",
+    }
+
+    def save_signals(self, scan_date: str, signals: List[Dict]) -> int:
+        """Write signals for a scan_date. Idempotent: deletes existing rows first."""
+        self.conn.execute("DELETE FROM signals WHERE scan_date=?", (scan_date,))
+        # Use noon of scan_date so range filters work correctly for historical dates.
+        # For today's date this will be earlier today; for past dates it will be in the past.
+        try:
+            scanned_at = datetime.fromisoformat(scan_date).replace(hour=12).isoformat()
+        except ValueError:
+            scanned_at = datetime.now().isoformat()
+        rows = []
+        for s in signals:
+            signal_type = s.get("signal_type", "unknown")
+            category = self._CATEGORY_MAP.get(signal_type, "opportunity")
+            ticker = s.get("ticker", "")
+            payload = {k: v for k, v in s.items() if k not in ("signal_type", "ticker")}
+            rows.append((scan_date, scanned_at, signal_type, category, ticker,
+                         json.dumps(payload, ensure_ascii=False)))
+        self.conn.executemany(
+            "INSERT INTO signals (scan_date, scanned_at, signal_type, category, ticker, payload) "
+            "VALUES (?,?,?,?,?,?)",
+            rows,
+        )
+        self.conn.commit()
+        return len(rows)
+
+    def get_signals(self, range: str = "24h", category: str = None) -> List[Dict]:
+        """Return signals within time range, optionally filtered by category."""
+        range_hours = {"24h": 24, "7d": 168, "30d": 720}.get(range, 24)
+        cutoff = (datetime.now() - timedelta(hours=range_hours)).isoformat()
+        query = "SELECT * FROM signals WHERE scanned_at >= ?"
+        params: list = [cutoff]
+        if category and category != "all":
+            query += " AND category=?"
+            params.append(category)
+        query += " ORDER BY scanned_at DESC"
+        rows = self.conn.execute(query, params).fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            d["payload"] = json.loads(d["payload"])
+            result.append(d)
+        return result
 
     def close(self):
         self.conn.close()
