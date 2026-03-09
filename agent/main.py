@@ -12,6 +12,7 @@ from agent import config
 from agent.db import AgentDB
 from agent.dingtalk import verify_signature, parse_incoming, send_reply
 from agent.claude_agent import ClaudeAgent
+from agent.dashboard import router as dashboard_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -48,6 +49,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="交易领航员 Agent", lifespan=lifespan)
+app.include_router(dashboard_router)
 
 
 @app.get("/health")
