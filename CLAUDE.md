@@ -49,6 +49,7 @@ Each spec in `docs/specs/` maps 1:1 to source modules:
 | `docs/specs/indicators.md` | `data_engine.py` | 技术指标计算引擎 |
 | `docs/specs/scanners.md` | `scanners.py` | 扫描器逻辑 (Phase 1 + Phase 2) |
 | `docs/specs/reporting.md` | `report.py`, `html_report.py` | 战报生成 (文本 + HTML) |
+| `docs/specs/dashboard.md` | `agent/db.py`, `agent/deps.py`, `agent/dashboard.py`, `agent/static/dashboard.html`, `agent/main.py` (signals) | Dashboard MVP |
 
 ## Document Hierarchy
 
