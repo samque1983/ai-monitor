@@ -20,22 +20,28 @@
 ## 架构总览
 
 ```
-[云端 VPS / Fly.io]
-├── ai-monitor 扫描引擎          ← 已有
-├── Dashboard (Web UI)            ← 本阶段
-├── Agent API                     ← 骨架已有 (ai-monitor.fly.dev)
-│    ├── OpenClaw skill 接入      ← 本阶段
-│    └── WhatsApp webhook         ← 本阶段
+[云端 VPS / Fly.io — Docker Compose]
+├── ib-gateway (Paper 账户, 内网 only)  ← 实时行情主力（已付费订阅）
+├── ai-monitor 扫描引擎                 ← 已有
+├── Dashboard (Web UI)                  ← 本阶段
+├── Agent API                           ← 骨架已有 (ai-monitor.fly.dev)
+│    ├── OpenClaw skill 接入            ← 本阶段
+│    └── WhatsApp webhook               ← 本阶段
 │
-└── 数据源（全云端，无本地依赖）
-     ├── IBKR REST API (OAuth)    ← Phase 4 P2，审批中
-     ├── IBKR Flex Web Service    ← 现在就能用（仓位查询）
-     ├── Polygon                  ← 已实现
-     └── Tradier                  ← 已实现
-
-[本地 / 内网，可选]
-└── IB Gateway (TWS)             ← enabled=true 时本地优先
+└── 数据源（优先级）
+     ├── IB Gateway (Paper, Docker)     ← 主力：实时行情 + 期权链
+     ├── IBKR REST API (OAuth)          ← P2，审批中
+     ├── IBKR Flex Web Service          ← 仓位查询（现在就能用）
+     ├── Polygon                        ← 行情 fallback（已实现）
+     └── Tradier                        ← 期权 fallback（已实现）
 ```
+
+**IB Gateway Docker 方案：**
+- 使用 Paper 账户连接，继承 live 账户已付费的行情订阅
+- 镜像：`ghcr.io/gnzsnz/ib-gateway`，支持无头模式 + 自动重启
+- Gateway 绑定 Docker 内网，不暴露公网端口
+- `AUTO_RESTART_TIME` 配置每日自动重新认证（IB 24h 限制）
+- Paper 账户无真实资金，即使安全事件也无财务风险
 
 ---
 
@@ -302,7 +308,11 @@ notifications:
 ### Fly.io secrets
 
 ```bash
-# 数据源
+# IB Gateway (Paper 账户)
+IB_TWS_USERID=             # IB 用户名
+IB_TWS_PASSWORD=           # IB 密码
+
+# 数据源 fallback
 POLYGON_API_KEY=
 TRADIER_API_KEY=
 IBKR_PRIVATE_KEY=          # Web API（审批后）
@@ -319,22 +329,57 @@ WHATSAPP_API_KEY=
 SCAN_API_KEY=              # Agent API 认证
 ```
 
-### 本地运行（开发 / 内网 TWS）
+### Docker Compose 部署
+
+```yaml
+# docker-compose.yml
+services:
+  ib-gateway:
+    image: ghcr.io/gnzsnz/ib-gateway:latest
+    environment:
+      TWS_USERID: ""          # env: IB_TWS_USERID
+      TWS_PASSWORD: ""        # env: IB_TWS_PASSWORD
+      TRADING_MODE: paper
+      AUTO_RESTART_TIME: "11:59 PM"   # 每日自动重启重新认证
+      TWOFA_TIMEOUT_ACTION: restart
+    ports: []                 # 不暴露公网端口
+    networks:
+      - internal
+
+  ai-monitor:
+    build: .
+    environment:
+      POLYGON_API_KEY: ""
+    networks:
+      - internal
+      - web
+
+networks:
+  internal: {}   # Gateway ↔ scanner 专用内网
+  web: {}        # scanner ↔ 公网（Dashboard）
+```
+
+**config.yaml（Docker 部署）：**
+```yaml
+data_sources:
+  ibkr_tws:
+    enabled: true
+    host: "ib-gateway"   # Docker service name
+    port: 4003           # Paper 账户端口
+  polygon:
+    enabled: true        # 行情 fallback
+  tradier:
+    enabled: true        # 期权 fallback
+```
+
+### 本地开发
 
 ```yaml
 data_sources:
   ibkr_tws:
     enabled: true
-```
-
-### 云端（无 TWS）
-
-```yaml
-data_sources:
-  ibkr_tws:
-    enabled: false
-  ibkr_rest:
-    enabled: true      # 审批后
+    host: "127.0.0.1"
+    port: 4001
 ```
 
 ---
