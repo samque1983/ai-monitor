@@ -466,9 +466,9 @@ def test_quality_breakdown_caps_at_20():
 
 
 def test_quality_score_analysis_text_empty_without_api_key():
-    """analysis_text should be empty string when no api_key provided."""
+    """analysis_text should be empty string when no api_key provided, even when enabled=True."""
     from src.financial_service import FinancialServiceAnalyzer
-    fs = FinancialServiceAnalyzer(enabled=False, fallback_to_rules=True, api_key="")
+    fs = FinancialServiceAnalyzer(enabled=True, fallback_to_rules=True, api_key="")
     result = fs.analyze_dividend_quality("KO", {
         "consecutive_years": 10, "dividend_growth_5y": 5.0,
         "roe": 20.0, "debt_to_equity": 0.5, "payout_ratio": 60.0,

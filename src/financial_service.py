@@ -49,6 +49,8 @@ class DividendQualityScore:
     payout_type: str = "GAAP"
     effective_payout_ratio: float = 0.0
     quality_breakdown: Optional[Dict[str, float]] = None
+    # ^ Independent display view (5 dims × 0-20 = max 100).
+    # NOT a mathematical decomposition of overall_score.
     analysis_text: Optional[str] = None
 
 
