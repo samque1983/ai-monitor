@@ -14,7 +14,7 @@ Dividend Scanners Module (Phase 2 High Dividend)
 from typing import TYPE_CHECKING, List, Optional, Dict, Any
 from dataclasses import dataclass
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from src.data_engine import TickerData
 from src.data_loader import classify_market
 from src.financial_service import (
@@ -166,7 +166,27 @@ def scan_dividend_pool_weekly(
                 )
                 continue
 
-            # Step 7: 创建TickerData对象
+            # Step 7: 获取 forward_dividend_rate
+            forward_dividend_rate = fundamentals.get("forward_dividend_rate")
+
+            # Step 8: 计算 max_yield_5y
+            max_yield_5y = None
+            try:
+                price_df_5y = provider.get_price_data(ticker, period='5y')
+                if (
+                    price_df_5y is not None
+                    and not price_df_5y.empty
+                    and 'Close' in price_df_5y.columns
+                    and 'Dividends' in price_df_5y.columns
+                ):
+                    annual_dividend_ttm = price_df_5y['Dividends'].iloc[-252:].sum()
+                    min_5y_price = price_df_5y['Close'].min()
+                    if min_5y_price > 0:
+                        max_yield_5y = (annual_dividend_ttm / min_5y_price) * 100
+            except Exception as e:
+                logger.warning(f"{ticker}: Could not compute max_yield_5y - {e}")
+
+            # Step 9: 创建TickerData对象
             ticker_data = TickerData(
                 ticker=ticker,
                 name=fundamentals.get("company_name", ticker),
@@ -193,6 +213,12 @@ def scan_dividend_pool_weekly(
                 industry=fundamentals.get("industry"),
                 sector=fundamentals.get("sector"),
                 free_cash_flow=fundamentals.get("free_cash_flow"),
+                # Enrichment fields
+                forward_dividend_rate=forward_dividend_rate,
+                max_yield_5y=max_yield_5y,
+                quality_breakdown=quality_score_result.quality_breakdown,
+                analysis_text=quality_score_result.analysis_text or "",
+                data_version_date=str(date.today()),
             )
 
             results.append(ticker_data)

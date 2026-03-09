@@ -568,3 +568,69 @@ def test_scan_fetches_10_years_of_dividend_history(mock_provider, mock_fs, confi
     mock_fs.analyze_dividend_quality.return_value = _mock_score(75.0)
     scan_dividend_pool_weekly(["SCHD"], mock_provider, mock_fs, config)
     mock_provider.get_dividend_history.assert_called_once_with("SCHD", years=10)
+
+
+def _make_passing_provider_and_fs(forward_dividend_rate=2.40):
+    """Helper: create a mock provider + fs that produce a passing ticker."""
+    provider = MagicMock()
+    provider.get_dividend_history.return_value = _history_5yr()
+    provider.get_fundamentals.return_value = {
+        "dividend_yield": 3.5,
+        "payout_ratio": 60.0,
+        "roe": 15.0,
+        "debt_to_equity": 0.5,
+        "sector": "Consumer Staples",
+        "free_cash_flow": 10_000_000,
+        "company_name": "Test Co",
+        "forward_dividend_rate": forward_dividend_rate,
+    }
+    # Return a DataFrame with Close and Dividends columns for 5y price history
+    import numpy as np
+    idx = pd.date_range(end="2026-03-09", periods=252 * 5, freq="B")
+    closes = [100.0] * len(idx)
+    dividends = [0.0] * len(idx)
+    # Put 4 quarterly dividend payments in the last 252 rows
+    for i in [-63, -126, -189, -252]:
+        dividends[i] = 0.60
+    provider.get_price_data.return_value = pd.DataFrame(
+        {"Close": closes, "Dividends": dividends}, index=idx
+    )
+
+    fs = MagicMock()
+    score = DividendQualityScore(
+        overall_score=80.0,
+        stability_score=80.0,
+        health_score=80.0,
+        defensiveness_score=60.0,
+        risk_flags=[],
+        quality_breakdown={"stability": 80.0, "health": 80.0},
+        analysis_text="Strong dividend payer.",
+    )
+    fs.analyze_dividend_quality.return_value = score
+    return provider, fs
+
+
+def test_weekly_scan_populates_forward_dividend_rate(config):
+    """forward_dividend_rate from fundamentals must be set on returned TickerData."""
+    provider, fs = _make_passing_provider_and_fs(forward_dividend_rate=2.40)
+    results = scan_dividend_pool_weekly(["KO"], provider, fs, config)
+    assert len(results) == 1
+    assert results[0].forward_dividend_rate == pytest.approx(2.40)
+
+
+def test_weekly_scan_populates_max_yield_5y(config):
+    """max_yield_5y must be computed as (annual_dividend_ttm / min_5y_price) * 100."""
+    provider, fs = _make_passing_provider_and_fs()
+    # annual_dividend_ttm = 4 * 0.60 = 2.40; min_5y_price = 100.0
+    # expected max_yield_5y = (2.40 / 100.0) * 100 = 2.40
+    results = scan_dividend_pool_weekly(["KO"], provider, fs, config)
+    assert len(results) == 1
+    assert results[0].max_yield_5y == pytest.approx(2.40)
+
+
+def test_weekly_scan_populates_data_version_date(config):
+    """data_version_date must be set to str(date.today()) for each processed ticker."""
+    provider, fs = _make_passing_provider_and_fs()
+    results = scan_dividend_pool_weekly(["KO"], provider, fs, config)
+    assert len(results) == 1
+    assert results[0].data_version_date == str(date.today())
