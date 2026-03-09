@@ -9,7 +9,9 @@ def _make_client(tmp_path):
     os.environ["DINGTALK_APP_SECRET"] = ""
     os.environ["ANTHROPIC_API_KEY"] = "sk-test"
     import importlib
+    import agent.deps
     import agent.main
+    importlib.reload(agent.deps)
     importlib.reload(agent.main)
     from agent.main import app
     return TestClient(app)
@@ -25,7 +27,7 @@ def test_dashboard_returns_html(tmp_path):
 
 def test_api_signals_returns_json(tmp_path):
     client = _make_client(tmp_path)
-    resp = client.get("/api/signals?range=24h")
+    resp = client.get("/api/signals?time_range=24h")
     assert resp.status_code == 200
     data = resp.json()
     assert "signals" in data
@@ -43,8 +45,9 @@ def test_api_signals_category_filter(tmp_path):
     ])
 
     client = _make_client(tmp_path)
-    resp = client.get("/api/signals?range=30d&category=opportunity")
+    resp = client.get("/api/signals?time_range=30d&category=opportunity")
     data = resp.json()
+    assert len(data["signals"]) > 0
     assert all(s["category"] == "opportunity" for s in data["signals"])
 
 

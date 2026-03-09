@@ -1,18 +1,16 @@
 # agent/dashboard.py
 import os
-from fastapi import APIRouter
+from typing import Literal
+
+from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse, JSONResponse
 
 from agent.db import AgentDB
+from agent.deps import get_db
 
 router = APIRouter()
 
 _STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
-
-
-def _get_db() -> AgentDB:
-    from agent import main as _main
-    return _main._get_db()
 
 
 @router.get("/dashboard", response_class=FileResponse)
@@ -21,15 +19,17 @@ async def dashboard():
 
 
 @router.get("/api/signals")
-async def get_signals(range: str = "24h", category: str = "all"):
-    if range not in ("24h", "7d", "30d"):
-        range = "24h"
+async def get_signals(
+    time_range: Literal["24h", "7d", "30d"] = "24h",
+    category: str = "all",
+    db: AgentDB = Depends(get_db),
+):
     cat_filter = None if category == "all" else category
-    signals = _get_db().get_signals(time_range=range, category=cat_filter)
+    signals = db.get_signals(time_range=time_range, category=cat_filter)
     opp_count = sum(1 for s in signals if s["category"] == "opportunity")
     risk_count = sum(1 for s in signals if s["category"] == "risk")
     return JSONResponse({
-        "range": range,
+        "range": time_range,
         "count": len(signals),
         "opportunity_count": opp_count,
         "risk_count": risk_count,

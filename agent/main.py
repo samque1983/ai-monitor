@@ -13,6 +13,7 @@ from agent.db import AgentDB
 from agent.dingtalk import verify_signature, parse_incoming, send_reply
 from agent.claude_agent import ClaudeAgent
 from agent.dashboard import router as dashboard_router
+from agent.deps import get_db as _deps_get_db
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -89,13 +90,8 @@ class ScanResultsPayload(BaseModel):
 
 
 def _get_db() -> AgentDB:
-    """Return the module-level db, lazily initializing if lifespan didn't run (e.g. tests)."""
-    global db
-    if db is None:
-        db_path = config.get("AGENT_DB_PATH", "data/agent.db")
-        os.makedirs(os.path.dirname(db_path) if "/" in db_path else ".", exist_ok=True)
-        db = AgentDB(db_path)
-    return db
+    """Return the shared DB singleton from deps (supports test reloads via AGENT_DB_PATH)."""
+    return _deps_get_db()
 
 
 @app.get("/api/scan_results")
