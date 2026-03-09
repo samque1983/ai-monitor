@@ -396,8 +396,8 @@ def _dividend_card(signal: Any) -> str:
 
     # Dim 5 floor price analysis
     floor_price = signal.floor_price
-    forward_dividend_rate = signal.forward_dividend_rate or td.forward_dividend_rate
-    max_yield_5y = signal.max_yield_5y or td.max_yield_5y
+    forward_dividend_rate = signal.forward_dividend_rate if signal.forward_dividend_rate is not None else td.forward_dividend_rate
+    max_yield_5y = signal.max_yield_5y if signal.max_yield_5y is not None else td.max_yield_5y
     floor_downside_pct = signal.floor_downside_pct
     opt = signal.option_details
     if floor_price is not None:

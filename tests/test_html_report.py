@@ -369,6 +369,7 @@ class TestDividendCardEnrichment:
         assert "4.5" in html            # max_yield_5y
         assert "1.94" in html           # forward_dividend_rate
         assert "极值底价" in html
+        assert "-31.0" in html          # floor_downside_pct is positive (buffer), displayed as negative drop
 
     def test_floor_price_absent_shows_fallback(self):
         """When floor_price is None, card should show the no-data fallback."""

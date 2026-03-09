@@ -391,6 +391,10 @@ function cardIvMomentum(s) {
   </div>`;
 }
 
+function esc(s) {
+  return s == null ? '' : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 function yieldLogic(pct) {
   if (pct >= 90) return '股息率达历史高位 → 价格明显低估';
   if (pct >= 80) return '股息率高于历史均值 → 估值偏低';
@@ -424,7 +428,7 @@ function qualityBreakdownHtml(breakdown) {
 
 function toggleStabilityDetail(btn) {
   const detail = btn.nextElementSibling;
-  detail.style.display = detail.style.display === 'none' ? 'block' : 'none';
+  if (detail) detail.style.display = detail.style.display === 'none' ? 'block' : 'none';
 }
 
 function cardDividend(s) {
@@ -438,14 +442,14 @@ function cardDividend(s) {
     ? `<span class="stab-info-btn" onclick="toggleStabilityDetail(this)">ℹ️</span>
        <div class="stability-detail" style="display:none">
          ${qualityBreakdownHtml(p.quality_breakdown)}
-         ${p.analysis_text ? `<p class="analysis-text">${p.analysis_text}</p>` : ''}
+         ${p.analysis_text ? `<p class="analysis-text">${esc(p.analysis_text)}</p>` : ''}
        </div>`
     : '';
 
   // Dim 5 floor price analysis
   const costBasis = p.option_strike != null ? (p.option_strike - p.option_bid) : null;
   const floorSection = (() => {
-    if (!p.floor_price) return '<p>极值底价数据暂缺</p>';
+    if (p.floor_price == null) return '<p>极值底价数据暂缺</p>';
     const cbRow = costBasis != null
       ? `<p>行权成本: $${costBasis.toFixed(2)}</p>` : '';
     const warning = (costBasis != null && costBasis > p.floor_price)
