@@ -141,6 +141,17 @@ def run_scan(config_path: str = "config.yaml"):
     start_time = time.time()
     config = load_config(config_path)
 
+    # Allow Docker / env-based overrides for IBKR connection and agent URL
+    if os.environ.get("IBKR_TWS_HOST"):
+        config.setdefault("ibkr", {})["host"] = os.environ["IBKR_TWS_HOST"]
+        config.setdefault("data_sources", {}).setdefault("ibkr_tws", {})["host"] = os.environ["IBKR_TWS_HOST"]
+    if os.environ.get("IBKR_TWS_PORT"):
+        port = int(os.environ["IBKR_TWS_PORT"])
+        config.setdefault("ibkr", {})["port"] = port
+        config.setdefault("data_sources", {}).setdefault("ibkr_tws", {})["port"] = port
+    if os.environ.get("AGENT_URL"):
+        config.setdefault("agent", {})["url"] = os.environ["AGENT_URL"]
+
     setup_logging(config["reports"]["log_dir"])
     logger.info("V1.9 Quant Radar starting")
 

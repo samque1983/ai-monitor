@@ -1,10 +1,66 @@
 services:
+
+  # ── IB Gateway (Paper account — real-time market data) ─────────────────────
+  ib-gateway:
+    image: ghcr.io/gnzsnz/ib-gateway:latest
+    restart: always
+    environment:
+      TWS_USERID: ${IB_TWS_USERID}
+      TWS_PASSWORD: ${IB_TWS_PASSWORD}
+      TRADING_MODE: paper
+      READ_ONLY_API: "yes"
+      AUTO_RESTART_TIME: "11:59 PM"
+      TWOFA_TIMEOUT_ACTION: restart
+    networks:
+      - internal
+
+  # ── Agent API + Dashboard ──────────────────────────────────────────────────
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    restart: always
+    environment:
+      AGENT_DB_PATH: /data/agent.db
+      SCAN_API_KEY: ${SCAN_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      DINGTALK_WEBHOOK: ${DINGTALK_WEBHOOK:-}
+      DINGTALK_APP_SECRET: ${DINGTALK_APP_SECRET:-}
+      POLYGON_API_KEY: ${POLYGON_API_KEY:-}
+    volumes:
+      - agent_data:/data
+    ports:
+      - "8080:8080"
+    networks:
+      - internal
+      - web
+
+  # ── Scanner (run manually or via cron) ────────────────────────────────────
+  # Usage: docker compose run --rm radar
   radar:
     build: .
+    restart: "no"
+    environment:
+      IBKR_TWS_HOST: ib-gateway
+      IBKR_TWS_PORT: "4003"
+      AGENT_URL: http://agent:8080
+      SCAN_API_KEY: ${SCAN_API_KEY}
+      POLYGON_API_KEY: ${POLYGON_API_KEY:-}
+      TRADIER_API_KEY: ${TRADIER_API_KEY:-}
     volumes:
       - ./config.yaml:/app/config.yaml:ro
       - ./data:/app/data
       - ./reports:/app/reports
       - ./logs:/app/logs
-    network_mode: host  # needed to reach IBKR Gateway on localhost
-    restart: "no"
+    depends_on:
+      - ib-gateway
+      - agent
+    networks:
+      - internal
+
+networks:
+  internal: {}
+  web: {}
+
+volumes:
+  agent_data: {}
