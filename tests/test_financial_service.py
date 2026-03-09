@@ -357,7 +357,8 @@ def test_defensiveness_score_calls_claude_when_enabled(tmp_path):
 
     assert result is not None
     assert result.defensiveness_score == 82.0
-    mock_client.messages.create.assert_called_once()
+    # 2 calls: one for defensiveness scoring, one for analysis_text
+    assert mock_client.messages.create.call_count == 2
     store.close()
 
 
@@ -386,8 +387,9 @@ def test_defensiveness_score_uses_cache_on_second_call(tmp_path):
             "sector": "Utilities", "industry": "Electric Utilities",
         })
 
-    # Claude called only once
-    assert mock_client.messages.create.call_count == 1
+    # Defensiveness scored once (cached on second call); analysis_text called per ticker.
+    # First call: 2 (defensiveness + analysis). Second call: 1 (analysis only). Total: 3.
+    assert mock_client.messages.create.call_count == 3
     store.close()
 
 

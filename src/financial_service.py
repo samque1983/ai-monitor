@@ -206,8 +206,7 @@ class FinancialServiceAnalyzer:
             result = self._calculate_rule_based_score(
                 ticker, fundamentals, defensiveness_override=defensiveness_score
             )
-            if self.store and hasattr(self.store, "get_analysis_text"):
-                result.analysis_text = self._get_analysis_text(ticker, sector, industry, result)
+            result.analysis_text = self._get_analysis_text(ticker, sector, industry, result)
             return result
         if not self.fallback_to_rules:
             logger.warning(f"{ticker}: Financial Service disabled, no fallback allowed")
