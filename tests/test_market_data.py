@@ -352,6 +352,26 @@ class TestGetFundamentals:
         result = provider.get_fundamentals("0005.HK")
         assert result["dividend_yield"] == pytest.approx(5.43)  # must stay 5.43%, not 543%
 
+    @patch("src.market_data.yf.Ticker")
+    def test_yf_fundamentals_includes_forward_dividend_rate(self, MockTicker):
+        """_yf_fundamentals should include forward_dividend_rate from yfinance info."""
+        mock_t = MockTicker.return_value
+        mock_t.info = {
+            "payoutRatio": 0.6,
+            "returnOnEquity": 0.15,
+            "debtToEquity": 1.0,
+            "industry": "Beverages",
+            "sector": "Consumer Staples",
+            "freeCashflow": 1_000_000_000,
+            "trailingAnnualDividendYield": 0.032,
+            "longName": "Coca-Cola",
+            "forwardAnnualDividendRate": 1.94,
+        }
+        provider = MarketDataProvider()
+        result = provider._yf_fundamentals("KO")
+        assert result is not None
+        assert result["forward_dividend_rate"] == pytest.approx(1.94)
+
 
 class TestIBKRPriceData:
     def test_get_price_data_uses_ibkr_when_connected(self):

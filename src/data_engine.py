@@ -46,6 +46,7 @@ class TickerData:
     forward_dividend_rate: Optional[float] = None
     max_yield_5y: Optional[float] = None
     data_version_date: Optional[str] = None
+    needs_reeval: bool = False
 
 
 @dataclass

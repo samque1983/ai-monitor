@@ -647,6 +647,7 @@ class MarketDataProvider:
                 "free_cash_flow": info.get("freeCashflow"),
                 "dividend_yield": dividend_yield,
                 "company_name": company_name,
+                "forward_dividend_rate": info.get("forwardAnnualDividendRate"),
             }
 
         except Exception as e:

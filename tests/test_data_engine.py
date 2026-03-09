@@ -331,3 +331,36 @@ class TestTickerDataDividendFields:
         assert ticker.industry == "Technology"
         assert ticker.sector == "Information Technology"
         assert ticker.free_cash_flow == 95000000000.0
+
+
+class TestTickerDataEnrichmentFields:
+    def test_ticker_data_has_enrichment_fields(self):
+        """TickerData should accept new enrichment fields without error."""
+        td = TickerData(
+            ticker="KO", name="Coca-Cola", market="US",
+            last_price=62.5, ma200=None, ma50w=None, rsi14=None,
+            iv_rank=None, iv_momentum=None, prev_close=62.5,
+            earnings_date=None, days_to_earnings=None,
+            quality_breakdown={"continuity": 18.0},
+            analysis_text="Strong moat.",
+            forward_dividend_rate=1.94,
+            max_yield_5y=4.5,
+            data_version_date=None,
+            needs_reeval=False,
+        )
+        assert td.forward_dividend_rate == 1.94
+        assert td.max_yield_5y == 4.5
+        assert td.quality_breakdown["continuity"] == 18.0
+        assert td.analysis_text == "Strong moat."
+        assert td.data_version_date is None
+        assert td.needs_reeval is False
+
+    def test_needs_reeval_defaults_to_false(self):
+        """needs_reeval should default to False when not provided."""
+        td = TickerData(
+            ticker="KO", name="Coca-Cola", market="US",
+            last_price=62.5, ma200=None, ma50w=None, rsi14=None,
+            iv_rank=None, iv_momentum=None, prev_close=62.5,
+            earnings_date=None, days_to_earnings=None,
+        )
+        assert td.needs_reeval is False
