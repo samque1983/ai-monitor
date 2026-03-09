@@ -124,11 +124,16 @@ class AgentDB:
         try:
             scanned_at = datetime.fromisoformat(scan_date).replace(hour=12).isoformat()
         except ValueError:
+            logger.warning("Invalid scan_date format %r, falling back to datetime.now()", scan_date)
             scanned_at = datetime.now().isoformat()
         rows = []
         for s in signals:
             signal_type = s.get("signal_type", "unknown")
-            category = self._CATEGORY_MAP.get(signal_type, "opportunity")
+            if signal_type in self._CATEGORY_MAP:
+                category = self._CATEGORY_MAP[signal_type]
+            else:
+                logger.warning("Unknown signal_type: %r, categorizing as 'unknown'", signal_type)
+                category = "unknown"
             ticker = s.get("ticker", "")
             payload = {k: v for k, v in s.items() if k not in ("signal_type", "ticker")}
             rows.append((scan_date, scanned_at, signal_type, category, ticker,
@@ -141,9 +146,9 @@ class AgentDB:
         self.conn.commit()
         return len(rows)
 
-    def get_signals(self, range: str = "24h", category: str = None) -> List[Dict]:
+    def get_signals(self, time_range: str = "24h", category: Optional[str] = None) -> List[Dict]:
         """Return signals within time range, optionally filtered by category."""
-        range_hours = {"24h": 24, "7d": 168, "30d": 720}.get(range, 24)
+        range_hours = {"24h": 24, "7d": 168, "30d": 720}.get(time_range, 24)
         cutoff = (datetime.now() - timedelta(hours=range_hours)).isoformat()
         query = "SELECT * FROM signals WHERE scanned_at >= ?"
         params: list = [cutoff]

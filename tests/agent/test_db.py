@@ -49,7 +49,6 @@ def test_watchlist_update(tmp_path):
 # ── signals table ────────────────────────────────────────────────────────────
 
 def test_save_signals_writes_rows(tmp_path):
-    from agent.db import AgentDB
     db = AgentDB(str(tmp_path / "test.db"))
     signals = [
         {"signal_type": "sell_put", "ticker": "AAPL",
@@ -61,7 +60,6 @@ def test_save_signals_writes_rows(tmp_path):
 
 
 def test_save_signals_is_idempotent(tmp_path):
-    from agent.db import AgentDB
     db = AgentDB(str(tmp_path / "test.db"))
     signals = [{"signal_type": "sell_put", "ticker": "AAPL", "apy": 18.5}]
     db.save_signals("2026-03-09", signals)
@@ -71,7 +69,6 @@ def test_save_signals_is_idempotent(tmp_path):
 
 
 def test_get_signals_filters_by_range(tmp_path):
-    from agent.db import AgentDB
     from datetime import datetime, timedelta
     db = AgentDB(str(tmp_path / "test.db"))
 
@@ -90,7 +87,6 @@ def test_get_signals_filters_by_range(tmp_path):
 
 
 def test_get_signals_filters_by_category(tmp_path):
-    from agent.db import AgentDB
     db = AgentDB(str(tmp_path / "test.db"))
     signals = [
         {"signal_type": "sell_put", "ticker": "AAPL", "apy": 18.5},
@@ -108,7 +104,6 @@ def test_get_signals_filters_by_category(tmp_path):
 
 
 def test_get_signals_returns_payload_as_dict(tmp_path):
-    from agent.db import AgentDB
     db = AgentDB(str(tmp_path / "test.db"))
     db.save_signals("2026-03-09", [
         {"signal_type": "sell_put", "ticker": "AAPL", "strike": 180, "apy": 18.5}
