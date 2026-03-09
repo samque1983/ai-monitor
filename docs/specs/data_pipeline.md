@@ -162,17 +162,39 @@ data:
 
 ## Multi-Datasource Routing (Phase 4)
 
+### Provider Architecture
+
+All providers live in `src/providers/` package and inherit from `BaseProvider`:
+
+```
+src/providers/
+  __init__.py          # exports BaseProvider, PolygonProvider, TradierProvider
+  base.py              # BaseProvider ABC (default no-op methods)
+  polygon.py           # PolygonProvider
+  tradier.py           # TradierProvider
+```
+
+**BaseProvider** (`src/providers/base.py`)
+```python
+class BaseProvider(ABC):
+    def get_price_data(ticker, period) -> pd.DataFrame   # default: empty
+    def get_options_chain(ticker, dte_min, dte_max) -> pd.DataFrame  # default: empty
+    def get_fundamentals(ticker) -> Optional[Dict]       # default: None
+```
+New providers extend `BaseProvider` and override only the methods they support.
+
 ### Providers
 
-**PolygonProvider** (`src/market_data.py`)
+**PolygonProvider** (`src/providers/polygon.py`)
 - `get_price_data(ticker, period) → pd.DataFrame` — daily adjusted OHLCV via `/v2/aggs`
 - `get_fundamentals(ticker) → Optional[Dict]` — name/industry via `/v3/reference/tickers`, ROE+FCF via `/vX/reference/financials`
 - Rate limit: 250ms sleep after each request (5 req/min free tier)
 - Activated via: `POLYGON_API_KEY` env var or `config.data_sources.polygon.api_key`
 
-**TradierProvider** (`src/market_data.py`)
+**TradierProvider** (`src/providers/tradier.py`)
 - `get_options_chain(ticker, dte_min, dte_max) → pd.DataFrame` — put options via `/v1/markets/options/chains`
 - 15-min delayed data (sandbox); suitable for end-of-day scanning
+- Auth: `Authorization: Bearer {api_key}`, `Accept: application/json`
 - Activated via: `TRADIER_API_KEY` env var or `config.data_sources.tradier.api_key`
 
 ### Priority Chains
@@ -209,3 +231,7 @@ data:
 - Earnings CSV fallback
 - IV momentum calculation
 - Data sufficiency checks
+- PolygonProvider: price data, fundamentals (ROE/FCF), error handling
+- TradierProvider: put options, DTE filter, error handling
+- MarketDataProvider routing: Polygon for US price, Tradier for US options, yfinance fallback
+- Fundamentals merge: Polygon fields + yfinance fills None fields
