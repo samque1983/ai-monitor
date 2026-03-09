@@ -30,6 +30,7 @@ def test_dividend_store_init_creates_tables():
     assert 'dividend_history' in tables
     assert 'screening_versions' in tables
     assert 'defensiveness_cache' in tables
+    assert 'analysis_cache' in tables
 
 
 def test_save_and_get_pool():
@@ -226,4 +227,25 @@ def test_analysis_text_cache(tmp_path):
     store.save_analysis_text("KO", "KO is a moat stock.")
     assert store.get_analysis_text("KO") == "KO is a moat stock."
     assert store.get_analysis_text("MSFT") is None
+    store.close()
+
+
+def test_analysis_text_cache_expired(tmp_path):
+    """get_analysis_text should return None for expired entries."""
+    from src.dividend_store import DividendStore
+    from datetime import date, timedelta
+    db_path = str(tmp_path / "test.db")
+    store = DividendStore(db_path)
+    # Save with a TTL of 0 days (expires today — will be < tomorrow)
+    # Force expiry by writing directly with a past date
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    past_date = (date.today() - timedelta(days=1)).isoformat()
+    conn.execute(
+        "INSERT OR REPLACE INTO analysis_cache (ticker, text, expires) VALUES (?,?,?)",
+        ("KO", "some text", past_date)
+    )
+    conn.commit()
+    conn.close()
+    assert store.get_analysis_text("KO") is None
     store.close()

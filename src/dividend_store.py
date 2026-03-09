@@ -238,7 +238,8 @@ class DividendStore:
             if d.get("quality_breakdown"):
                 try:
                     d["quality_breakdown"] = json.loads(d["quality_breakdown"])
-                except Exception:
+                except (json.JSONDecodeError, TypeError) as e:
+                    logger.warning(f"quality_breakdown JSON parse error for {d.get('ticker')}: {e}")
                     d["quality_breakdown"] = {}
             records.append(d)
         return records
