@@ -761,6 +761,40 @@ def test_tradier_provider_returns_empty_on_exception():
 
 
 # ---------------------------------------------------------------------------
+# Enabled flag: per-source on/off control
+# ---------------------------------------------------------------------------
+
+def test_polygon_not_instantiated_when_disabled():
+    """polygon.enabled=false → _polygon is None even if api_key is set."""
+    from src.market_data import MarketDataProvider
+    provider = MarketDataProvider(
+        config={"data_sources": {"polygon": {"enabled": False, "api_key": "fake-key"}}}
+    )
+    assert provider._polygon is None
+
+
+def test_tradier_not_instantiated_when_disabled():
+    """tradier.enabled=false → _tradier is None even if api_key is set."""
+    from src.market_data import MarketDataProvider
+    provider = MarketDataProvider(
+        config={"data_sources": {"tradier": {"enabled": False, "api_key": "fake-key"}}}
+    )
+    assert provider._tradier is None
+
+
+def test_ibkr_tws_not_connected_when_disabled():
+    """ibkr_tws.enabled=false → no connection attempt even with ibkr_config."""
+    from src.market_data import MarketDataProvider
+    with patch.object(MarketDataProvider, "_try_connect_ibkr") as mock_connect:
+        provider = MarketDataProvider(
+            ibkr_config={"host": "127.0.0.1", "port": 4001, "client_id": 1},
+            config={"data_sources": {"ibkr_tws": {"enabled": False}}},
+        )
+    mock_connect.assert_not_called()
+    assert provider.ibkr is None
+
+
+# ---------------------------------------------------------------------------
 # Task 4: Wire providers into MarketDataProvider routing
 # ---------------------------------------------------------------------------
 

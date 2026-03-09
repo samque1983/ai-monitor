@@ -21,26 +21,33 @@ class MarketDataProvider:
         self.iv_store: Optional[IVStore] = None
         self.config: dict = config or {}  # Accept config parameter
         self._yf_session = self._make_yf_session()
-        if ibkr_config:
+
+        ds_config = (config or {}).get("data_sources", {})
+
+        # IB Gateway (TWS) — enabled by default; disabled via ibkr_tws.enabled=false
+        tws_enabled = ds_config.get("ibkr_tws", {}).get("enabled", True)
+        if ibkr_config and tws_enabled:
             self.ibkr = self._try_connect_ibkr(ibkr_config)
+
         if iv_db_path:
             self.iv_store = IVStore(iv_db_path)
 
-        # Initialize cloud providers from config
-        ds_config = (config or {}).get("data_sources", {})
-
-        polygon_key = (
-            ds_config.get("polygon", {}).get("api_key")
-            or os.environ.get("POLYGON_API_KEY", "")
+        # Polygon — requires enabled=true (default) AND api_key
+        poly_cfg = ds_config.get("polygon", {})
+        polygon_enabled = poly_cfg.get("enabled", True)
+        polygon_key = poly_cfg.get("api_key") or os.environ.get("POLYGON_API_KEY", "")
+        self._polygon: Optional[PolygonProvider] = (
+            PolygonProvider(polygon_key) if (polygon_enabled and polygon_key) else None
         )
-        self._polygon: Optional[PolygonProvider] = PolygonProvider(polygon_key) if polygon_key else None
 
-        tradier_key = (
-            ds_config.get("tradier", {}).get("api_key")
-            or os.environ.get("TRADIER_API_KEY", "")
+        # Tradier — requires enabled=true (default) AND api_key
+        tradier_cfg = ds_config.get("tradier", {})
+        tradier_enabled = tradier_cfg.get("enabled", True)
+        tradier_key = tradier_cfg.get("api_key") or os.environ.get("TRADIER_API_KEY", "")
+        tradier_sandbox = tradier_cfg.get("sandbox", True)
+        self._tradier: Optional[TradierProvider] = (
+            TradierProvider(tradier_key, sandbox=tradier_sandbox) if (tradier_enabled and tradier_key) else None
         )
-        tradier_sandbox = ds_config.get("tradier", {}).get("sandbox", True)
-        self._tradier: Optional[TradierProvider] = TradierProvider(tradier_key, sandbox=tradier_sandbox) if tradier_key else None
 
     def _make_yf_session(self):
         """Create a curl_cffi session with SSL verification disabled (handles corporate proxy)."""

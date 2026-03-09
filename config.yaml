@@ -15,12 +15,20 @@ data:
   dividend_db_path: "data/dividend_pool.db"
 
 data_sources:
+  ibkr_tws:
+    enabled: true      # local/intranet only; set false for cloud-only runs
+    host: "127.0.0.1"
+    port: 4001
+    client_id: 1
+  ibkr_rest:
+    enabled: false     # set true after developer.ibkr.com approval
+    client_id: ""      # env: IBKR_CLIENT_ID
   polygon:
     enabled: true
-    api_key: ""        # set via env: POLYGON_API_KEY
+    api_key: ""        # env: POLYGON_API_KEY
   tradier:
-    enabled: false     # set to true after getting API key
-    api_key: ""        # set via env: TRADIER_API_KEY
+    enabled: false     # set true after getting API key
+    api_key: ""        # env: TRADIER_API_KEY
     sandbox: true      # true=sandbox (delayed), false=production
 
 scanners:
