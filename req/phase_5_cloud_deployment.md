@@ -40,22 +40,97 @@
 
 ## 模块 1: Dashboard (Web UI)
 
-### 功能范围
+### 设计基础
 
-- 扫描结果展示（IV Momentum、高股息双打信号）
-- 仓位快照（从 IBKR REST API 或手动录入）
-- 数据源状态（各 provider 启用/禁用状态、最后成功时间）
-- 历史报告查阅
+现有 `src/report.py` + HTML report（`reports/YYYY-MM-DD_radar.html`）已经是 Dashboard 的雏形：
+- Apple 风格 card 布局、dark dividend card、badge 系统已完善
+- 信号分类已定义：IV 极值、MA200 趋势、LEAPS、Sell Put、IV 动量、财报 Gap
+
+**Dashboard = 把静态 HTML 变成动态 live 页面 + 时间筛选**
+
+### 核心交互
+
+**默认视图：最近 24 小时的信号**
+
+时间切换器（页面顶部固定）：
+```
+[ 24小时 ]  [ 最近一周 ]  [ 最近一个月 ]
+```
+
+切换时 HTMX 异步刷新信号列表，无整页刷新。
+
+### 页面布局
+
+```
+┌─────────────────────────────────────┐
+│  量化扫描雷达  [24h] [1w] [1m]  ●●● │  ← 顶部 header + 时间切换
+├─────────────────────────────────────┤
+│  [机会提醒 8]  [风控提醒 3]          │  ← tab 切换
+├─────────────────────────────────────┤
+│  ┌─────────────┐  ┌─────────────┐   │
+│  │ Sell Put    │  │ LEAPS 共振  │   │  ← 机会 card（沿用现有样式）
+│  │ AAPL $180   │  │ MSFT        │   │
+│  │ APY 18.5%   │  │ RSI 38      │   │
+│  └─────────────┘  └─────────────┘   │
+│  ...                                │
+├─────────────────────────────────────┤
+│  ┌──────────────────────────────┐   │
+│  │ ⚠️ 财报 Gap 风险              │   │  ← 风控 card（红色 badge）
+│  │ NVDA 财报还有 5天             │   │
+│  │ 历史平均 Gap ±8.2%            │   │
+│  └──────────────────────────────┘   │
+└─────────────────────────────────────┘
+```
+
+### 信号分类
+
+**机会提醒 tab：**
+| 信号类型 | 来源 | 触发条件 |
+|---------|------|---------|
+| Sell Put | `sell_puts` | APY > 阈值，DTE 在窗口 |
+| LEAPS 共振 | `leaps` | MA200 + MA50w + RSI + IV 四项共振 |
+| IV 低位 | `iv_low` | IV Rank < 20% |
+| 高股息双打 | `dividend_signals` | 质量评分 + 股息率 + Sell Put |
+
+**风控提醒 tab：**
+| 信号类型 | 来源 | 触发条件 |
+|---------|------|---------|
+| 财报 Gap 风险 | `earnings_gaps` | 财报 < 5 天 + 历史 Gap 大 |
+| IV 高位 | `iv_high` | IV Rank > 80% |
+| MA200 跌破 | `ma200_bearish` | 价格跌破 MA200 |
+| Sell Put 财报风险 | `sell_puts.earnings_risk` | DTE 窗口内有财报 |
+
+### 数据存储
+
+扫描结果需持久化到 SQLite（当前只写静态文件），支持时间范围查询：
+
+```sql
+CREATE TABLE scan_signals (
+    id         INTEGER PRIMARY KEY,
+    scanned_at TIMESTAMP NOT NULL,
+    signal_type TEXT NOT NULL,   -- 'sell_put' | 'leaps' | 'iv_low' | ...
+    category   TEXT NOT NULL,    -- 'opportunity' | 'risk'
+    ticker     TEXT NOT NULL,
+    payload    JSON NOT NULL,    -- 信号详细数据
+    scan_date  DATE NOT NULL
+);
+```
+
+查询接口：
+```
+GET /api/signals?range=24h|7d|30d&category=opportunity|risk
+```
 
 ### 技术选型
 
-- 后端：FastAPI（已有 agent API 骨架，扩展即可）
-- 前端：轻量 HTML + HTMX 或 Vue 单页，部署在同一服务
-- 认证：单用户 API Key（Header `X-API-Key`），env var 配置
+- 后端：FastAPI（扩展现有 agent API 骨架）
+- 前端：HTML + HTMX（轻量，无 JS 框架，直接沿用现有 CSS）
+- 存储：SQLite（`data/signals.db`，与其他 db 一致）
+- 认证：单用户 Bearer token（`SCAN_API_KEY` env var，现有机制）
 
 ### 访问控制
 
-- Dashboard 公网可访问，需 API Key 认证
+- Dashboard 公网可访问，需 Bearer token 认证
 - IB Gateway 仍只在内网/本地暴露，不通过 Dashboard 透传
 
 ---
