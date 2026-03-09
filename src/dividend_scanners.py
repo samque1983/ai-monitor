@@ -320,7 +320,7 @@ def scan_dividend_buy_signal(
                 logger.debug(f"{ticker}: No price data available, skipping")
                 continue
 
-            last_price = price_data['Close'].iloc[-1]
+            last_price = float(price_data['Close'].iloc[-1])
             if last_price <= 0:
                 logger.warning(f"{ticker}: Invalid last price {last_price}, skipping")
                 continue
