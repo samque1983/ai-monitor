@@ -1,5 +1,368 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><title>量化扫描雷达</title></head>
-<body><h1>量化扫描雷达</h1><p>Loading...</p></body>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>量化扫描雷达</title>
+<style>
+/* ── Reset + Base ── */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+    background: #f5f5f7;
+    color: #1d1d1f;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+}
+.container { max-width: 760px; margin: 0 auto; padding: 32px 20px; }
+
+/* ── Header ── */
+header { text-align: center; margin-bottom: 24px; }
+header h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 6px; }
+header .meta { color: #86868b; font-size: 13px; }
+
+/* ── Time Range Tabs ── */
+.range-bar { display: flex; justify-content: center; gap: 8px; margin-bottom: 20px; }
+.range-btn {
+    padding: 6px 16px; border-radius: 20px; border: 1px solid #d2d2d7;
+    background: #fff; font-size: 14px; cursor: pointer; color: #1d1d1f;
+    transition: all 0.15s;
+}
+.range-btn.active { background: #1d1d1f; color: #fff; border-color: #1d1d1f; }
+
+/* ── Category Tabs ── */
+.cat-bar { display: flex; gap: 0; margin-bottom: 24px; border-bottom: 1px solid #d2d2d7; }
+.cat-btn {
+    padding: 10px 20px; border: none; background: none;
+    font-size: 15px; cursor: pointer; color: #86868b;
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+    transition: all 0.15s;
+}
+.cat-btn.active { color: #1d1d1f; border-bottom-color: #1d1d1f; font-weight: 600; }
+.cat-btn .badge {
+    display: inline-block; background: #e8e8ed; color: #1d1d1f;
+    border-radius: 10px; padding: 1px 7px; font-size: 12px;
+    margin-left: 6px; font-weight: 600;
+}
+.cat-btn.active .badge { background: #1d1d1f; color: #fff; }
+
+/* ── Cards ── */
+.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+.card {
+    background: #fff; border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    padding: 18px 20px;
+}
+.card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.ticker { font-size: 18px; font-weight: 700; }
+.type-badge {
+    font-size: 11px; font-weight: 600; padding: 3px 8px;
+    border-radius: 6px; text-transform: uppercase; letter-spacing: 0.3px;
+}
+.badge-opportunity { background: #e8f5e9; color: #2e7d32; }
+.badge-risk        { background: #fff0f0; color: #c62828; }
+.badge-leaps       { background: #e3f2fd; color: #1565c0; }
+.badge-dividend    { background: #f3e5f5; color: #6a1b9a; }
+.card-body { font-size: 14px; color: #3a3a3c; }
+.card-body .row { display: flex; justify-content: space-between; padding: 3px 0; }
+.card-body .label { color: #86868b; }
+.card-body .value { font-weight: 600; }
+.card-body .apy { font-size: 22px; font-weight: 700; color: #1d7a3a; margin: 8px 0 4px; }
+.card-body .warn { color: #c62828; font-size: 13px; margin-top: 6px; }
+.card-time { font-size: 12px; color: #86868b; margin-top: 10px; }
+
+/* ── Empty state ── */
+.empty-state { text-align: center; padding: 60px 20px; color: #86868b; }
+.empty-state .icon { font-size: 40px; margin-bottom: 12px; }
+
+/* ── Loading ── */
+.loading { text-align: center; padding: 60px; color: #86868b; }
+
+/* ── Mobile ── */
+@media (max-width: 480px) {
+    .container { padding: 20px 12px; }
+    header h1 { font-size: 22px; }
+    .card-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <h1>量化扫描雷达</h1>
+    <div class="meta" id="last-updated">正在加载...</div>
+  </header>
+
+  <div class="range-bar">
+    <button class="range-btn active" data-range="24h">24小时</button>
+    <button class="range-btn" data-range="7d">最近一周</button>
+    <button class="range-btn" data-range="30d">最近一月</button>
+  </div>
+
+  <div class="cat-bar">
+    <button class="cat-btn active" data-cat="all">
+      全部 <span class="badge" id="count-all">0</span>
+    </button>
+    <button class="cat-btn" data-cat="opportunity">
+      机会提醒 <span class="badge" id="count-opp">0</span>
+    </button>
+    <button class="cat-btn" data-cat="risk">
+      市场风控 <span class="badge" id="count-risk">0</span>
+    </button>
+  </div>
+
+  <div id="cards-container">
+    <div class="loading">加载中...</div>
+  </div>
+
+</div>
+
+<script>
+'use strict';
+
+let currentRange = '24h';
+let currentCat   = 'all';
+let allSignals   = [];
+
+// ── Fetch ──────────────────────────────────────────────────────────────────
+async function load() {
+  document.getElementById('cards-container').innerHTML =
+    '<div class="loading">加载中...</div>';
+  try {
+    const resp = await fetch(`/api/signals?time_range=${currentRange}`);
+    const data = await resp.json();
+    allSignals = data.signals || [];
+    document.getElementById('count-all').textContent  = data.count;
+    document.getElementById('count-opp').textContent  = data.opportunity_count;
+    document.getElementById('count-risk').textContent = data.risk_count;
+    document.getElementById('last-updated').textContent =
+      `数据范围: ${rangeLabel(currentRange)} · 共 ${data.count} 条信号`;
+    render();
+  } catch (e) {
+    document.getElementById('cards-container').innerHTML =
+      '<div class="empty-state"><div class="icon">⚠️</div><p>加载失败，请稍后重试</p></div>';
+  }
+}
+
+function rangeLabel(r) {
+  return { '24h': '最近24小时', '7d': '最近一周', '30d': '最近一月' }[r] || r;
+}
+
+// ── Render ─────────────────────────────────────────────────────────────────
+function render() {
+  const filtered = currentCat === 'all'
+    ? allSignals
+    : allSignals.filter(s => s.category === currentCat);
+
+  if (!filtered.length) {
+    document.getElementById('cards-container').innerHTML =
+      `<div class="empty-state"><div class="icon">🔍</div><p>该时间段内暂无信号</p></div>`;
+    return;
+  }
+
+  const html = filtered.map(renderCard).join('');
+  document.getElementById('cards-container').innerHTML =
+    `<div class="card-grid">${html}</div>`;
+}
+
+function fmtTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleString('zh-CN', { month: 'numeric', day: 'numeric',
+    hour: '2-digit', minute: '2-digit' });
+}
+
+function renderCard(s) {
+  switch (s.signal_type) {
+    case 'sell_put':              return cardSellPut(s);
+    case 'sell_put_earnings_risk':return cardSellPutRisk(s);
+    case 'iv_low':                return cardIvLow(s);
+    case 'iv_high':               return cardIvHigh(s);
+    case 'ma200_bullish':         return cardMa200(s, true);
+    case 'ma200_bearish':         return cardMa200(s, false);
+    case 'leaps':                 return cardLeaps(s);
+    case 'earnings_gap':          return cardEarningsGap(s);
+    case 'iv_momentum':           return cardIvMomentum(s);
+    case 'dividend':              return cardDividend(s);
+    default:                      return cardGeneric(s);
+  }
+}
+
+// ── Card Templates ─────────────────────────────────────────────────────────
+function cardSellPut(s) {
+  const p = s.payload;
+  return `<div class="card">
+    <div class="card-header">
+      <span class="ticker">${s.ticker}</span>
+      <span class="type-badge badge-opportunity">Sell Put</span>
+    </div>
+    <div class="card-body">
+      <div class="apy">${p.apy}% APY</div>
+      <div class="row"><span class="label">行权价</span><span class="value">$${p.strike}</span></div>
+      <div class="row"><span class="label">到期天数</span><span class="value">${p.dte} 天</span></div>
+      <div class="row"><span class="label">权利金</span><span class="value">$${p.bid}</span></div>
+    </div>
+    <div class="card-time">${fmtTime(s.scanned_at)}</div>
+  </div>`;
+}
+
+function cardSellPutRisk(s) {
+  const p = s.payload;
+  return `<div class="card">
+    <div class="card-header">
+      <span class="ticker">${s.ticker}</span>
+      <span class="type-badge badge-risk">财报风险</span>
+    </div>
+    <div class="card-body">
+      <div class="row"><span class="label">行权价</span><span class="value">$${p.strike}</span></div>
+      <div class="row"><span class="label">APY</span><span class="value">${p.apy}%</span></div>
+      <div class="warn">🚨 财报日在DTE窗口内，跳空风险</div>
+    </div>
+    <div class="card-time">${fmtTime(s.scanned_at)}</div>
+  </div>`;
+}
+
+function cardIvLow(s) {
+  const p = s.payload;
+  return `<div class="card">
+    <div class="card-header">
+      <span class="ticker">${s.ticker}</span>
+      <span class="type-badge badge-opportunity">IV 低位</span>
+    </div>
+    <div class="card-body">
+      <div class="row"><span class="label">IV Rank</span><span class="value">${p.iv_rank}%</span></div>
+      <div class="row"><span class="label">适合</span><span class="value">买入期权 / LEAPS</span></div>
+    </div>
+    <div class="card-time">${fmtTime(s.scanned_at)}</div>
+  </div>`;
+}
+
+function cardIvHigh(s) {
+  const p = s.payload;
+  return `<div class="card">
+    <div class="card-header">
+      <span class="ticker">${s.ticker}</span>
+      <span class="type-badge badge-risk">IV 高位</span>
+    </div>
+    <div class="card-body">
+      <div class="row"><span class="label">IV Rank</span><span class="value">${p.iv_rank}%</span></div>
+      <div class="warn">⚠️ IV 处于历史高位，期权虚值溢价高</div>
+    </div>
+    <div class="card-time">${fmtTime(s.scanned_at)}</div>
+  </div>`;
+}
+
+function cardMa200(s, bullish) {
+  const p = s.payload;
+  const sign = p.pct >= 0 ? '+' : '';
+  const badgeClass = bullish ? 'badge-opportunity' : 'badge-risk';
+  const label = bullish ? '突破 MA200 ↑' : '跌破 MA200 ↓';
+  return `<div class="card">
+    <div class="card-header">
+      <span class="ticker">${s.ticker}</span>
+      <span class="type-badge ${badgeClass}">${label}</span>
+    </div>
+    <div class="card-body">
+      <div class="row"><span class="label">现价</span><span class="value">$${p.last_price}</span></div>
+      <div class="row"><span class="label">MA200</span><span class="value">$${p.ma200} (${sign}${p.pct}%)</span></div>
+    </div>
+    <div class="card-time">${fmtTime(s.scanned_at)}</div>
+  </div>`;
+}
+
+function cardLeaps(s) {
+  const p = s.payload;
+  return `<div class="card">
+    <div class="card-header">
+      <span class="ticker">${s.ticker}</span>
+      <span class="type-badge badge-leaps">LEAPS 共振</span>
+    </div>
+    <div class="card-body">
+      <div class="row"><span class="label">现价</span><span class="value">$${p.last_price}</span></div>
+      <div class="row"><span class="label">RSI</span><span class="value">${p.rsi14}</span></div>
+      <div class="row"><span class="label">IV Rank</span><span class="value">${p.iv_rank}%</span></div>
+    </div>
+    <div class="card-time">${fmtTime(s.scanned_at)}</div>
+  </div>`;
+}
+
+function cardEarningsGap(s) {
+  const p = s.payload;
+  return `<div class="card">
+    <div class="card-header">
+      <span class="ticker">${s.ticker}</span>
+      <span class="type-badge badge-risk">财报 Gap</span>
+    </div>
+    <div class="card-body">
+      <div class="row"><span class="label">财报倒计时</span><span class="value">${p.days_to_earnings ?? 'N/A'} 天</span></div>
+      <div class="row"><span class="label">历史平均 Gap</span><span class="value">±${p.avg_gap}%</span></div>
+      <div class="row"><span class="label">上涨概率</span><span class="value">${p.up_ratio}%</span></div>
+      <div class="row"><span class="label">最大跳空</span><span class="value">${p.max_gap > 0 ? '+' : ''}${p.max_gap}%</span></div>
+    </div>
+    <div class="card-time">${fmtTime(s.scanned_at)}</div>
+  </div>`;
+}
+
+function cardIvMomentum(s) {
+  const p = s.payload;
+  return `<div class="card">
+    <div class="card-header">
+      <span class="ticker">${s.ticker}</span>
+      <span class="type-badge badge-risk">IV 异动</span>
+    </div>
+    <div class="card-body">
+      <div class="row"><span class="label">5日IV动量</span><span class="value">+${p.iv_momentum}%</span></div>
+      <div class="row"><span class="label">IV Rank</span><span class="value">${p.iv_rank}%</span></div>
+    </div>
+    <div class="card-time">${fmtTime(s.scanned_at)}</div>
+  </div>`;
+}
+
+function cardDividend(s) {
+  return `<div class="card">
+    <div class="card-header">
+      <span class="ticker">${s.ticker}</span>
+      <span class="type-badge badge-dividend">高股息</span>
+    </div>
+    <div class="card-body">
+      <div class="row"><span class="label">策略</span><span class="value">防御双打</span></div>
+    </div>
+    <div class="card-time">${fmtTime(s.scanned_at)}</div>
+  </div>`;
+}
+
+function cardGeneric(s) {
+  return `<div class="card">
+    <div class="card-header">
+      <span class="ticker">${s.ticker}</span>
+      <span class="type-badge badge-opportunity">${s.signal_type}</span>
+    </div>
+    <div class="card-time">${fmtTime(s.scanned_at)}</div>
+  </div>`;
+}
+
+// ── Event Bindings ─────────────────────────────────────────────────────────
+document.querySelectorAll('.range-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentRange = btn.dataset.range;
+    load();
+  });
+});
+
+document.querySelectorAll('.cat-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentCat = btn.dataset.cat;
+    render();
+  });
+});
+
+// ── Init ───────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', load);
+</script>
+</body>
 </html>
