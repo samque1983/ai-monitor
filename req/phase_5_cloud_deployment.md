@@ -201,11 +201,20 @@ notifications:
 
 ## 仓位数据方案
 
-IBKR REST API 支持仓位查询：
-- `GET /portfolio/{accountId}/positions` → 当前持仓
-- `GET /portfolio/{accountId}/summary` → 账户摘要
+IBKR Web API（无 Gateway）支持仓位查询，认证用 **RSA 私钥签名**（非 client_secret）：
 
-无需 IB Gateway 即可获取仓位数据，纯云端可用。
+```
+GET /v1/api/portfolio/accounts          → accountId
+GET /v1/api/portfolio/{accountId}/positions/0  → 持仓列表
+  字段：ticker, position (负=空头), avgCost, mktPrice,
+        unrealizedPnl, realizedPnl
+
+Sell Put 识别：position < 0 且 contract type = OPT
+  需调 /v1/api/contract/{conid}/info 确认合约类型
+```
+
+私钥存 Fly.io secrets（`IBKR_PRIVATE_KEY`），不写入代码。
+完整认证说明见 `req/phase_4_data_sources.md`。
 
 ---
 
