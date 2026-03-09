@@ -1,4 +1,5 @@
 # agent/main.py
+import json
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -19,23 +20,22 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Module-level singletons (initialized on startup)
-db: AgentDB = None
 claude_agent: ClaudeAgent = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global db, claude_agent
+    global claude_agent
     db_path = config.get("AGENT_DB_PATH", "data/agent.db")
     os.makedirs(os.path.dirname(db_path) if "/" in db_path else ".", exist_ok=True)
-    db = AgentDB(db_path)
+    _db = AgentDB(db_path)
     try:
         llm_cfg = config.get_llm_config()
     except ValueError as e:
         logger.warning(f"LLM not configured: {e} — AI responses will fail")
         llm_cfg = {"provider": "anthropic", "api_key": "", "model": None}
     claude_agent = ClaudeAgent(
-        db=db,
+        db=_db,
         llm_provider=llm_cfg["provider"],
         llm_api_key=llm_cfg["api_key"],
         llm_model=llm_cfg["model"],
@@ -46,7 +46,7 @@ async def lifespan(app: FastAPI):
         logger.warning("SCAN_API_KEY not set — /api/scan_results is unauthenticated")
     logger.info("Agent started")
     yield
-    db.close()
+    _db.close()
 
 
 app = FastAPI(title="交易领航员 Agent", lifespan=lifespan)
@@ -102,8 +102,7 @@ async def get_scan_results():
     ).fetchone()
     if not row:
         return {"scan_date": None, "results": []}
-    import json as _json
-    return {"scan_date": row["scan_date"], "results": _json.loads(row["results_json"])}
+    return {"scan_date": row["scan_date"], "results": json.loads(row["results_json"])}
 
 
 @app.post("/api/scan_results")
@@ -112,7 +111,8 @@ async def push_scan_results(payload: ScanResultsPayload, request: Request):
     if api_key and request.headers.get("X-API-Key") != api_key:
         raise HTTPException(status_code=403, detail="Invalid API key")
 
-    _get_db().save_scan_results(payload.scan_date, payload.results)
-    _get_db().save_signals(payload.scan_date, payload.results)
+    db = _get_db()
+    db.save_scan_results(payload.scan_date, payload.results)
+    db.save_signals(payload.scan_date, payload.results)
     logger.info(f"Scan results saved: {payload.scan_date}, {len(payload.results)} signals")
     return {"saved": len(payload.results), "scan_date": payload.scan_date}
