@@ -320,3 +320,185 @@ class TestDividendSection:
         )
         assert 'href="dividend_pool.html"' in html
         assert 'ⓘ' in html or '&#9432;' in html
+
+
+class TestDividendCardEnrichment:
+    """Task 6: _dividend_card() renders enriched fields — floor price, quality breakdown."""
+
+    def _base_kwargs(self):
+        return dict(
+            scan_date=date(2026, 3, 9),
+            data_source="yfinance",
+            universe_count=5,
+            iv_low=[], iv_high=[],
+            ma200_bullish=[], ma200_bearish=[],
+            leaps=[], sell_puts=[],
+            elapsed_seconds=1.0,
+        )
+
+    def test_floor_price_displayed_when_provided(self):
+        """_dividend_card() should render floor_price and floor_downside_pct."""
+        signal = DividendBuySignal(
+            ticker_data=make_ticker(
+                ticker="KO",
+                last_price=62.5,
+                dividend_yield=3.2,
+                dividend_yield_5y_percentile=85.0,
+                dividend_quality_score=85.0,
+                payout_ratio=62.5,
+                forward_dividend_rate=1.94,
+                max_yield_5y=4.5,
+            ),
+            signal_type="OPTION",
+            current_yield=3.2,
+            yield_percentile=85.0,
+            option_details={"strike": 60.0, "bid": 1.20, "dte": 30, "apy": 8.5},
+            floor_price=43.11,
+            floor_downside_pct=31.0,
+            forward_dividend_rate=1.94,
+            max_yield_5y=4.5,
+            data_age_days=3,
+            needs_reeval=False,
+        )
+        html = format_html_report(
+            **self._base_kwargs(),
+            dividend_signals=[signal],
+            dividend_pool_summary={"count": 1, "last_update": "2026-03-09"},
+        )
+        assert "43.11" in html          # floor_price
+        assert "4.5" in html            # max_yield_5y
+        assert "1.94" in html           # forward_dividend_rate
+        assert "极值底价" in html
+
+    def test_floor_price_absent_shows_fallback(self):
+        """When floor_price is None, card should show the no-data fallback."""
+        signal = DividendBuySignal(
+            ticker_data=make_ticker(
+                ticker="MCD",
+                last_price=280.0,
+                dividend_yield=2.5,
+                dividend_yield_5y_percentile=82.0,
+                dividend_quality_score=90.0,
+                payout_ratio=55.0,
+            ),
+            signal_type="STOCK",
+            current_yield=2.5,
+            yield_percentile=82.0,
+            option_details=None,
+            floor_price=None,
+        )
+        html = format_html_report(
+            **self._base_kwargs(),
+            dividend_signals=[signal],
+            dividend_pool_summary={"count": 1, "last_update": "2026-03-09"},
+        )
+        assert "极值底价数据暂缺" in html
+
+    def test_quality_breakdown_details_rendered(self):
+        """_dividend_card() should render a <details> element with quality breakdown bars."""
+        signal = DividendBuySignal(
+            ticker_data=make_ticker(
+                ticker="KO",
+                last_price=62.5,
+                dividend_yield=3.2,
+                dividend_yield_5y_percentile=85.0,
+                dividend_quality_score=85.0,
+                payout_ratio=62.5,
+                quality_breakdown={
+                    "continuity": 18,
+                    "payout_safety": 14,
+                    "earnings_stability": 17,
+                    "moat": 19,
+                    "debt_level": 17,
+                },
+                analysis_text="KO is one of the widest-moat consumer staples globally.",
+            ),
+            signal_type="STOCK",
+            current_yield=3.2,
+            yield_percentile=85.0,
+            option_details=None,
+        )
+        html = format_html_report(
+            **self._base_kwargs(),
+            dividend_signals=[signal],
+            dividend_pool_summary={"count": 1, "last_update": "2026-03-09"},
+        )
+        assert "<details" in html
+        assert "股息连续性" in html
+        assert "业务护城河" in html
+        assert "KO is one of the widest-moat" in html
+
+    def test_quality_breakdown_absent_no_details_tag(self):
+        """When quality_breakdown is None, no <details> element should appear."""
+        signal = DividendBuySignal(
+            ticker_data=make_ticker(
+                ticker="JNJ",
+                last_price=160.0,
+                dividend_yield=3.0,
+                dividend_yield_5y_percentile=80.0,
+                dividend_quality_score=88.0,
+                payout_ratio=50.0,
+                quality_breakdown=None,
+                analysis_text=None,
+            ),
+            signal_type="STOCK",
+            current_yield=3.0,
+            yield_percentile=80.0,
+            option_details=None,
+        )
+        html = format_html_report(
+            **self._base_kwargs(),
+            dividend_signals=[signal],
+            dividend_pool_summary={"count": 1, "last_update": "2026-03-09"},
+        )
+        assert "<details" not in html
+
+    def test_freshness_warn_when_needs_reeval(self):
+        """needs_reeval=True should produce a re-evaluation warning in the card."""
+        signal = DividendBuySignal(
+            ticker_data=make_ticker(
+                ticker="T",
+                last_price=18.0,
+                dividend_yield=5.5,
+                dividend_yield_5y_percentile=88.0,
+                dividend_quality_score=65.0,
+                payout_ratio=70.0,
+            ),
+            signal_type="STOCK",
+            current_yield=5.5,
+            yield_percentile=88.0,
+            option_details=None,
+            needs_reeval=True,
+            data_age_days=5,
+        )
+        html = format_html_report(
+            **self._base_kwargs(),
+            dividend_signals=[signal],
+            dividend_pool_summary={"count": 1, "last_update": "2026-03-09"},
+        )
+        assert "财报后数据" in html or "建议重新评估" in html
+
+    def test_freshness_old_data_badge(self):
+        """data_age_days > 14 should produce an old-data notice."""
+        signal = DividendBuySignal(
+            ticker_data=make_ticker(
+                ticker="VZ",
+                last_price=40.0,
+                dividend_yield=6.0,
+                dividend_yield_5y_percentile=86.0,
+                dividend_quality_score=70.0,
+                payout_ratio=68.0,
+            ),
+            signal_type="STOCK",
+            current_yield=6.0,
+            yield_percentile=86.0,
+            option_details=None,
+            needs_reeval=False,
+            data_age_days=20,
+        )
+        html = format_html_report(
+            **self._base_kwargs(),
+            dividend_signals=[signal],
+            dividend_pool_summary={"count": 1, "last_update": "2026-03-09"},
+        )
+        assert "数据较旧" in html or "20" in html

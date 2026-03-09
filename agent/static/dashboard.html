@@ -100,6 +100,21 @@ header .meta { color: #86868b; font-size: 13px; }
 .dividend-card .dc-dim h4 { font-size: 13px; font-weight: 600; color: #c0c0e0; margin-bottom: 6px; }
 .dividend-card .dc-dim p { margin: 2px 0; }
 .dividend-card .dc-combined { font-size: 15px; font-weight: 700; color: #ffd700; }
+/* Stability tooltip */
+.stab-info-btn { cursor: pointer; font-size: 12px; margin-left: 4px; opacity: 0.7; }
+.stab-info-btn:hover { opacity: 1; }
+.stability-detail { margin-top: 8px; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 6px; }
+.breakdown-row { display: flex; align-items: center; gap: 6px; margin: 4px 0; font-size: 12px; }
+.bd-label { width: 90px; color: #a0a0c0; flex-shrink: 0; }
+.bd-bar-wrap { flex: 1; background: rgba(255,255,255,0.1); border-radius: 3px; height: 6px; }
+.bd-bar { height: 6px; background: #7c9fd4; border-radius: 3px; }
+.bd-score { width: 32px; text-align: right; color: #c0c0e0; flex-shrink: 0; }
+.analysis-text { font-size: 12px; color: #b0b0d0; margin-top: 8px; line-height: 1.5; font-style: italic; }
+/* Floor price */
+.floor-warn { font-size: 12px; color: #ff9f43; margin-top: 4px; }
+/* Freshness */
+.freshness-warn { font-size: 12px; color: #ff9f43; margin-top: 6px; }
+.freshness-old { font-size: 12px; color: #86868b; margin-top: 6px; }
 </style>
 </head>
 <body>
@@ -388,11 +403,61 @@ function stabilityLabel(score) {
   return `业务稳定性: 一般 (${score}/100)`;
 }
 
+function qualityBreakdownHtml(breakdown) {
+  if (!breakdown) return '';
+  const dims = [
+    ['股息连续性', breakdown.continuity],
+    ['派息率安全', breakdown.payout_safety],
+    ['盈利稳定性', breakdown.earnings_stability],
+    ['业务护城河', breakdown.moat],
+    ['负债水平', breakdown.debt_level],
+  ];
+  return dims.map(([label, val]) => {
+    const v = val ?? 0;
+    return `<div class="breakdown-row">
+      <span class="bd-label">${label}</span>
+      <div class="bd-bar-wrap"><div class="bd-bar" style="width:${v/20*100}%"></div></div>
+      <span class="bd-score">${v}/20</span>
+    </div>`;
+  }).join('');
+}
+
+function toggleStabilityDetail(btn) {
+  const detail = btn.nextElementSibling;
+  detail.style.display = detail.style.display === 'none' ? 'block' : 'none';
+}
+
 function cardDividend(s) {
   const p = s.payload;
   const prWarn = p.payout_ratio != null && p.payout_ratio > 80
     ? ' <span style="color:#ff9f43">⚠️ 接近警戒线</span>' : (p.payout_ratio != null ? ' ✓' : '');
   const stab = stabilityLabel(p.quality_score);
+
+  // Dim 1 stability tooltip
+  const stabDetail = (stab && p.quality_breakdown)
+    ? `<span class="stab-info-btn" onclick="toggleStabilityDetail(this)">ℹ️</span>
+       <div class="stability-detail" style="display:none">
+         ${qualityBreakdownHtml(p.quality_breakdown)}
+         ${p.analysis_text ? `<p class="analysis-text">${p.analysis_text}</p>` : ''}
+       </div>`
+    : '';
+
+  // Dim 5 floor price analysis
+  const costBasis = p.option_strike != null ? (p.option_strike - p.option_bid) : null;
+  const floorSection = (() => {
+    if (!p.floor_price) return '<p>极值底价数据暂缺</p>';
+    const cbRow = costBasis != null
+      ? `<p>行权成本: $${costBasis.toFixed(2)}</p>` : '';
+    const warning = (costBasis != null && costBasis > p.floor_price)
+      ? `<p class="floor-warn">⚠️ 行权成本高于极值底价，极端熊市下仍有浮亏风险<br>但届时股息率将达 ${p.max_yield_5y?.toFixed(1) ?? '?'}%，持有收租逻辑成立</p>` : '';
+    return `${cbRow}
+    <p>历史最高股息率 (5年): ${p.max_yield_5y?.toFixed(1) ?? 'N/A'}%</p>
+    <p>Forward 股息: $${p.forward_dividend_rate?.toFixed(2) ?? 'N/A'}/股</p>
+    <p>极值底价: $${p.floor_price.toFixed(2)} (较当前 ${p.floor_downside_pct != null ? (-p.floor_downside_pct).toFixed(1) : '?'}%)</p>
+    ${warning}`;
+  })();
+
+  // Dim 4 + 5 combined section
   const optSection = p.option_strike != null ? `
       <div class="dc-dim">
         <h4>4️⃣ 建议操作</h4>
@@ -403,7 +468,7 @@ function cardDividend(s) {
       </div>
       <div class="dc-dim">
         <h4>5️⃣ 最坏情景</h4>
-        <p>行权成本: $${(p.option_strike - p.option_bid).toFixed(2)}</p>
+        ${floorSection}
       </div>` : `
       <div class="dc-dim">
         <h4>4️⃣ 建议操作</h4>
@@ -411,8 +476,16 @@ function cardDividend(s) {
       </div>
       <div class="dc-dim">
         <h4>5️⃣ 最坏情景</h4>
-        <p>股息率已达历史高位，现货持有</p>
+        ${floorSection}
       </div>`;
+
+  // Freshness badge
+  const freshnessBadge = (() => {
+    if (p.needs_reeval) return '<div class="freshness-warn">⚠️ 财报后数据，建议重新评估</div>';
+    if (p.data_age_days != null && p.data_age_days > 14) return `<div class="freshness-old">🕐 数据较旧 (${p.data_age_days}天前)</div>`;
+    return '';
+  })();
+
   const earningsStr = p.earnings_date ? `${p.earnings_date} (${p.days_to_earnings}天)` : 'N/A';
   return `<div class="card dividend-card">
     <div class="dc-header">
@@ -422,7 +495,7 @@ function cardDividend(s) {
     <div class="dc-dim">
       <h4>1️⃣ 基本面估值</h4>
       <p>${yieldLogic(p.yield_percentile)}</p>
-      ${stab ? `<p>${stab}</p>` : ''}
+      ${stab ? `<p>${stab} ${stabDetail}</p>` : ''}
     </div>
     <div class="dc-dim">
       <h4>2️⃣ 风险分级</h4>
@@ -441,6 +514,7 @@ function cardDividend(s) {
         <li>✓ 股息率回落至中位数时提示</li>
       </ul>
     </div>
+    ${freshnessBadge}
     <div class="card-time">${fmtTime(s.scanned_at)}</div>
   </div>`;
 }

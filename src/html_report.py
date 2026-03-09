@@ -351,13 +351,87 @@ def _dividend_card(signal: Any) -> str:
     qs = td.dividend_quality_score
     if qs is not None:
         if qs >= 80:
-            stability_str = f"业务稳定性: 优秀 ({qs:.0f}/100)"
+            stab_label = f"业务稳定性: 优秀 ({qs:.0f}/100)"
         elif qs >= 60:
-            stability_str = f"业务稳定性: 良好 ({qs:.0f}/100)"
+            stab_label = f"业务稳定性: 良好 ({qs:.0f}/100)"
         else:
-            stability_str = f"业务稳定性: 一般 ({qs:.0f}/100)"
+            stab_label = f"业务稳定性: 一般 ({qs:.0f}/100)"
     else:
-        stability_str = None
+        stab_label = None
+
+    # Dim 1 stability: if quality_breakdown present, render as <details>
+    quality_breakdown = td.quality_breakdown
+    analysis_text = td.analysis_text
+    if stab_label and quality_breakdown:
+        dims = [
+            ('股息连续性', quality_breakdown.get('continuity', 0)),
+            ('派息率安全', quality_breakdown.get('payout_safety', 0)),
+            ('盈利稳定性', quality_breakdown.get('earnings_stability', 0)),
+            ('业务护城河', quality_breakdown.get('moat', 0)),
+            ('负债水平', quality_breakdown.get('debt_level', 0)),
+        ]
+        bars = ''.join(
+            f'<div style="display:flex;align-items:center;gap:6px;margin:3px 0;font-size:12px">'
+            f'<span style="width:90px;color:#888">{label}</span>'
+            f'<div style="flex:1;background:#eee;border-radius:3px;height:6px">'
+            f'<div style="width:{val/20*100:.0f}%;background:#4a90d9;height:6px;border-radius:3px"></div>'
+            f'</div><span style="width:32px;text-align:right">{val}/20</span></div>'
+            for label, val in dims
+        )
+        analysis = (
+            f'<p style="font-size:12px;color:#666;margin-top:6px;font-style:italic">'
+            f'{_escape(analysis_text)}</p>'
+            if analysis_text else ''
+        )
+        stability_html = (
+            f'<details style="margin-top:4px">'
+            f'<summary style="cursor:pointer;list-style:none">{_escape(stab_label)} ℹ️</summary>'
+            f'<div style="margin-top:6px">{bars}{analysis}</div>'
+            f'</details>'
+        )
+    elif stab_label:
+        stability_html = f"    <p>{_escape(stab_label)}</p>"
+    else:
+        stability_html = None
+
+    # Dim 5 floor price analysis
+    floor_price = signal.floor_price
+    forward_dividend_rate = signal.forward_dividend_rate or td.forward_dividend_rate
+    max_yield_5y = signal.max_yield_5y or td.max_yield_5y
+    floor_downside_pct = signal.floor_downside_pct
+    opt = signal.option_details
+    if floor_price is not None:
+        cost_basis = (opt["strike"] - opt["bid"]) if opt else None
+        cb_row = f'    <p>行权成本: ${cost_basis:.2f}</p>' if cost_basis is not None else ''
+        warn = ''
+        if cost_basis is not None and cost_basis > floor_price:
+            my_str = f'{max_yield_5y:.1f}' if max_yield_5y is not None else '?'
+            warn = (
+                f'    <p style="color:#e67e22">⚠️ 行权成本高于极值底价，极端熊市下仍有浮亏风险<br>'
+                f'但届时股息率将达 {my_str}%，持有收租逻辑成立</p>'
+            )
+        my_str = f'{max_yield_5y:.1f}' if max_yield_5y is not None else 'N/A'
+        fdr_str = f'${forward_dividend_rate:.2f}' if forward_dividend_rate is not None else 'N/A'
+        fdp_str = f'{-floor_downside_pct:.1f}' if floor_downside_pct is not None else '?'
+        floor_html = (
+            f'{cb_row}\n'
+            f'    <p>历史最高股息率 (5年): {my_str}%</p>\n'
+            f'    <p>Forward 股息: {fdr_str}/股</p>\n'
+            f'    <p>极值底价: ${floor_price:.2f} (较当前 {fdp_str}%)</p>\n'
+            f'    {warn}'
+        )
+    else:
+        floor_html = '    <p>极值底价数据暂缺</p>'
+
+    # Freshness badge
+    needs_reeval = signal.needs_reeval
+    data_age_days = signal.data_age_days
+    if needs_reeval:
+        freshness_html = '<p style="color:#e67e22;font-size:12px;margin-top:6px">⚠️ 财报后数据，建议重新评估</p>'
+    elif data_age_days is not None and data_age_days > 14:
+        freshness_html = f'<p style="color:#86868b;font-size:12px;margin-top:6px">🕐 数据较旧 ({data_age_days}天前)</p>'
+    else:
+        freshness_html = ''
 
     earnings_str = str(td.earnings_date) if td.earnings_date else "N/A"
     dim1_parts = [
@@ -365,8 +439,11 @@ def _dividend_card(signal: Any) -> str:
         "    <h4>1️⃣ 基本面估值</h4>",
         f"    <p>{yield_logic}</p>",
     ]
-    if stability_str:
-        dim1_parts.append(f"    <p>{stability_str}</p>")
+    if stability_html:
+        if stability_html.startswith('<details'):
+            dim1_parts.append(f"    {stability_html}")
+        else:
+            dim1_parts.append(stability_html)
     dim1_parts.append("  </div>")
 
     parts = [
@@ -394,7 +471,6 @@ def _dividend_card(signal: Any) -> str:
         f"    <p>📈 现货买入: ${td.last_price:.2f} (股息率{cy:.2f}%)</p>",
     ]
 
-    opt = signal.option_details
     if opt:
         combined = cy + opt["apy"]
         parts += [
@@ -405,17 +481,10 @@ def _dividend_card(signal: Any) -> str:
 
     parts += [
         "  </div>",
-        # Dim 5: worst case
+        # Dim 5: worst case / floor price analysis
         '  <div class="dc-dim">',
         "    <h4>5️⃣ 最坏情景</h4>",
-    ]
-    if opt:
-        cost = opt["strike"] - opt["bid"]
-        parts.append(f"    <p>行权成本: ${cost:.2f}</p>")
-    else:
-        parts.append("    <p>股息率已达历史高位，现货持有</p>")
-
-    parts += [
+        floor_html,
         "  </div>",
         # Dim 6: monitoring
         '  <div class="dc-dim">',
@@ -426,8 +495,12 @@ def _dividend_card(signal: Any) -> str:
         "      <li>✓ 股息率回落至中位数时提示</li>",
         "    </ul>",
         "  </div>",
-        "</div>",
     ]
+
+    if freshness_html:
+        parts.append(f"  {freshness_html}")
+
+    parts.append("</div>")
     return "\n".join(parts)
 
 
