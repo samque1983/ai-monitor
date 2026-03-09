@@ -978,3 +978,75 @@ def test_polygon_provider_returns_empty_on_exception():
             df = provider.get_price_data("AAPL", "1y")
 
     assert df.empty
+
+
+# ── TradierProvider tests ──────────────────────────────────────────────────
+
+def _tradier_expirations_response():
+    from datetime import date, timedelta
+    future = date.today() + timedelta(days=60)
+    return {"expirations": {"date": [future.strftime("%Y-%m-%d")]}}
+
+
+def _tradier_chain_response():
+    return {
+        "options": {
+            "option": [
+                {"option_type": "put", "strike": 150.0, "bid": 3.50, "symbol": "AAPL..."},
+                {"option_type": "put", "strike": 155.0, "bid": 4.20, "symbol": "AAPL..."},
+                {"option_type": "call", "strike": 160.0, "bid": 5.00, "symbol": "AAPL..."},
+            ]
+        }
+    }
+
+
+def test_tradier_provider_returns_put_options_dataframe():
+    from src.providers.tradier import TradierProvider
+    provider = TradierProvider(api_key="test-key")
+
+    expirations_resp = MagicMock()
+    expirations_resp.status_code = 200
+    expirations_resp.json.return_value = _tradier_expirations_response()
+
+    chain_resp = MagicMock()
+    chain_resp.status_code = 200
+    chain_resp.json.return_value = _tradier_chain_response()
+
+    def fake_get(url, *args, **kwargs):
+        if "expirations" in url:
+            return expirations_resp
+        return chain_resp
+
+    with patch("src.providers.tradier.requests.get", side_effect=fake_get):
+        df = provider.get_options_chain("AAPL", dte_min=45, dte_max=90)
+
+    assert not df.empty
+    assert set(df.columns) >= {"strike", "bid", "dte", "expiration"}
+    assert len(df) == 2   # 2 puts, 1 call filtered out
+    assert all(df["bid"] > 0)
+
+
+def test_tradier_provider_returns_empty_when_no_expirations_in_range():
+    from src.providers.tradier import TradierProvider
+    from datetime import date, timedelta
+    provider = TradierProvider(api_key="test-key")
+
+    near_future = date.today() + timedelta(days=10)
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.json.return_value = {"expirations": {"date": [near_future.strftime("%Y-%m-%d")]}}
+
+    with patch("src.providers.tradier.requests.get", return_value=resp):
+        df = provider.get_options_chain("AAPL", dte_min=45, dte_max=90)
+
+    assert df.empty
+
+
+def test_tradier_provider_returns_empty_on_exception():
+    from src.providers.tradier import TradierProvider
+    provider = TradierProvider(api_key="test-key")
+
+    with patch("src.providers.tradier.requests.get", side_effect=Exception("network error")):
+        df = provider.get_options_chain("AAPL", dte_min=45, dte_max=90)
+
+    assert df.empty
