@@ -44,6 +44,8 @@ def _build_agent_payload(
             "dte": signal.dte,
             "bid": float(signal.bid),
             "apy": round(float(signal.apy), 1),
+            "earnings_date": str(t.earnings_date) if t.earnings_date else None,
+            "days_to_earnings": t.days_to_earnings,
         }
         signals.append(entry)
         if signal.earnings_risk:
@@ -54,6 +56,8 @@ def _build_agent_payload(
             "signal_type": "iv_low",
             "ticker": t.ticker,
             "iv_rank": round(float(t.iv_rank), 1) if t.iv_rank is not None else None,
+            "earnings_date": str(t.earnings_date) if t.earnings_date else None,
+            "days_to_earnings": t.days_to_earnings,
         })
 
     for t in (iv_high or []):
@@ -61,6 +65,8 @@ def _build_agent_payload(
             "signal_type": "iv_high",
             "ticker": t.ticker,
             "iv_rank": round(float(t.iv_rank), 1) if t.iv_rank is not None else None,
+            "earnings_date": str(t.earnings_date) if t.earnings_date else None,
+            "days_to_earnings": t.days_to_earnings,
         })
 
     for t in (ma200_bull or []):
@@ -71,6 +77,8 @@ def _build_agent_payload(
             "last_price": round(float(t.last_price), 2),
             "ma200": round(float(t.ma200), 2),
             "pct": round(pct, 2),
+            "earnings_date": str(t.earnings_date) if t.earnings_date else None,
+            "days_to_earnings": t.days_to_earnings,
         })
 
     for t in (ma200_bear or []):
@@ -81,15 +89,24 @@ def _build_agent_payload(
             "last_price": round(float(t.last_price), 2),
             "ma200": round(float(t.ma200), 2),
             "pct": round(pct, 2),
+            "earnings_date": str(t.earnings_date) if t.earnings_date else None,
+            "days_to_earnings": t.days_to_earnings,
         })
 
     for t in (leaps or []):
+        ma50w_val = round(float(t.ma50w), 2) if t.ma50w is not None else None
+        ma50w_pct = round((t.last_price - t.ma50w) / t.ma50w * 100, 1) if t.ma50w else None
         signals.append({
             "signal_type": "leaps",
             "ticker": t.ticker,
             "last_price": round(float(t.last_price), 2),
+            "ma200": round(float(t.ma200), 2) if t.ma200 is not None else None,
+            "ma50w": ma50w_val,
+            "ma50w_pct": ma50w_pct,
             "rsi14": round(float(t.rsi14), 1) if t.rsi14 is not None else None,
             "iv_rank": round(float(t.iv_rank), 1) if t.iv_rank is not None else None,
+            "earnings_date": str(t.earnings_date) if t.earnings_date else None,
+            "days_to_earnings": t.days_to_earnings,
         })
 
     for g in (earnings_gaps or []):
@@ -102,6 +119,8 @@ def _build_agent_payload(
             "max_gap": round(float(g.max_gap), 1),
             "days_to_earnings": td.days_to_earnings if td else None,
             "iv_rank": round(float(td.iv_rank), 1) if td and td.iv_rank is not None else None,
+            "sample_count": g.sample_count,
+            "high_iv_risk": bool(td.iv_rank is not None and td.iv_rank > 70) if td else False,
         })
 
     for t in (iv_momentum or []):
@@ -110,12 +129,28 @@ def _build_agent_payload(
             "ticker": t.ticker,
             "iv_momentum": round(float(t.iv_momentum), 1) if t.iv_momentum is not None else None,
             "iv_rank": round(float(t.iv_rank), 1) if t.iv_rank is not None else None,
+            "earnings_date": str(t.earnings_date) if t.earnings_date else None,
+            "days_to_earnings": t.days_to_earnings,
         })
 
     for s in (dividend_signals or []):
+        td = s.ticker_data
+        opt = s.option_details
         signals.append({
             "signal_type": "dividend",
-            "ticker": s.ticker if hasattr(s, "ticker") else str(s),
+            "ticker": td.ticker,
+            "last_price": round(float(td.last_price), 2),
+            "current_yield": round(float(s.current_yield), 2),
+            "yield_percentile": round(float(s.yield_percentile), 0),
+            "quality_score": round(float(td.dividend_quality_score), 0) if td.dividend_quality_score is not None else None,
+            "payout_ratio": round(float(td.payout_ratio), 1) if td.payout_ratio is not None else None,
+            "earnings_date": str(td.earnings_date) if td.earnings_date else None,
+            "days_to_earnings": td.days_to_earnings,
+            "option_strike": round(float(opt["strike"]), 0) if opt else None,
+            "option_dte": opt["dte"] if opt else None,
+            "option_bid": round(float(opt["bid"]), 2) if opt else None,
+            "option_apy": round(float(opt["apy"]), 1) if opt else None,
+            "combined_apy": round(float(s.current_yield) + float(opt["apy"]), 1) if opt else None,
         })
 
     return signals

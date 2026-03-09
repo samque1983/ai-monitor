@@ -84,6 +84,22 @@ header .meta { color: #86868b; font-size: 13px; }
     header h1 { font-size: 22px; }
     .card-grid { grid-template-columns: 1fr; }
 }
+
+/* ── Dividend Card ── */
+.dividend-card {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    color: #e0e0e0;
+}
+.dividend-card .dc-header { margin-bottom: 14px; }
+.dividend-card .dc-ticker { font-size: 20px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+.dividend-card .dc-yield { font-size: 14px; color: #a8d8ea; }
+.dividend-card .dc-dim {
+    background: rgba(255,255,255,0.07);
+    border-radius: 8px; padding: 10px 12px; margin: 8px 0; font-size: 13px;
+}
+.dividend-card .dc-dim h4 { font-size: 13px; font-weight: 600; color: #c0c0e0; margin-bottom: 6px; }
+.dividend-card .dc-dim p { margin: 2px 0; }
+.dividend-card .dc-combined { font-size: 15px; font-weight: 700; color: #ffd700; }
 </style>
 </head>
 <body>
@@ -192,6 +208,9 @@ function renderCard(s) {
 // ── Card Templates ─────────────────────────────────────────────────────────
 function cardSellPut(s) {
   const p = s.payload;
+  const earningsRow = p.days_to_earnings != null
+    ? `<div class="row"><span class="label">财报</span><span class="value">${p.earnings_date} (${p.days_to_earnings}天)</span></div>`
+    : '';
   return `<div class="card">
     <div class="card-header">
       <span class="ticker">${s.ticker}</span>
@@ -202,6 +221,7 @@ function cardSellPut(s) {
       <div class="row"><span class="label">行权价</span><span class="value">$${p.strike}</span></div>
       <div class="row"><span class="label">到期天数</span><span class="value">${p.dte} 天</span></div>
       <div class="row"><span class="label">权利金</span><span class="value">$${p.bid}</span></div>
+      ${earningsRow}
     </div>
     <div class="card-time">${fmtTime(s.scanned_at)}</div>
   </div>`;
@@ -209,6 +229,9 @@ function cardSellPut(s) {
 
 function cardSellPutRisk(s) {
   const p = s.payload;
+  const earningsRow = p.days_to_earnings != null
+    ? `<div class="row"><span class="label">财报</span><span class="value">${p.earnings_date} (${p.days_to_earnings}天)</span></div>`
+    : '';
   return `<div class="card">
     <div class="card-header">
       <span class="ticker">${s.ticker}</span>
@@ -217,6 +240,7 @@ function cardSellPutRisk(s) {
     <div class="card-body">
       <div class="row"><span class="label">行权价</span><span class="value">$${p.strike}</span></div>
       <div class="row"><span class="label">APY</span><span class="value">${p.apy}%</span></div>
+      ${earningsRow}
       <div class="warn">🚨 财报日在DTE窗口内，跳空风险</div>
     </div>
     <div class="card-time">${fmtTime(s.scanned_at)}</div>
@@ -225,6 +249,9 @@ function cardSellPutRisk(s) {
 
 function cardIvLow(s) {
   const p = s.payload;
+  const earningsRow = p.days_to_earnings != null
+    ? `<div class="row"><span class="label">财报</span><span class="value">${p.earnings_date} (${p.days_to_earnings}天)</span></div>`
+    : '';
   return `<div class="card">
     <div class="card-header">
       <span class="ticker">${s.ticker}</span>
@@ -233,6 +260,7 @@ function cardIvLow(s) {
     <div class="card-body">
       <div class="row"><span class="label">IV Rank</span><span class="value">${p.iv_rank}%</span></div>
       <div class="row"><span class="label">适合</span><span class="value">买入期权 / LEAPS</span></div>
+      ${earningsRow}
     </div>
     <div class="card-time">${fmtTime(s.scanned_at)}</div>
   </div>`;
@@ -240,6 +268,9 @@ function cardIvLow(s) {
 
 function cardIvHigh(s) {
   const p = s.payload;
+  const earningsRow = p.days_to_earnings != null
+    ? `<div class="row"><span class="label">财报</span><span class="value">${p.earnings_date} (${p.days_to_earnings}天)</span></div>`
+    : '';
   return `<div class="card">
     <div class="card-header">
       <span class="ticker">${s.ticker}</span>
@@ -247,6 +278,7 @@ function cardIvHigh(s) {
     </div>
     <div class="card-body">
       <div class="row"><span class="label">IV Rank</span><span class="value">${p.iv_rank}%</span></div>
+      ${earningsRow}
       <div class="warn">⚠️ IV 处于历史高位，期权虚值溢价高</div>
     </div>
     <div class="card-time">${fmtTime(s.scanned_at)}</div>
@@ -258,6 +290,9 @@ function cardMa200(s, bullish) {
   const sign = p.pct >= 0 ? '+' : '';
   const badgeClass = bullish ? 'badge-opportunity' : 'badge-risk';
   const label = bullish ? '突破 MA200 ↑' : '跌破 MA200 ↓';
+  const earningsRow = p.days_to_earnings != null
+    ? `<div class="row"><span class="label">财报</span><span class="value">${p.earnings_date} (${p.days_to_earnings}天)</span></div>`
+    : '';
   return `<div class="card">
     <div class="card-header">
       <span class="ticker">${s.ticker}</span>
@@ -266,6 +301,7 @@ function cardMa200(s, bullish) {
     <div class="card-body">
       <div class="row"><span class="label">现价</span><span class="value">$${p.last_price}</span></div>
       <div class="row"><span class="label">MA200</span><span class="value">$${p.ma200} (${sign}${p.pct}%)</span></div>
+      ${earningsRow}
     </div>
     <div class="card-time">${fmtTime(s.scanned_at)}</div>
   </div>`;
@@ -273,6 +309,12 @@ function cardMa200(s, bullish) {
 
 function cardLeaps(s) {
   const p = s.payload;
+  const ma50wRow = p.ma50w != null
+    ? `<div class="row"><span class="label">MA50w</span><span class="value">$${p.ma50w} (${p.ma50w_pct > 0 ? '+' : ''}${p.ma50w_pct}%)</span></div>`
+    : '';
+  const earningsRow = p.days_to_earnings != null
+    ? `<div class="row"><span class="label">财报</span><span class="value">${p.earnings_date} (${p.days_to_earnings}天)</span></div>`
+    : '';
   return `<div class="card">
     <div class="card-header">
       <span class="ticker">${s.ticker}</span>
@@ -280,8 +322,11 @@ function cardLeaps(s) {
     </div>
     <div class="card-body">
       <div class="row"><span class="label">现价</span><span class="value">$${p.last_price}</span></div>
+      <div class="row"><span class="label">MA200</span><span class="value">$${p.ma200}</span></div>
+      ${ma50wRow}
       <div class="row"><span class="label">RSI</span><span class="value">${p.rsi14}</span></div>
       <div class="row"><span class="label">IV Rank</span><span class="value">${p.iv_rank}%</span></div>
+      ${earningsRow}
     </div>
     <div class="card-time">${fmtTime(s.scanned_at)}</div>
   </div>`;
@@ -289,9 +334,15 @@ function cardLeaps(s) {
 
 function cardEarningsGap(s) {
   const p = s.payload;
+  const riskBadge = p.high_iv_risk
+    ? `<span class="type-badge badge-risk" style="margin-left:6px;font-size:10px">高IV风险</span>` : '';
+  const ivRow = p.iv_rank != null
+    ? `<div class="row"><span class="label">IV Rank</span><span class="value">${p.iv_rank}%</span></div>` : '';
+  const sampleRow = p.sample_count != null
+    ? `<div class="row"><span class="label">样本数</span><span class="value">${p.sample_count}</span></div>` : '';
   return `<div class="card">
     <div class="card-header">
-      <span class="ticker">${s.ticker}</span>
+      <span class="ticker">${s.ticker}${riskBadge}</span>
       <span class="type-badge badge-risk">财报 Gap</span>
     </div>
     <div class="card-body">
@@ -299,6 +350,8 @@ function cardEarningsGap(s) {
       <div class="row"><span class="label">历史平均 Gap</span><span class="value">±${p.avg_gap}%</span></div>
       <div class="row"><span class="label">上涨概率</span><span class="value">${p.up_ratio}%</span></div>
       <div class="row"><span class="label">最大跳空</span><span class="value">${p.max_gap > 0 ? '+' : ''}${p.max_gap}%</span></div>
+      ${ivRow}
+      ${sampleRow}
     </div>
     <div class="card-time">${fmtTime(s.scanned_at)}</div>
   </div>`;
@@ -306,6 +359,9 @@ function cardEarningsGap(s) {
 
 function cardIvMomentum(s) {
   const p = s.payload;
+  const earningsRow = p.days_to_earnings != null
+    ? `<div class="row"><span class="label">财报</span><span class="value">${p.earnings_date} (${p.days_to_earnings}天)</span></div>`
+    : '';
   return `<div class="card">
     <div class="card-header">
       <span class="ticker">${s.ticker}</span>
@@ -314,19 +370,63 @@ function cardIvMomentum(s) {
     <div class="card-body">
       <div class="row"><span class="label">5日IV动量</span><span class="value">+${p.iv_momentum}%</span></div>
       <div class="row"><span class="label">IV Rank</span><span class="value">${p.iv_rank}%</span></div>
+      ${earningsRow}
     </div>
     <div class="card-time">${fmtTime(s.scanned_at)}</div>
   </div>`;
 }
 
 function cardDividend(s) {
-  return `<div class="card">
-    <div class="card-header">
-      <span class="ticker">${s.ticker}</span>
-      <span class="type-badge badge-dividend">高股息</span>
+  const p = s.payload;
+  const prWarn = p.payout_ratio != null && p.payout_ratio > 80
+    ? ' <span style="color:#ff9f43">⚠️ 接近警戒线</span>' : (p.payout_ratio != null ? ' ✓' : '');
+  const optSection = p.option_strike != null ? `
+      <div class="dc-dim">
+        <h4>4️⃣ 建议操作</h4>
+        <p>📈 现货买入: $${p.last_price} (股息率${p.current_yield}%)</p>
+        <p>📊 Sell Put $${p.option_strike} Strike (${p.option_dte}DTE)</p>
+        <p>Premium: $${p.option_bid} → 年化${p.option_apy}%</p>
+        <p class="dc-combined">综合年化: ${p.combined_apy}%</p>
+      </div>
+      <div class="dc-dim">
+        <h4>5️⃣ 最坏情景</h4>
+        <p>行权成本: $${(p.option_strike - p.option_bid).toFixed(2)}</p>
+      </div>` : `
+      <div class="dc-dim">
+        <h4>4️⃣ 建议操作</h4>
+        <p>📈 现货买入: $${p.last_price} (股息率${p.current_yield}%)</p>
+      </div>
+      <div class="dc-dim">
+        <h4>5️⃣ 最坏情景</h4>
+        <p>股息率已达历史高位，现货持有</p>
+      </div>`;
+  const earningsStr = p.earnings_date ? `${p.earnings_date} (${p.days_to_earnings}天)` : 'N/A';
+  return `<div class="card dividend-card">
+    <div class="dc-header">
+      <div class="dc-ticker">${s.ticker} 🛡️</div>
+      <div class="dc-yield">当前股息率: <strong>${p.current_yield}%</strong> (5年历史${p.yield_percentile}分位)</div>
     </div>
-    <div class="card-body">
-      <div class="row"><span class="label">策略</span><span class="value">防御双打</span></div>
+    <div class="dc-dim">
+      <h4>1️⃣ 基本面估值</h4>
+      <p>当前价: $${p.last_price}</p>
+    </div>
+    <div class="dc-dim">
+      <h4>2️⃣ 风险分级</h4>
+      <p>综合评分: ${p.quality_score != null ? p.quality_score + '/100' : 'N/A'}</p>
+      <p>派息率: ${p.payout_ratio != null ? p.payout_ratio + '%' + prWarn : 'N/A'}</p>
+    </div>
+    <div class="dc-dim">
+      <h4>3️⃣ 关键事件</h4>
+      <p>下次财报: ${earningsStr}</p>
+    </div>
+    ${optSection}
+    <div class="dc-dim">
+      <h4>6️⃣ AI监控承诺</h4>
+      <ul style="padding-left:16px;margin:4px 0;font-size:12px">
+        <li>✓ 派息率>100%时立即预警</li>
+        <li>✓ 财报前7天提醒</li>
+        <li>✓ 股息率回落至中位数时提示</li>
+      </ul>
     </div>
     <div class="card-time">${fmtTime(s.scanned_at)}</div>
   </div>`;
