@@ -333,7 +333,6 @@ def _dividend_card(signal: Any) -> str:
     pct = signal.yield_percentile
     ticker = _escape(td.ticker)
 
-    qs = f"{td.dividend_quality_score:.0f}/100" if td.dividend_quality_score is not None else "N/A"
     pr = td.payout_ratio
     if pr is not None:
         pr_warn = ' <span class="dc-warn">⚠️ 接近警戒线</span>' if pr > 80 else " ✓"
@@ -341,7 +340,35 @@ def _dividend_card(signal: Any) -> str:
     else:
         pr_str = "N/A"
 
+    # Dim 1 logic: yield percentile interpretation + business stability
+    if pct >= 90:
+        yield_logic = "股息率达历史高位 → 价格明显低估"
+    elif pct >= 80:
+        yield_logic = "股息率高于历史均值 → 估值偏低"
+    else:
+        yield_logic = "超越多数历史区间 → 轻度低估"
+
+    qs = td.dividend_quality_score
+    if qs is not None:
+        if qs >= 80:
+            stability_str = f"业务稳定性: 优秀 ({qs:.0f}/100)"
+        elif qs >= 60:
+            stability_str = f"业务稳定性: 良好 ({qs:.0f}/100)"
+        else:
+            stability_str = f"业务稳定性: 一般 ({qs:.0f}/100)"
+    else:
+        stability_str = None
+
     earnings_str = str(td.earnings_date) if td.earnings_date else "N/A"
+    dim1_parts = [
+        '  <div class="dc-dim">',
+        "    <h4>1️⃣ 基本面估值</h4>",
+        f"    <p>{yield_logic}</p>",
+    ]
+    if stability_str:
+        dim1_parts.append(f"    <p>{stability_str}</p>")
+    dim1_parts.append("  </div>")
+
     parts = [
         '<div class="dividend-card">',
         '  <div class="dc-header">',
@@ -349,15 +376,11 @@ def _dividend_card(signal: Any) -> str:
         f'    <div class="dc-yield">当前股息率: <strong>{cy:.2f}%</strong>'
         f' (5年历史{pct:.0f}分位)</div>',
         "  </div>",
-        # Dim 1: valuation
-        '  <div class="dc-dim">',
-        "    <h4>1️⃣ 基本面估值</h4>",
-        f"    <p>当前价: ${td.last_price:.2f}</p>",
-        "  </div>",
+        # Dim 1: valuation logic + stability
+        *dim1_parts,
         # Dim 2: risk
         '  <div class="dc-dim">',
         "    <h4>2️⃣ 风险分级</h4>",
-        f"    <p>综合评分: {qs}</p>",
         f"    <p>派息率: {pr_str}</p>",
         "  </div>",
         # Dim 3: events

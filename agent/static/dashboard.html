@@ -376,10 +376,23 @@ function cardIvMomentum(s) {
   </div>`;
 }
 
+function yieldLogic(pct) {
+  if (pct >= 90) return '股息率达历史高位 → 价格明显低估';
+  if (pct >= 80) return '股息率高于历史均值 → 估值偏低';
+  return '超越多数历史区间 → 轻度低估';
+}
+function stabilityLabel(score) {
+  if (score == null) return null;
+  if (score >= 80) return `业务稳定性: 优秀 (${score}/100)`;
+  if (score >= 60) return `业务稳定性: 良好 (${score}/100)`;
+  return `业务稳定性: 一般 (${score}/100)`;
+}
+
 function cardDividend(s) {
   const p = s.payload;
   const prWarn = p.payout_ratio != null && p.payout_ratio > 80
     ? ' <span style="color:#ff9f43">⚠️ 接近警戒线</span>' : (p.payout_ratio != null ? ' ✓' : '');
+  const stab = stabilityLabel(p.quality_score);
   const optSection = p.option_strike != null ? `
       <div class="dc-dim">
         <h4>4️⃣ 建议操作</h4>
@@ -408,11 +421,11 @@ function cardDividend(s) {
     </div>
     <div class="dc-dim">
       <h4>1️⃣ 基本面估值</h4>
-      <p>当前价: $${p.last_price}</p>
+      <p>${yieldLogic(p.yield_percentile)}</p>
+      ${stab ? `<p>${stab}</p>` : ''}
     </div>
     <div class="dc-dim">
       <h4>2️⃣ 风险分级</h4>
-      <p>综合评分: ${p.quality_score != null ? p.quality_score + '/100' : 'N/A'}</p>
       <p>派息率: ${p.payout_ratio != null ? p.payout_ratio + '%' + prWarn : 'N/A'}</p>
     </div>
     <div class="dc-dim">
