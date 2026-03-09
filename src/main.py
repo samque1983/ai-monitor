@@ -28,6 +28,99 @@ from src.card_engine import CardEngine
 logger = logging.getLogger(__name__)
 
 
+def _build_agent_payload(
+    sell_puts, iv_low, iv_high, ma200_bull, ma200_bear,
+    leaps, earnings_gaps, earnings_gap_ticker_map,
+    iv_momentum, dividend_signals,
+) -> list:
+    """Build the flat list of signal dicts to push to the agent API."""
+    signals = []
+
+    for signal, t in (sell_puts or []):
+        entry = {
+            "signal_type": "sell_put",
+            "ticker": signal.ticker,
+            "strike": float(signal.strike),
+            "dte": signal.dte,
+            "bid": float(signal.bid),
+            "apy": round(float(signal.apy), 1),
+        }
+        signals.append(entry)
+        if signal.earnings_risk:
+            signals.append({**entry, "signal_type": "sell_put_earnings_risk"})
+
+    for t in (iv_low or []):
+        signals.append({
+            "signal_type": "iv_low",
+            "ticker": t.ticker,
+            "iv_rank": round(float(t.iv_rank), 1) if t.iv_rank is not None else None,
+        })
+
+    for t in (iv_high or []):
+        signals.append({
+            "signal_type": "iv_high",
+            "ticker": t.ticker,
+            "iv_rank": round(float(t.iv_rank), 1) if t.iv_rank is not None else None,
+        })
+
+    for t in (ma200_bull or []):
+        pct = ((t.last_price - t.ma200) / t.ma200 * 100) if t.ma200 else 0
+        signals.append({
+            "signal_type": "ma200_bullish",
+            "ticker": t.ticker,
+            "last_price": round(float(t.last_price), 2),
+            "ma200": round(float(t.ma200), 2),
+            "pct": round(pct, 2),
+        })
+
+    for t in (ma200_bear or []):
+        pct = ((t.last_price - t.ma200) / t.ma200 * 100) if t.ma200 else 0
+        signals.append({
+            "signal_type": "ma200_bearish",
+            "ticker": t.ticker,
+            "last_price": round(float(t.last_price), 2),
+            "ma200": round(float(t.ma200), 2),
+            "pct": round(pct, 2),
+        })
+
+    for t in (leaps or []):
+        signals.append({
+            "signal_type": "leaps",
+            "ticker": t.ticker,
+            "last_price": round(float(t.last_price), 2),
+            "rsi14": round(float(t.rsi14), 1) if t.rsi14 is not None else None,
+            "iv_rank": round(float(t.iv_rank), 1) if t.iv_rank is not None else None,
+        })
+
+    for g in (earnings_gaps or []):
+        td = (earnings_gap_ticker_map or {}).get(g.ticker)
+        signals.append({
+            "signal_type": "earnings_gap",
+            "ticker": g.ticker,
+            "avg_gap": round(float(g.avg_gap), 1),
+            "up_ratio": round(float(g.up_ratio), 1),
+            "max_gap": round(float(g.max_gap), 1),
+            "days_to_earnings": td.days_to_earnings if td else None,
+            "iv_rank": round(float(td.iv_rank), 1) if td and td.iv_rank is not None else None,
+        })
+
+    for t in (iv_momentum or []):
+        signals.append({
+            "signal_type": "iv_momentum",
+            "ticker": t.ticker,
+            "iv_momentum": round(float(t.iv_momentum), 1) if t.iv_momentum is not None else None,
+            "iv_rank": round(float(t.iv_rank), 1) if t.iv_rank is not None else None,
+        })
+
+    for s in (dividend_signals or []):
+        signals.append({
+            "signal_type": "dividend",
+            "ticker": s.ticker if hasattr(s, "ticker") else str(s),
+        })
+
+    return signals
+
+
 def setup_logging(log_dir: str):
     """Configure logging to file and stderr."""
     os.makedirs(log_dir, exist_ok=True)
@@ -230,22 +323,25 @@ def run_scan(config_path: str = "config.yaml"):
     if agent_url:
         try:
             import requests as req_lib
-            cards_payload = [
-                {
-                    "ticker": signal.ticker,
-                    "strategy": "SELL_PUT",
-                    "trigger_reason": f"行权价 ${signal.strike}, 年化 {signal.apy:.1f}%",
-                    "action": f"卖出 ${signal.strike} Put, DTE {signal.dte}",
-                }
-                for signal, _ in sell_put_results
-            ]
+            agent_payload = _build_agent_payload(
+                sell_puts=sell_put_results,
+                iv_low=iv_low,
+                iv_high=iv_high,
+                ma200_bull=ma200_bull,
+                ma200_bear=ma200_bear,
+                leaps=leaps,
+                earnings_gaps=earnings_gaps,
+                earnings_gap_ticker_map=earnings_gap_ticker_map,
+                iv_momentum=iv_momentum,
+                dividend_signals=dividend_signals,
+            )
             req_lib.post(
                 f"{agent_url}/api/scan_results",
-                json={"scan_date": str(today), "results": cards_payload},
+                json={"scan_date": str(today), "results": agent_payload},
                 headers={"X-API-Key": agent_api_key},
                 timeout=10,
             )
-            logger.info(f"Pushed {len(cards_payload)} results to agent")
+            logger.info(f"Pushed {len(agent_payload)} signals to agent")
         except Exception as e:
             logger.warning(f"Agent push failed: {e}")
 

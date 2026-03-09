@@ -140,3 +140,43 @@ def test_main_card_engine_disabled_by_default():
     from src.config import load_config
     config = load_config("config.yaml")
     assert config.get("card_engine", {}).get("enabled", False) is False
+
+
+def test_build_agent_payload_includes_all_signal_types():
+    """_build_agent_payload returns dicts with signal_type for all signal types."""
+    from src.main import _build_agent_payload
+    from unittest.mock import MagicMock
+
+    # minimal mocks
+    sell_put_signal = MagicMock()
+    sell_put_signal.ticker = "AAPL"
+    sell_put_signal.strike = 180.0
+    sell_put_signal.dte = 52
+    sell_put_signal.bid = 3.2
+    sell_put_signal.apy = 18.5
+    sell_put_signal.earnings_risk = False
+
+    ticker = MagicMock()
+    ticker.ticker = "AAPL"
+    ticker.last_price = 185.0
+    ticker.ma200 = 170.0
+    ticker.iv_rank = 18.0
+    ticker.rsi14 = 42.0
+
+    payload = _build_agent_payload(
+        sell_puts=[(sell_put_signal, ticker)],
+        iv_low=[ticker],
+        iv_high=[],
+        ma200_bull=[],
+        ma200_bear=[],
+        leaps=[],
+        earnings_gaps=[],
+        earnings_gap_ticker_map={},
+        iv_momentum=[],
+        dividend_signals=[],
+    )
+
+    types = {s["signal_type"] for s in payload}
+    assert "sell_put" in types
+    assert "iv_low" in types
+    assert all("ticker" in s for s in payload)
