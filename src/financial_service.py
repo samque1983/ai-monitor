@@ -48,6 +48,8 @@ class DividendQualityScore:
     risk_flags: List[str]
     payout_type: str = "GAAP"
     effective_payout_ratio: float = 0.0
+    quality_breakdown: Optional[Dict[str, float]] = None
+    analysis_text: Optional[str] = None
 
 
 class FinancialServiceAnalyzer:
@@ -138,6 +140,42 @@ class FinancialServiceAnalyzer:
             logger.warning(f"Defensiveness scoring failed for {sector}/{industry}: {e}, using 50.0")
             return 50.0
 
+    def _get_analysis_text(self, ticker: str, sector: str, industry: str,
+                           quality_result: "DividendQualityScore") -> str:
+        """Generate 2-3 sentence business stability analysis. Cached per ticker, 7-day TTL."""
+        if self.store and hasattr(self.store, "get_analysis_text"):
+            cached = self.store.get_analysis_text(ticker)
+            if cached:
+                return cached
+        if not self.api_key:
+            return ""
+        try:
+            client = self._get_client()
+            prompt = (
+                f"股票: {ticker}\n"
+                f"行业: {sector} / {industry}\n"
+                f"综合质量评分: {quality_result.overall_score:.0f}/100\n"
+                f"稳定性: {quality_result.stability_score:.0f}, "
+                f"财务健康: {quality_result.health_score:.0f}, "
+                f"防御性: {quality_result.defensiveness_score:.0f}\n"
+                "用2-3句中文描述该公司作为长期股息标的的业务稳定性，"
+                "突出最核心的护城河或主要风险点。"
+            )
+            resp = client.messages.create(
+                model=self.model,
+                max_tokens=200,
+                system="你是专业股息投资分析师。直接返回分析文字，不加标题或格式符号。",
+                messages=[{"role": "user", "content": prompt}],
+            )
+            text = resp.content[0].text.strip()
+            if self.store and hasattr(self.store, "save_analysis_text"):
+                self.store.save_analysis_text(ticker, text)
+            logger.info(f"Analysis text generated for {ticker}")
+            return text
+        except Exception as e:
+            logger.warning(f"Analysis text failed for {ticker}: {e}")
+            return ""
+
     def analyze_dividend_quality(
         self,
         ticker: str,
@@ -165,7 +203,12 @@ class FinancialServiceAnalyzer:
             sector = fundamentals.get("sector") or ""
             industry = fundamentals.get("industry") or ""
             defensiveness_score = self._get_defensiveness_score(sector, industry)
-            return self._calculate_rule_based_score(ticker, fundamentals, defensiveness_override=defensiveness_score)
+            result = self._calculate_rule_based_score(
+                ticker, fundamentals, defensiveness_override=defensiveness_score
+            )
+            if self.store and hasattr(self.store, "get_analysis_text"):
+                result.analysis_text = self._get_analysis_text(ticker, sector, industry, result)
+            return result
         if not self.fallback_to_rules:
             logger.warning(f"{ticker}: Financial Service disabled, no fallback allowed")
             return None
@@ -237,6 +280,14 @@ class FinancialServiceAnalyzer:
             defensiveness_score * 0.2
         )
 
+        quality_breakdown = {
+            "continuity": min(round(consecutive_years * 2.0, 1), 20.0),
+            "growth": min(round(max(dividend_growth * 0.67, 0.0), 1), 20.0),
+            "payout_safety": round(payout_score / 2.0, 1),
+            "financial_health": min(round((roe_score + debt_score) / 3.0, 1), 20.0),
+            "defensiveness": round(defensiveness_score * 0.2, 1),
+        }
+
         # 5. 生成风险标记
         risk_flags = []
         if effective_payout_ratio > 100:
@@ -261,6 +312,8 @@ class FinancialServiceAnalyzer:
             risk_flags=risk_flags,
             payout_type=payout_type,
             effective_payout_ratio=effective_payout_ratio,
+            quality_breakdown=quality_breakdown,
+            analysis_text="",
         )
 
 

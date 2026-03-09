@@ -424,3 +424,52 @@ def test_defensiveness_score_disabled_uses_fixed_50():
         "sector": "Utilities", "industry": "Electric Utilities",
     })
     assert result.defensiveness_score == 50.0
+
+
+def test_quality_score_has_breakdown():
+    """DividendQualityScore should include quality_breakdown dict with 5 keys."""
+    from src.financial_service import FinancialServiceAnalyzer
+    fs = FinancialServiceAnalyzer(enabled=False, fallback_to_rules=True)
+    result = fs.analyze_dividend_quality("T", {
+        "consecutive_years": 5,
+        "dividend_growth_5y": 4.0,
+        "roe": 15.0,
+        "debt_to_equity": 1.0,
+        "payout_ratio": 60.0,
+        "sector": "Communication Services",
+        "industry": "Telecom",
+    })
+    assert result is not None
+    assert result.quality_breakdown is not None
+    for key in ("continuity", "growth", "payout_safety", "financial_health", "defensiveness"):
+        assert key in result.quality_breakdown
+        assert 0.0 <= result.quality_breakdown[key] <= 20.0
+
+
+def test_quality_breakdown_caps_at_20():
+    """Each breakdown dimension should be capped at 20."""
+    from src.financial_service import FinancialServiceAnalyzer
+    fs = FinancialServiceAnalyzer(enabled=False, fallback_to_rules=True)
+    result = fs.analyze_dividend_quality("KO", {
+        "consecutive_years": 62,
+        "dividend_growth_5y": 50.0,
+        "roe": 50.0,
+        "debt_to_equity": 0.0,
+        "payout_ratio": 40.0,
+        "sector": "Consumer Staples",
+        "industry": "Beverages",
+    })
+    for val in result.quality_breakdown.values():
+        assert val <= 20.0
+
+
+def test_quality_score_analysis_text_empty_without_api_key():
+    """analysis_text should be empty string when no api_key provided."""
+    from src.financial_service import FinancialServiceAnalyzer
+    fs = FinancialServiceAnalyzer(enabled=False, fallback_to_rules=True, api_key="")
+    result = fs.analyze_dividend_quality("KO", {
+        "consecutive_years": 10, "dividend_growth_5y": 5.0,
+        "roe": 20.0, "debt_to_equity": 0.5, "payout_ratio": 60.0,
+        "sector": "Consumer Staples", "industry": "Beverages",
+    })
+    assert result.analysis_text == ""
