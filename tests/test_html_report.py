@@ -501,4 +501,4 @@ class TestDividendCardEnrichment:
             dividend_signals=[signal],
             dividend_pool_summary={"count": 1, "last_update": "2026-03-09"},
         )
-        assert "数据较旧" in html or "20" in html
+        assert "数据较旧" in html

@@ -49,7 +49,7 @@ class DividendBuySignal:
     forward_dividend_rate: Optional[float] = None
     max_yield_5y: Optional[float] = None
     floor_price: Optional[float] = None
-    floor_downside_pct: Optional[float] = None
+    floor_downside_pct: Optional[float] = None  # Positive = stock is X% above floor price (downside buffer; negate to show drop direction)
     data_age_days: Optional[int] = None
     needs_reeval: bool = False
 
