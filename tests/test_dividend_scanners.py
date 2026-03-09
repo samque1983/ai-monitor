@@ -634,3 +634,127 @@ def test_weekly_scan_populates_data_version_date(config):
     results = scan_dividend_pool_weekly(["KO"], provider, fs, config)
     assert len(results) == 1
     assert results[0].data_version_date == str(date.today())
+
+
+# ---------------------------------------------------------------------------
+# Task 5: New fields on DividendBuySignal
+# ---------------------------------------------------------------------------
+
+def _make_buy_pool_record(
+    ticker="KO",
+    forward_dividend_rate=2.0,
+    max_yield_5y=4.0,
+    data_version_date=None,
+    needs_reeval=0,
+):
+    """Helper: build a minimal pool record dict (as returned by get_pool_records)."""
+    if data_version_date is None:
+        data_version_date = str(date.today())
+    return {
+        "ticker": ticker,
+        "forward_dividend_rate": forward_dividend_rate,
+        "max_yield_5y": max_yield_5y,
+        "data_version_date": data_version_date,
+        "needs_reeval": needs_reeval,
+    }
+
+
+def test_buy_signal_computes_floor_price(tmp_path):
+    """floor_price = forward_dividend_rate / (max_yield_5y / 100).
+    With forward_dividend_rate=2.0 and max_yield_5y=4.0:
+    floor_price = 2.0 / (4.0 / 100) = 50.0
+    """
+    db_path = str(tmp_path / "test.db")
+    store = DividendStore(db_path)
+    store.save_dividend_history(
+        ticker="KO", date=date.today(),
+        dividend_yield=5.0, annual_dividend=2.0, price=40.0
+    )
+
+    mock_provider = MagicMock()
+    mock_provider.get_price_data.return_value = pd.DataFrame(
+        {"Close": [40.0]},
+        index=pd.to_datetime([str(date.today())])
+    )
+    mock_provider.get_dividend_history.return_value = [
+        {"date": str(date.today()), "amount": 2.0}
+    ]
+
+    config = {"dividend_scanners": {"min_yield": 4.0, "min_yield_percentile": 0}}
+
+    pool = [_make_buy_pool_record(ticker="KO", forward_dividend_rate=2.0, max_yield_5y=4.0)]
+    results = scan_dividend_buy_signal(pool=pool, provider=mock_provider, store=store, config=config)
+
+    store.close()
+    assert len(results) == 1
+    assert results[0].floor_price == pytest.approx(50.0)
+
+
+def test_buy_signal_computes_floor_downside_pct(tmp_path):
+    """floor_downside_pct = (last_price - floor_price) / last_price * 100.
+    With last_price=65.0, forward_dividend_rate=4.0, max_yield_5y=4.0:
+    floor_price = 4.0 / (4.0/100) = 100.0
+    Using last_price=40.0 and floor_price=50.0:
+      forward_dividend_rate=2.0, max_yield_5y=4.0 → floor_price=50.0
+      annual_dividend=4.0 at last_price=40.0 → yield=10% (>= min_yield=4.0)
+    floor_downside_pct = (40.0 - 50.0) / 40.0 * 100 = -25.0
+    """
+    db_path = str(tmp_path / "test.db")
+    store = DividendStore(db_path)
+    store.save_dividend_history(
+        ticker="KO", date=date.today(),
+        dividend_yield=10.0, annual_dividend=4.0, price=40.0
+    )
+
+    mock_provider = MagicMock()
+    mock_provider.get_price_data.return_value = pd.DataFrame(
+        {"Close": [40.0]},
+        index=pd.to_datetime([str(date.today())])
+    )
+    # annual_dividend = 4.0, last_price = 40.0 → yield = 10% >= 4%
+    mock_provider.get_dividend_history.return_value = [
+        {"date": str(date.today()), "amount": 4.0}
+    ]
+
+    config = {"dividend_scanners": {"min_yield": 4.0, "min_yield_percentile": 0}}
+
+    # floor_price = 2.0 / (4.0/100) = 50.0
+    pool = [_make_buy_pool_record(ticker="KO", forward_dividend_rate=2.0, max_yield_5y=4.0)]
+    results = scan_dividend_buy_signal(pool=pool, provider=mock_provider, store=store, config=config)
+
+    store.close()
+    assert len(results) == 1
+    # floor_downside_pct = (40.0 - 50.0) / 40.0 * 100 = -25.0
+    expected = round((40.0 - 50.0) / 40.0 * 100, 1)
+    assert results[0].floor_price == pytest.approx(50.0)
+    assert results[0].floor_downside_pct == pytest.approx(expected)
+
+
+def test_buy_signal_computes_data_age_days(tmp_path):
+    """data_age_days = (date.today() - date.fromisoformat(data_version_date)).days.
+    When data_version_date == str(date.today()), data_age_days == 0.
+    """
+    db_path = str(tmp_path / "test.db")
+    store = DividendStore(db_path)
+    store.save_dividend_history(
+        ticker="KO", date=date.today(),
+        dividend_yield=5.0, annual_dividend=2.0, price=40.0
+    )
+
+    mock_provider = MagicMock()
+    mock_provider.get_price_data.return_value = pd.DataFrame(
+        {"Close": [40.0]},
+        index=pd.to_datetime([str(date.today())])
+    )
+    mock_provider.get_dividend_history.return_value = [
+        {"date": str(date.today()), "amount": 2.0}
+    ]
+
+    config = {"dividend_scanners": {"min_yield": 4.0, "min_yield_percentile": 0}}
+
+    pool = [_make_buy_pool_record(ticker="KO", data_version_date=str(date.today()))]
+    results = scan_dividend_buy_signal(pool=pool, provider=mock_provider, store=store, config=config)
+
+    store.close()
+    assert len(results) == 1
+    assert results[0].data_age_days == 0

@@ -180,3 +180,82 @@ def test_build_agent_payload_includes_all_signal_types():
     assert "sell_put" in types
     assert "iv_low" in types
     assert all("ticker" in s for s in payload)
+
+
+def test_agent_payload_includes_floor_price():
+    """Dividend signal dict in agent payload must include floor_price, floor_downside_pct,
+    data_age_days, needs_reeval, quality_breakdown, and analysis_text fields."""
+    from src.main import _build_agent_payload
+    from src.dividend_scanners import DividendBuySignal
+    from src.data_engine import TickerData
+
+    td = TickerData(
+        ticker="KO",
+        name="Coca-Cola",
+        market="US",
+        last_price=65.0,
+        ma200=60.0,
+        ma50w=62.0,
+        rsi14=40.0,
+        iv_rank=20.0,
+        iv_momentum=None,
+        prev_close=64.0,
+        earnings_date=None,
+        days_to_earnings=None,
+        dividend_yield=5.0,
+        dividend_yield_5y_percentile=95.0,
+        dividend_quality_score=80.0,
+        consecutive_years=10,
+        dividend_growth_5y=3.5,
+        payout_ratio=60.0,
+        roe=15.0,
+        debt_to_equity=1.0,
+        industry="Beverages",
+        sector="Consumer Staples",
+        free_cash_flow=10_000_000,
+        forward_dividend_rate=2.0,
+        max_yield_5y=4.0,
+        quality_breakdown={"stability": 80.0},
+        analysis_text="Strong payer.",
+        data_version_date=str(date.today()),
+    )
+
+    signal = DividendBuySignal(
+        ticker_data=td,
+        signal_type="STOCK",
+        current_yield=5.0,
+        yield_percentile=95.0,
+        option_details=None,
+        floor_price=50.0,
+        floor_downside_pct=round((65.0 - 50.0) / 65.0 * 100, 1),
+        data_age_days=0,
+        needs_reeval=False,
+        forward_dividend_rate=2.0,
+    )
+
+    payload = _build_agent_payload(
+        sell_puts=[],
+        iv_low=[],
+        iv_high=[],
+        ma200_bull=[],
+        ma200_bear=[],
+        leaps=[],
+        earnings_gaps=[],
+        earnings_gap_ticker_map={},
+        iv_momentum=[],
+        dividend_signals=[signal],
+    )
+
+    assert len(payload) == 1
+    entry = payload[0]
+    assert entry["signal_type"] == "dividend"
+    assert "floor_price" in entry
+    assert "floor_downside_pct" in entry
+    assert "data_age_days" in entry
+    assert "needs_reeval" in entry
+    assert "quality_breakdown" in entry
+    assert "analysis_text" in entry
+    assert entry["floor_price"] == pytest.approx(50.0)
+    assert entry["data_age_days"] == 0
+    assert entry["needs_reeval"] is False
+    assert entry["analysis_text"] == "Strong payer."

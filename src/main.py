@@ -151,6 +151,14 @@ def _build_agent_payload(
             "option_bid": round(float(opt["bid"]), 2) if opt else None,
             "option_apy": round(float(opt["apy"]), 1) if opt else None,
             "combined_apy": round(float(s.current_yield) + float(opt["apy"]), 1) if opt else None,
+            "forward_dividend_rate": round(float(s.forward_dividend_rate), 2) if s.forward_dividend_rate is not None else None,
+            "max_yield_5y": round(float(td.max_yield_5y), 2) if td.max_yield_5y is not None else None,
+            "floor_price": round(float(s.floor_price), 2) if s.floor_price is not None else None,
+            "floor_downside_pct": s.floor_downside_pct,
+            "data_age_days": s.data_age_days,
+            "needs_reeval": s.needs_reeval,
+            "quality_breakdown": td.quality_breakdown,
+            "analysis_text": td.analysis_text or "",
         })
 
     return signals
@@ -285,7 +293,7 @@ def run_scan(config_path: str = "config.yaml"):
                 dividend_store.save_pool(weekly_results, version=str(today))
                 logger.info(f"Dividend pool updated: {len(weekly_results)} tickers (version={today})")
 
-            current_pool = dividend_store.get_current_pool()
+            current_pool = dividend_store.get_pool_records()
             if current_pool:
                 dividend_signals = scan_dividend_buy_signal(
                     pool=current_pool,

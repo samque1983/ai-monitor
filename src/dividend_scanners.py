@@ -46,6 +46,11 @@ class DividendBuySignal:
     current_yield: float
     yield_percentile: float
     option_details: Optional[Dict[str, Any]] = None
+    forward_dividend_rate: Optional[float] = None
+    floor_price: Optional[float] = None
+    floor_downside_pct: Optional[float] = None
+    data_age_days: Optional[int] = None
+    needs_reeval: bool = False
 
 
 def scan_dividend_pool_weekly(
@@ -239,7 +244,7 @@ def scan_dividend_pool_weekly(
 
 
 def scan_dividend_buy_signal(
-    pool: List[str],
+    pool: List[Dict],
     provider: "MarketDataProvider",
     store: "DividendStore",
     config: dict,
@@ -247,7 +252,7 @@ def scan_dividend_buy_signal(
     """每日监控股息买入信号
 
     六步工作流：
-    1. 遍历pool中的tickers
+    1. 遍历pool中的records（List[Dict] from get_pool_records()）
     2. 获取当前价格（最近5天数据）
     3. 获取股息历史（最近1年）
     4. 计算当前股息率 = (年度股息 / 最新价格) * 100
@@ -255,7 +260,7 @@ def scan_dividend_buy_signal(
     6. 判断触发条件：current_yield >= min_yield AND yield_percentile >= min_yield_percentile
 
     Args:
-        pool: ticker列表（来自DividendStore的当前池）
+        pool: pool record dicts（来自DividendStore.get_pool_records()）
         provider: MarketDataProvider实例
         store: DividendStore实例（用于获取历史分位数）
         config: 配置字典，包含：
@@ -267,7 +272,7 @@ def scan_dividend_buy_signal(
 
     Examples:
         >>> signals = scan_dividend_buy_signal(
-        ...     pool=["AAPL", "MSFT"],
+        ...     pool=[{"ticker": "AAPL", ...}, {"ticker": "MSFT", ...}],
         ...     provider=market_provider,
         ...     store=dividend_store,
         ...     config={"dividend_scanners": {"min_yield": 4.0, "min_yield_percentile": 90}}
@@ -284,7 +289,27 @@ def scan_dividend_buy_signal(
 
     results = []
 
-    for ticker in pool:
+    for record in pool:
+        ticker = record["ticker"] if isinstance(record, dict) else record
+        # Extract enrichment fields from pool record
+        _fwd_div = record.get("forward_dividend_rate") if isinstance(record, dict) else None
+        _max_yield = record.get("max_yield_5y") if isinstance(record, dict) else None
+        _data_version_date_str = record.get("data_version_date") if isinstance(record, dict) else None
+        _needs_reeval = bool(record.get("needs_reeval", 0)) if isinstance(record, dict) else False
+
+        # Compute floor_price: forward_dividend_rate / (max_yield_5y / 100)
+        _floor_price: Optional[float] = None
+        if _fwd_div is not None and _max_yield is not None and _max_yield > 0:
+            _floor_price = round(_fwd_div / (_max_yield / 100), 2)
+
+        # Compute data_age_days
+        _data_age_days: Optional[int] = None
+        if _data_version_date_str:
+            try:
+                _data_age_days = (date.today() - date.fromisoformat(_data_version_date_str)).days
+            except (ValueError, TypeError):
+                _data_age_days = None
+
         try:
             # Step 1: 获取当前价格（最近5天）
             price_data = provider.get_price_data(ticker, period='5d')
@@ -380,12 +405,22 @@ def scan_dividend_buy_signal(
                             f"apy={option_details['apy']:.2f}%"
                         )
 
+                # Compute floor_downside_pct using last_price
+                _floor_downside_pct: Optional[float] = None
+                if _floor_price is not None and last_price > 0:
+                    _floor_downside_pct = round((last_price - _floor_price) / last_price * 100, 1)
+
                 signal = DividendBuySignal(
                     ticker_data=ticker_data,
                     signal_type=signal_type,
                     current_yield=current_yield,
                     yield_percentile=yield_percentile,
-                    option_details=option_details
+                    option_details=option_details,
+                    forward_dividend_rate=_fwd_div,
+                    floor_price=_floor_price,
+                    floor_downside_pct=_floor_downside_pct,
+                    data_age_days=_data_age_days,
+                    needs_reeval=_needs_reeval,
                 )
 
                 results.append(signal)
