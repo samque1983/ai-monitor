@@ -181,3 +181,49 @@ def test_defensiveness_score_expired(tmp_path):
     # Expired → returns None
     assert store.get_defensiveness_score("Technology", "Software") is None
     store.close()
+
+
+def test_pool_records_returns_new_columns(tmp_path):
+    """get_pool_records should return quality_breakdown dict and analysis_text."""
+    import json
+    from src.dividend_store import DividendStore
+    from src.data_engine import TickerData
+    db_path = str(tmp_path / "test.db")
+    store = DividendStore(db_path)
+
+    td = TickerData(
+        ticker="KO", name="Coca-Cola", market="US",
+        last_price=62.5, ma200=None, ma50w=None, rsi14=None,
+        iv_rank=None, iv_momentum=None, prev_close=62.5,
+        earnings_date=None, days_to_earnings=None,
+        dividend_quality_score=85.0,
+        quality_breakdown={"continuity": 18.0, "growth": 10.0, "payout_safety": 20.0,
+                           "financial_health": 17.0, "defensiveness": 16.0},
+        analysis_text="KO has 62 years of consecutive dividend growth.",
+        forward_dividend_rate=1.94,
+        max_yield_5y=4.5,
+        data_version_date=None,
+    )
+    store.save_pool([td], version="2026-03-09")
+
+    records = store.get_pool_records()
+    assert len(records) == 1
+    r = records[0]
+    assert r["ticker"] == "KO"
+    assert isinstance(r["quality_breakdown"], dict)
+    assert r["quality_breakdown"]["continuity"] == 18.0
+    assert r["analysis_text"] == "KO has 62 years of consecutive dividend growth."
+    assert r["forward_dividend_rate"] == 1.94
+    assert r["max_yield_5y"] == 4.5
+    store.close()
+
+
+def test_analysis_text_cache(tmp_path):
+    """save_analysis_text and get_analysis_text should cache with TTL."""
+    from src.dividend_store import DividendStore
+    db_path = str(tmp_path / "test.db")
+    store = DividendStore(db_path)
+    store.save_analysis_text("KO", "KO is a moat stock.")
+    assert store.get_analysis_text("KO") == "KO is a moat stock."
+    assert store.get_analysis_text("MSFT") is None
+    store.close()

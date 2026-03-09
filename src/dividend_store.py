@@ -1,7 +1,8 @@
 import sqlite3
+import json
 import logging
 from datetime import date, datetime, timedelta
-from typing import List, Dict
+from typing import List, Dict, Optional
 from src.data_engine import TickerData
 
 logger = logging.getLogger(__name__)
@@ -53,6 +54,20 @@ class DividendStore:
             )
         """)
 
+        # Migrate dividend_pool: add enrichment columns if missing
+        cursor.execute("PRAGMA table_info(dividend_pool)")
+        pool_cols = {row[1] for row in cursor.fetchall()}
+        for col, col_type in [
+            ("quality_breakdown", "TEXT"),
+            ("analysis_text", "TEXT"),
+            ("forward_dividend_rate", "REAL"),
+            ("max_yield_5y", "REAL"),
+            ("data_version_date", "TEXT"),
+        ]:
+            if col not in pool_cols and pool_cols:
+                cursor.execute(f"ALTER TABLE dividend_pool ADD COLUMN {col} {col_type}")
+                logger.info(f"Migrated dividend_pool: added column {col}")
+
         # Table 2: dividend_history - 历史股息数据（每日快照）
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS dividend_history (
@@ -86,6 +101,14 @@ class DividendStore:
             )
         """)
 
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS analysis_cache (
+                ticker   TEXT PRIMARY KEY,
+                text     TEXT NOT NULL,
+                expires  TEXT NOT NULL
+            )
+        """)
+
         self.conn.commit()
         logger.info("Database tables created successfully")
 
@@ -102,8 +125,10 @@ class DividendStore:
                     ticker, version, name, market, quality_score,
                     consecutive_years, dividend_growth_5y, payout_ratio,
                     payout_type, dividend_yield, roe, debt_to_equity,
-                    industry, sector, added_date
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    industry, sector, added_date,
+                    quality_breakdown, analysis_text, forward_dividend_rate,
+                    max_yield_5y, data_version_date
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 ticker.ticker, version, ticker.name, ticker.market,
                 ticker.dividend_quality_score, ticker.consecutive_years,
@@ -112,6 +137,11 @@ class DividendStore:
                 getattr(ticker, 'dividend_yield', None),
                 ticker.roe, ticker.debt_to_equity,
                 ticker.industry, ticker.sector,
+                date.today().isoformat(),
+                json.dumps(getattr(ticker, 'quality_breakdown', None) or {}),
+                getattr(ticker, 'analysis_text', None) or "",
+                getattr(ticker, 'forward_dividend_rate', None),
+                getattr(ticker, 'max_yield_5y', None),
                 date.today().isoformat(),
             ))
 
@@ -179,6 +209,40 @@ class DividendStore:
                 "roe", "debt_to_equity", "industry", "sector"]
         return [dict(zip(cols, row)) for row in cursor.fetchall()]
 
+    def get_pool_records(self) -> List[Dict]:
+        """Return full records for the current pool version, including all enrichment fields."""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT ticker, name, market, quality_score, consecutive_years,
+                   dividend_growth_5y, payout_ratio, payout_type, dividend_yield,
+                   roe, debt_to_equity, industry, sector,
+                   quality_breakdown, analysis_text, forward_dividend_rate,
+                   max_yield_5y, data_version_date
+            FROM dividend_pool
+            WHERE version = (
+                SELECT version FROM screening_versions
+                ORDER BY created_at DESC LIMIT 1
+            )
+            ORDER BY quality_score DESC
+        """)
+        cols = [
+            "ticker", "name", "market", "quality_score", "consecutive_years",
+            "dividend_growth_5y", "payout_ratio", "payout_type", "dividend_yield",
+            "roe", "debt_to_equity", "industry", "sector",
+            "quality_breakdown", "analysis_text", "forward_dividend_rate",
+            "max_yield_5y", "data_version_date",
+        ]
+        records = []
+        for row in cursor.fetchall():
+            d = dict(zip(cols, row))
+            if d.get("quality_breakdown"):
+                try:
+                    d["quality_breakdown"] = json.loads(d["quality_breakdown"])
+                except Exception:
+                    d["quality_breakdown"] = {}
+            records.append(d)
+        return records
+
     def save_dividend_history(self, ticker: str, date: date, dividend_yield: float, annual_dividend: float, price: float):
         """保存单个历史股息数据点"""
         cursor = self.conn.cursor()
@@ -239,6 +303,30 @@ class DividendStore:
         cursor.execute(
             "INSERT OR REPLACE INTO defensiveness_cache (sector, industry, score, rationale, expires) VALUES (?,?,?,?,?)",
             (sector, industry, score, rationale, expires),
+        )
+        self.conn.commit()
+
+    def get_analysis_text(self, ticker: str) -> Optional[str]:
+        """Return cached analysis text if not expired, else None."""
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT text, expires FROM analysis_cache WHERE ticker=?", (ticker,)
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        text, expires = row
+        if expires < date.today().isoformat():
+            return None
+        return text
+
+    def save_analysis_text(self, ticker: str, text: str, ttl_days: int = 7):
+        """Persist analysis text with TTL (default 7 days)."""
+        expires = (date.today() + timedelta(days=ttl_days)).isoformat()
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "INSERT OR REPLACE INTO analysis_cache (ticker, text, expires) VALUES (?,?,?)",
+            (ticker, text, expires),
         )
         self.conn.commit()
 

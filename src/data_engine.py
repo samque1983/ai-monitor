@@ -1,8 +1,8 @@
 # src/data_engine.py
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
-from typing import Optional
+from typing import Optional, Dict
 import pandas as pd
 import numpy as np
 from src.data_loader import classify_market
@@ -39,6 +39,13 @@ class TickerData:
     sector: Optional[str] = None
     free_cash_flow: Optional[float] = None
     payout_type: Optional[str] = None   # "FCF" | "GAAP" | None
+
+    # Phase 3: 股息卡片富化字段
+    quality_breakdown: Optional[Dict[str, float]] = None
+    analysis_text: Optional[str] = None
+    forward_dividend_rate: Optional[float] = None
+    max_yield_5y: Optional[float] = None
+    data_version_date: Optional[str] = None
 
 
 @dataclass
