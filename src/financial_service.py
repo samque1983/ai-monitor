@@ -283,10 +283,10 @@ class FinancialServiceAnalyzer:
 
         quality_breakdown = {
             "continuity": min(round(consecutive_years * 2.0, 1), 20.0),
-            "growth": min(round(max(dividend_growth * 0.67, 0.0), 1), 20.0),
+            "earnings_stability": min(round(max(dividend_growth * 0.67, 0.0), 1), 20.0),
             "payout_safety": round(payout_score / 2.0, 1),
-            "financial_health": min(round((roe_score + debt_score) / 3.0, 1), 20.0),
-            "defensiveness": round(defensiveness_score * 0.2, 1),
+            "debt_level": min(round((roe_score + debt_score) / 3.0, 1), 20.0),
+            "moat": round(defensiveness_score * 0.2, 1),
         }
 
         # 5. 生成风险标记

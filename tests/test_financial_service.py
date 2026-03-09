@@ -443,9 +443,29 @@ def test_quality_score_has_breakdown():
     })
     assert result is not None
     assert result.quality_breakdown is not None
-    for key in ("continuity", "growth", "payout_safety", "financial_health", "defensiveness"):
+    for key in ("continuity", "earnings_stability", "payout_safety", "debt_level", "moat"):
         assert key in result.quality_breakdown
         assert 0.0 <= result.quality_breakdown[key] <= 20.0
+
+
+def test_quality_breakdown_keys_match_design_spec():
+    """Verify breakdown keys match what dashboard and html_report expect."""
+    from src.financial_service import FinancialServiceAnalyzer
+    fs = FinancialServiceAnalyzer(enabled=False, fallback_to_rules=True)
+    result = fs.analyze_dividend_quality("T", {
+        "consecutive_years": 5,
+        "dividend_growth_5y": 4.0,
+        "roe": 15.0,
+        "debt_to_equity": 1.0,
+        "payout_ratio": 60.0,
+        "sector": "Communication Services",
+        "industry": "Telecom",
+    })
+    assert result is not None
+    assert result.quality_breakdown is not None
+    assert set(result.quality_breakdown.keys()) == {
+        "continuity", "earnings_stability", "payout_safety", "debt_level", "moat"
+    }
 
 
 def test_quality_breakdown_caps_at_20():
