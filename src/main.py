@@ -303,7 +303,10 @@ def run_scan(config_path: str = "config.yaml"):
                     config=config,
                 )
                 dividend_store.save_pool(weekly_results, version=str(today))
-                logger.info(f"Dividend pool updated: {len(weekly_results)} tickers (version={today})")
+                analysis_count = sum(1 for r in weekly_results if r.analysis_text)
+                sample = next((r for r in weekly_results if r.analysis_text), None)
+                sample_text = repr(sample.analysis_text[:80]) if sample else "none"
+                logger.info(f"Dividend pool updated: {len(weekly_results)} tickers, {analysis_count} with analysis_text (sample: {sample_text})")
                 # Bootstrap historical yield data (runs once per weekly scan)
                 pool_tickers = [t.ticker for t in weekly_results]
                 bootstrap_yield_history(pool_tickers, provider, dividend_store)
