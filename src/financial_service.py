@@ -164,14 +164,16 @@ class FinancialServiceAnalyzer:
                 f"综合质量评分: {quality_result.overall_score:.0f}/100\n"
                 f"稳定性: {quality_result.stability_score:.0f}, "
                 f"财务健康: {quality_result.health_score:.0f}, "
-                f"防御性: {quality_result.defensiveness_score:.0f}\n"
-                "用2-3句中文描述该公司作为长期股息标的的业务稳定性，"
-                "突出最核心的护城河或主要风险点。"
+                f"防御性: {quality_result.defensiveness_score:.0f}\n\n"
+                "请用中文按以下格式输出，每项一句话：\n"
+                "确定性业务：[核心业务描述，稳定现金流来源]\n"
+                "增量新业务：[增长方向或新业务风险，若无则写\"暂无明显增量业务\"]\n"
+                "估值区间：[结合股息率定价或PE区间说明大概值多少钱的逻辑]"
             )
             text = client.simple_chat(
                 "你是专业股息投资分析师。直接返回分析文字，不加标题或格式符号。",
                 prompt,
-                max_tokens=200,
+                max_tokens=300,
             )
             if self.store and hasattr(self.store, "save_analysis_text"):
                 self.store.save_analysis_text(ticker, text)

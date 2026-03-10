@@ -488,3 +488,37 @@ def test_quality_score_analysis_text_empty_without_api_key():
         "sector": "Consumer Staples", "industry": "Beverages",
     })
     assert result.analysis_text == ""
+
+
+def test_analysis_text_prompt_includes_business_structure(tmp_path):
+    """LLM prompt must request 确定性业务/增量新业务/估值区间 structure."""
+    from src.financial_service import FinancialServiceAnalyzer
+    from src.dividend_store import DividendStore
+    store = DividendStore(str(tmp_path / "test.db"))
+    analyzer = FinancialServiceAnalyzer(
+        enabled=True, api_key="test-key", store=store
+    )
+
+    with patch.object(analyzer, "_get_client") as mock_client_fn:
+        mock_client = MagicMock()
+        mock_client_fn.return_value = mock_client
+        # First call: defensiveness scoring JSON, second call: analysis text
+        mock_client.simple_chat.side_effect = [
+            '{"score": 75.0, "rationale": "稳定公用事业"}',
+            "确定性业务：电力传输。增量新业务：暂无。估值区间：PE 15-18x。",
+        ]
+
+        analyzer.analyze_dividend_quality("NEE", {
+            "consecutive_years": 10, "dividend_growth_5y": 3.0,
+            "roe": 12.0, "debt_to_equity": 1.0, "payout_ratio": 65.0,
+            "sector": "Utilities", "industry": "Electric Utilities",
+        })
+
+    assert mock_client.simple_chat.call_count == 2
+    # The second call is the analysis_text prompt — check its user message content
+    analysis_call_args = mock_client.simple_chat.call_args_list[1]
+    user_message = analysis_call_args[0][1]  # positional arg: system, user_message
+    assert "确定性业务" in user_message, f"Prompt missing '确定性业务': {user_message}"
+    assert "增量新业务" in user_message, f"Prompt missing '增量新业务': {user_message}"
+    assert "估值区间" in user_message, f"Prompt missing '估值区间': {user_message}"
+    store.close()
