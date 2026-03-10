@@ -406,7 +406,7 @@ def run_scan(config_path: str = "config.yaml"):
                 )
                 pushed = True
             except Exception as req_err:
-                logger.debug(f"requests push failed ({req_err}), trying curl fallback")
+                logger.warning(f"requests push failed ({req_err}), trying curl fallback")
                 result = _sub.run(
                     ["curl", "-sf", "-X", "POST",
                      "-H", "Content-Type: application/json",
