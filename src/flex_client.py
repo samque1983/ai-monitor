@@ -91,6 +91,14 @@ class FlexClient:
         cushion = float(a.get("cushion") or 0)
         if cushion == 0 and net_liq > 0:
             cushion = excess_liq / net_liq
+        if net_liq == 0:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "AccountInformation missing financial fields (netLiquidation=0). "
+                "Edit your Flex Query: Account Information section → enable "
+                "Net Liquidation, Excess Liquidity, Cushion, Available Funds, "
+                "Initial Margin Req, Maintenance Margin Req."
+            )
         account = AccountSummary(
             net_liquidation=net_liq,
             gross_position_value=float(a.get("grossPositionValue") or 0),
