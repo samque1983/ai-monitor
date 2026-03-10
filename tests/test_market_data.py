@@ -575,6 +575,25 @@ def test_get_options_chain_includes_ask_column(provider_no_ibkr):
         assert "ask" in result.columns
 
 
+def test_get_options_chain_ask_fallback_when_absent(provider_no_ibkr):
+    """When ask column is missing from source, fallback to 0.0."""
+    with patch("yfinance.Ticker") as mock_yf:
+        mock_ticker = MagicMock()
+        mock_yf.return_value = mock_ticker
+        mock_ticker.options = ["2026-05-16"]
+        chain = MagicMock()
+        chain.puts = pd.DataFrame({
+            "strike": [50.0],
+            "bid": [1.0],
+            "impliedVolatility": [0.3],
+            # no "ask" column
+        })
+        mock_ticker.option_chain.return_value = chain
+        result = provider_no_ibkr.get_options_chain("AAPL", dte_min=30, dte_max=90)
+        assert "ask" in result.columns
+        assert result["ask"].iloc[0] == 0.0
+
+
 # ---------------------------------------------------------------------------
 # Task 1: PolygonProvider — price data
 # ---------------------------------------------------------------------------

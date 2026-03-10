@@ -439,7 +439,7 @@ class MarketDataProvider:
                     chain = t.option_chain(exp_str)
                     available = [c for c in ["strike", "bid", "ask", "impliedVolatility"] if c in chain.puts.columns]
                     puts = chain.puts[available].copy()
-                    if "ask" not in puts.columns:
+                    if "ask" not in chain.puts.columns:
                         puts["ask"] = 0.0
                     puts["dte"] = dte
                     puts["expiration"] = exp_date
