@@ -77,9 +77,9 @@ class TestFormatReport:
 
     def test_report_contains_sell_put_warning(self):
         signal = SellPutSignal(
-            ticker="NVDA", strike=110.0, bid=1.80,
-            dte=52, expiration=date(2026, 4, 13),
-            apy=11.5, earnings_risk=True,
+            ticker="NVDA", strike=110.0, bid=1.80, ask=0.0, mid=1.80,
+            spread_pct=0.0, dte=52, expiration=date(2026, 4, 13),
+            apy=11.5, earnings_risk=True, liquidity_warn=False,
         )
         report = format_report(
             scan_date=date(2026, 2, 20),

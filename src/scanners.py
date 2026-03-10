@@ -96,10 +96,14 @@ class SellPutSignal:
     ticker: str
     strike: float
     bid: float
+    ask: float
+    mid: float
+    spread_pct: float
     dte: int
     expiration: date
-    apy: float           # percentage, e.g. 9.6
-    earnings_risk: bool   # True if earnings falls within DTE
+    apy: float           # percentage, based on midpoint
+    earnings_risk: bool
+    liquidity_warn: bool  # True if spread 20-30%
 
 
 def scan_sell_put(
@@ -125,13 +129,24 @@ def scan_sell_put(
 
     strike = float(best["strike"])
     bid = float(best["bid"])
+    ask = float(best.get("ask", 0) or 0)
     dte = int(best["dte"])
     expiration = best["expiration"]
 
     if strike == 0 or dte == 0:
         return None
 
-    apy = (bid / strike) * (365 / dte) * 100
+    # Liquidity: compute spread
+    mid = (bid + ask) / 2 if ask > 0 else bid
+    spread_pct = ((ask - bid) / mid * 100) if mid > 0 and ask > 0 else 0.0
+
+    # Hard filter: spread > 30% → no signal for standalone sell put
+    if spread_pct > 30:
+        return None
+
+    liquidity_warn = spread_pct > 20
+
+    apy = (mid / strike) * (365 / dte) * 100
 
     if apy < min_apy:
         return None
@@ -145,10 +160,14 @@ def scan_sell_put(
         ticker=ticker_data.ticker,
         strike=strike,
         bid=bid,
+        ask=ask,
+        mid=mid,
+        spread_pct=round(spread_pct, 1),
         dte=dte,
         expiration=expiration if isinstance(expiration, date) else expiration,
         apy=round(apy, 2),
         earnings_risk=earnings_risk,
+        liquidity_warn=liquidity_warn,
     )
 
 

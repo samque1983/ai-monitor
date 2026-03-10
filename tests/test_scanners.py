@@ -1,7 +1,7 @@
 # tests/test_scanners.py
 import pytest
 import pandas as pd
-from datetime import date
+from datetime import date, timedelta
 from src.data_engine import TickerData
 from src.scanners import scan_iv_extremes, scan_ma200_crossover, scan_leaps_setup
 from src.scanners import scan_sell_put, SellPutSignal
@@ -331,3 +331,59 @@ class TestEarningsGapScanner:
 
         result = scan_earnings_gap(data, mock_provider, days_threshold=3)
         assert len(result) == 0
+
+
+@pytest.fixture
+def sample_ticker_data():
+    return make_ticker(ticker="TEST", earnings_date=None, days_to_earnings=None)
+
+
+def test_scan_sell_put_uses_midpoint_apy(sample_ticker_data):
+    """APY should be calculated from midpoint (bid+ask)/2, not bid."""
+    # bid=1.0, ask=1.2 → mid=1.1, spread=0.2/1.1=18.2% (passes filter)
+    options_df = pd.DataFrame({
+        "strike": [95.0], "bid": [1.0], "ask": [1.2],
+        "dte": [60], "expiration": [date.today() + timedelta(days=60)],
+    })
+    result = scan_sell_put(sample_ticker_data, 100.0, options_df, min_apy=0.0)
+    mid = (1.0 + 1.2) / 2  # 1.1
+    expected_apy = round((mid / 95.0) * (365 / 60) * 100, 2)
+    assert result is not None
+    assert result.mid == pytest.approx(1.1)
+    assert result.apy == pytest.approx(expected_apy)
+
+
+def test_scan_sell_put_rejects_spread_over_30pct(sample_ticker_data):
+    """Spread > 30% should return None."""
+    # mid = (1.0 + 1.6) / 2 = 1.3; spread = 0.6/1.3 = 46% > 30%
+    options_df = pd.DataFrame({
+        "strike": [95.0], "bid": [1.0], "ask": [1.6],
+        "dte": [60], "expiration": [date.today() + timedelta(days=60)],
+    })
+    result = scan_sell_put(sample_ticker_data, 100.0, options_df, min_apy=0.0)
+    assert result is None
+
+
+def test_scan_sell_put_warns_spread_20_to_30pct(sample_ticker_data):
+    """Spread 20-30% should generate signal with liquidity_warn=True."""
+    # mid = (1.0 + 1.3) / 2 = 1.15; spread = 0.3/1.15 = 26%
+    options_df = pd.DataFrame({
+        "strike": [95.0], "bid": [1.0], "ask": [1.3],
+        "dte": [60], "expiration": [date.today() + timedelta(days=60)],
+    })
+    result = scan_sell_put(sample_ticker_data, 100.0, options_df, min_apy=0.0)
+    assert result is not None
+    assert result.liquidity_warn is True
+    assert result.spread_pct == pytest.approx(26.1, abs=0.5)
+
+
+def test_scan_sell_put_no_ask_falls_back_to_bid(sample_ticker_data):
+    """When ask is 0.0 (absent), use bid as midpoint."""
+    options_df = pd.DataFrame({
+        "strike": [95.0], "bid": [1.2], "ask": [0.0],
+        "dte": [60], "expiration": [date.today() + timedelta(days=60)],
+    })
+    result = scan_sell_put(sample_ticker_data, 100.0, options_df, min_apy=0.0)
+    assert result is not None
+    assert result.mid == pytest.approx(1.2)
+    assert result.liquidity_warn is False

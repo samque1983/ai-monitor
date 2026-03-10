@@ -49,7 +49,11 @@ def test_full_sell_put_flow(tmp_path):
         "max_loss_usd": 9.1, "max_loss_pct": 0.09,
     })
 
-    signal = SellPutSignal("AAPL", 170.0, 1.6, 60, date(2026, 5, 5), 11.8, False)
+    signal = SellPutSignal(
+        ticker="AAPL", strike=170.0, bid=1.6, ask=0.0, mid=1.6,
+        spread_pct=0.0, dte=60, expiration=date(2026, 5, 5),
+        apy=11.8, earnings_risk=False, liquidity_warn=False,
+    )
     td = make_td("AAPL", 185.0)
 
     with patch.object(engine, '_get_client') as mock_client_fn:

@@ -150,8 +150,10 @@ def test_process_sell_put_generates_card(tmp_path):
     engine = CardEngine(config)
 
     signal = SellPutSignal(
-        ticker="AAPL", strike=170.0, bid=1.6, dte=60,
+        ticker="AAPL", strike=170.0, bid=1.6, ask=0.0, mid=1.6,
+        spread_pct=0.0, dte=60,
         expiration=date(2026, 5, 5), apy=11.8, earnings_risk=False,
+        liquidity_warn=False,
     )
     td = _make_ticker("AAPL", 185.0)
 
@@ -183,7 +185,11 @@ def test_process_sell_put_uses_24h_cache(tmp_path):
     engine.store.save_card("AAPL_SELL_PUT_2026-03-06", "AAPL", "SELL_PUT",
                            cached_card, signal_hash="abc")
 
-    signal = SellPutSignal("AAPL", 170.0, 1.6, 60, date(2026, 5, 5), 11.8, False)
+    signal = SellPutSignal(
+        ticker="AAPL", strike=170.0, bid=1.6, ask=0.0, mid=1.6,
+        spread_pct=0.0, dte=60, expiration=date(2026, 5, 5),
+        apy=11.8, earnings_risk=False, liquidity_warn=False,
+    )
     td = _make_ticker("AAPL", 185.0)
 
     with patch.object(engine, '_get_client') as mock_client_fn:
