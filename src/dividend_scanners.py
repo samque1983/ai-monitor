@@ -262,7 +262,7 @@ def scan_dividend_buy_signal(
     3. 获取股息历史（最近1年）
     4. 计算当前股息率 = (年度股息 / 最新价格) * 100
     5. 从store获取股息率历史分位数
-    6. 判断触发条件：current_yield >= min_yield AND yield_percentile >= min_yield_percentile
+    6. 判断触发条件：current_yield >= min_yield OR yield_percentile >= min_yield_percentile
 
     Args:
         pool: pool record dicts（来自DividendStore.get_pool_records()）
@@ -270,7 +270,7 @@ def scan_dividend_buy_signal(
         store: DividendStore实例（用于获取历史分位数）
         config: 配置字典，包含：
             - min_yield: 最低股息率阈值（默认4.0）
-            - min_yield_percentile: 最低历史分位数（默认90）
+            - min_yield_percentile: 历史分位数阈值（默认90，OR 条件）
 
     Returns:
         触发买入信号的DividendBuySignal列表
@@ -353,8 +353,8 @@ def scan_dividend_buy_signal(
             # Step 5: 获取历史分位数
             yield_percentile = store.get_yield_percentile(ticker, current_yield)
 
-            # Step 6: 判断触发条件
-            if current_yield >= min_yield and yield_percentile >= min_yield_percentile:
+            # Step 6: 判断触发条件 (OR: 满足任意一个即触发)
+            if current_yield >= min_yield or yield_percentile >= min_yield_percentile:
                 # 创建TickerData对象（简化版，只包含必要字段）
                 ticker_data = TickerData(
                     ticker=ticker,
