@@ -49,17 +49,12 @@ def test_full_sell_put_flow(tmp_path):
         "max_loss_usd": 9.1, "max_loss_pct": 0.09,
     })
 
-    mock_resp1 = MagicMock()
-    mock_resp1.content[0].text = analysis_json
-    mock_resp2 = MagicMock()
-    mock_resp2.content[0].text = card_json
-
     signal = SellPutSignal("AAPL", 170.0, 1.6, 60, date(2026, 5, 5), 11.8, False)
     td = make_td("AAPL", 185.0)
 
     with patch.object(engine, '_get_client') as mock_client_fn:
         mock_client = MagicMock()
-        mock_client.messages.create.side_effect = [mock_resp1, mock_resp2]
+        mock_client.simple_chat.side_effect = [analysis_json, card_json]
         mock_client_fn.return_value = mock_client
 
         cards = engine.process_signals(

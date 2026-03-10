@@ -52,19 +52,16 @@ def test_get_analysis_calls_claude_when_cache_empty(tmp_path):
     config["card_engine"]["card_db_path"] = str(tmp_path / "cards.db")
     engine = CardEngine(config)
 
-    mock_response = MagicMock()
-    mock_response.content[0].text = _make_analysis_response()
-
     with patch.object(engine, '_get_client') as mock_client_fn:
         mock_client = MagicMock()
-        mock_client.messages.create.return_value = mock_response
+        mock_client.simple_chat.return_value = _make_analysis_response()
         mock_client_fn.return_value = mock_client
 
         f, v = engine._get_analysis("AAPL", price=185.0,
                                      earnings_date=date(2026, 5, 1))
         assert f["moat"] == "iOS 生态系统锁定 + 高端品牌溢价"
         assert v["iron_floor"] == 163.5
-        assert mock_client.messages.create.called
+        assert mock_client.simple_chat.called
 
     engine.close()
 
@@ -161,13 +158,10 @@ def test_process_sell_put_generates_card(tmp_path):
     f_mock = {"moat": "iOS lock-in", "risk_level": "MEDIUM", "risk_factors": [], "confidence": "high"}
     v_mock = {"iron_floor": 163.5, "fair_value": 182.5, "logic_summary": "EPS × PE"}
 
-    mock_resp = MagicMock()
-    mock_resp.content[0].text = _make_card_response()
-
     with patch.object(engine, '_get_analysis', return_value=(f_mock, v_mock)), \
          patch.object(engine, '_get_client') as mock_client_fn:
         mock_client = MagicMock()
-        mock_client.messages.create.return_value = mock_resp
+        mock_client.simple_chat.return_value = _make_card_response()
         mock_client_fn.return_value = mock_client
 
         card = engine._process_sell_put(signal, td)
@@ -230,13 +224,10 @@ def test_process_dividend_generates_card(tmp_path):
     f_mock = {"moat": "管道垄断", "risk_level": "LOW", "risk_factors": [], "confidence": "高"}
     v_mock = {"iron_floor": 30.8, "fair_value": 40.4, "logic_summary": "管道 EPS × PE"}
 
-    mock_resp = MagicMock()
-    mock_resp.content[0].text = div_card_json
-
     with patch.object(engine, '_get_analysis', return_value=(f_mock, v_mock)), \
          patch.object(engine, '_get_client') as mock_client_fn:
         mock_client = MagicMock()
-        mock_client.messages.create.return_value = mock_resp
+        mock_client.simple_chat.return_value = div_card_json
         mock_client_fn.return_value = mock_client
 
         card = engine._process_dividend(signal)

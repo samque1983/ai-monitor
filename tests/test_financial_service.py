@@ -329,15 +329,8 @@ def test_calculate_dividend_growth_rate():
 from unittest.mock import MagicMock, patch
 
 
-def _make_claude_response(score: float, rationale: str):
-    """Helper: mock anthropic messages.create response."""
-    msg = MagicMock()
-    msg.content = [MagicMock(text=f'{{"score": {score}, "rationale": "{rationale}"}}')]
-    return msg
-
-
-def test_defensiveness_score_calls_claude_when_enabled(tmp_path):
-    """When enabled=True and no cache, Claude is called and score used."""
+def test_defensiveness_score_calls_llm_when_enabled(tmp_path):
+    """When enabled=True and no cache, LLM is called and score used."""
     from src.dividend_store import DividendStore
     store = DividendStore(str(tmp_path / "test.db"))
     analyzer = FinancialServiceAnalyzer(
@@ -347,7 +340,7 @@ def test_defensiveness_score_calls_claude_when_enabled(tmp_path):
     with patch.object(analyzer, "_get_client") as mock_client_fn:
         mock_client = MagicMock()
         mock_client_fn.return_value = mock_client
-        mock_client.messages.create.return_value = _make_claude_response(82.0, "公用事业，需求刚性")
+        mock_client.simple_chat.return_value = '{"score": 82.0, "rationale": "公用事业，需求刚性"}'
 
         result = analyzer.analyze_dividend_quality("T", {
             "consecutive_years": 10, "dividend_growth_5y": 3.0,
@@ -358,12 +351,12 @@ def test_defensiveness_score_calls_claude_when_enabled(tmp_path):
     assert result is not None
     assert result.defensiveness_score == 82.0
     # 2 calls: one for defensiveness scoring, one for analysis_text
-    assert mock_client.messages.create.call_count == 2
+    assert mock_client.simple_chat.call_count == 2
     store.close()
 
 
 def test_defensiveness_score_uses_cache_on_second_call(tmp_path):
-    """Second call with same sector/industry hits DB cache, Claude not called again."""
+    """Second call with same sector/industry hits DB cache, LLM not called again."""
     from src.dividend_store import DividendStore
     store = DividendStore(str(tmp_path / "test.db"))
     analyzer = FinancialServiceAnalyzer(
@@ -373,7 +366,7 @@ def test_defensiveness_score_uses_cache_on_second_call(tmp_path):
     with patch.object(analyzer, "_get_client") as mock_client_fn:
         mock_client = MagicMock()
         mock_client_fn.return_value = mock_client
-        mock_client.messages.create.return_value = _make_claude_response(82.0, "公用事业，需求刚性")
+        mock_client.simple_chat.return_value = '{"score": 82.0, "rationale": "公用事业，需求刚性"}'
 
         analyzer.analyze_dividend_quality("T", {
             "consecutive_years": 10, "dividend_growth_5y": 3.0,
@@ -389,12 +382,12 @@ def test_defensiveness_score_uses_cache_on_second_call(tmp_path):
 
     # Defensiveness scored once (cached on second call); analysis_text called per ticker.
     # First call: 2 (defensiveness + analysis). Second call: 1 (analysis only). Total: 3.
-    assert mock_client.messages.create.call_count == 3
+    assert mock_client.simple_chat.call_count == 3
     store.close()
 
 
-def test_defensiveness_score_fallback_on_claude_failure(tmp_path):
-    """When Claude raises an exception, defensiveness falls back to 50.0."""
+def test_defensiveness_score_fallback_on_llm_failure(tmp_path):
+    """When LLM raises an exception, defensiveness falls back to 50.0."""
     from src.dividend_store import DividendStore
     store = DividendStore(str(tmp_path / "test.db"))
     analyzer = FinancialServiceAnalyzer(
@@ -404,7 +397,7 @@ def test_defensiveness_score_fallback_on_claude_failure(tmp_path):
     with patch.object(analyzer, "_get_client") as mock_client_fn:
         mock_client = MagicMock()
         mock_client_fn.return_value = mock_client
-        mock_client.messages.create.side_effect = Exception("API error")
+        mock_client.simple_chat.side_effect = Exception("API error")
 
         result = analyzer.analyze_dividend_quality("T", {
             "consecutive_years": 10, "dividend_growth_5y": 3.0,

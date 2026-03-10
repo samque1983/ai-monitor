@@ -7,6 +7,7 @@ from datetime import date, timedelta
 from typing import List, Dict, Any, Optional, Tuple
 
 from src.card_store import CardStore
+from src.llm_client import make_llm_client_from_env
 
 logger = logging.getLogger(__name__)
 
@@ -24,14 +25,17 @@ class CardEngine:
         self.store = CardStore(db_path)
         self._client = None  # lazy init
 
+    def _has_llm_key(self) -> bool:
+        return bool(
+            self.api_key
+            or os.environ.get("DEEPSEEK_API_KEY")
+            or os.environ.get("OPENAI_API_KEY")
+            or os.environ.get("ANTHROPIC_API_KEY")
+        )
+
     def _get_client(self):
         if self._client is None:
-            import anthropic
-            import httpx
-            self._client = anthropic.Anthropic(
-                api_key=self.api_key,
-                http_client=httpx.Client(verify=False),
-            )
+            self._client = make_llm_client_from_env(model=self.model, api_key=self.api_key)
         return self._client
 
     def process_signals(
@@ -62,7 +66,7 @@ class CardEngine:
             logger.debug(f"{ticker}: analysis cache hit")
             return f_cache, v_cache
 
-        logger.info(f"{ticker}: calling Claude for fundamental analysis")
+        logger.info(f"{ticker}: calling LLM for fundamental analysis")
         try:
             client = self._get_client()
             prompt = (
@@ -76,13 +80,11 @@ class CardEngine:
                 '"risk_factors": [{"desc": str, "level": "HIGH|MEDIUM|LOW"}], '
                 '"risk_level": "HIGH|MEDIUM|LOW"}'
             )
-            resp = client.messages.create(
-                model=self.model,
+            raw = client.simple_chat(
+                "你是专业交易分析师。只返回严格 JSON，不加任何解释或 markdown。",
+                prompt,
                 max_tokens=800,
-                system="你是专业交易分析师。只返回严格 JSON，不加任何解释或 markdown。",
-                messages=[{"role": "user", "content": prompt}],
             )
-            raw = resp.content[0].text.strip()
             raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
             data = json.loads(raw)
 
@@ -151,13 +153,11 @@ class CardEngine:
                 + (", crosses_earnings(true), protected_plan, naked_plan"
                    if signal.earnings_risk else "")
             )
-            resp = client.messages.create(
-                model=self.model,
+            raw = client.simple_chat(
+                "你是交易领航员。生成机会卡片，返回严格 JSON，不加任何 markdown 或解释。",
+                prompt,
                 max_tokens=1200,
-                system="你是交易领航员。生成机会卡片，返回严格 JSON，不加任何 markdown 或解释。",
-                messages=[{"role": "user", "content": prompt}],
             )
-            raw = resp.content[0].text.strip()
             raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
             card_data = json.loads(raw)
             card_data["ticker"] = ticker
@@ -207,13 +207,11 @@ class CardEngine:
                 "win_scenarios, risk_points, events, take_profit, stop_loss, "
                 "max_loss_usd, max_loss_pct"
             )
-            resp = client.messages.create(
-                model=self.model,
+            raw = client.simple_chat(
+                "你是交易领航员。生成机会卡片，返回严格 JSON，不加任何 markdown 或解释。",
+                prompt,
                 max_tokens=1200,
-                system="你是交易领航员。生成机会卡片，返回严格 JSON，不加任何 markdown 或解释。",
-                messages=[{"role": "user", "content": prompt}],
             )
-            raw = resp.content[0].text.strip()
             raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
             card_data = json.loads(raw)
             card_data["ticker"] = ticker

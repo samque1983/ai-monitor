@@ -21,6 +21,9 @@ from typing import List, Dict, Any, Optional
 from datetime import date, datetime
 import json
 import logging
+import os
+
+from src.llm_client import make_llm_client_from_env
 
 logger = logging.getLogger(__name__)
 
@@ -92,15 +95,19 @@ class FinancialServiceAnalyzer:
         self.store = store
         self._client = None
 
+    def _has_llm_key(self) -> bool:
+        """Return True if any LLM API key is available."""
+        return bool(
+            self.api_key
+            or os.environ.get("DEEPSEEK_API_KEY")
+            or os.environ.get("OPENAI_API_KEY")
+            or os.environ.get("ANTHROPIC_API_KEY")
+        )
+
     def _get_client(self):
-        """Lazy-init Anthropic client (same pattern as card_engine.py)."""
+        """Lazy-init shared LLM client (auto-detects provider from env)."""
         if self._client is None:
-            import anthropic
-            import httpx
-            self._client = anthropic.Anthropic(
-                api_key=self.api_key,
-                http_client=httpx.Client(verify=False),  # corporate proxy workaround
-            )
+            self._client = make_llm_client_from_env(model=self.model, api_key=self.api_key)
         return self._client
 
     def _get_defensiveness_score(self, sector: str, industry: str) -> float:
@@ -123,13 +130,11 @@ class FinancialServiceAnalyzer:
                 "- 科技/能源/材料/可选消费 → 0-44（高周期性，股息不稳定）\n"
                 '返回严格 JSON: {"score": float, "rationale": "1句话"}'
             )
-            resp = client.messages.create(
-                model=self.model,
+            raw = client.simple_chat(
+                "你是专业行业分析师。只返回严格 JSON，不加任何解释或 markdown。",
+                prompt,
                 max_tokens=100,
-                system="你是专业行业分析师。只返回严格 JSON，不加任何解释或 markdown。",
-                messages=[{"role": "user", "content": prompt}],
             )
-            raw = resp.content[0].text.strip()
             raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
             data = json.loads(raw)
             score = float(data["score"])
@@ -149,7 +154,7 @@ class FinancialServiceAnalyzer:
             cached = self.store.get_analysis_text(ticker)
             if cached:
                 return cached
-        if not self.api_key:
+        if not self._has_llm_key():
             return ""
         try:
             client = self._get_client()
@@ -163,13 +168,11 @@ class FinancialServiceAnalyzer:
                 "用2-3句中文描述该公司作为长期股息标的的业务稳定性，"
                 "突出最核心的护城河或主要风险点。"
             )
-            resp = client.messages.create(
-                model=self.model,
+            text = client.simple_chat(
+                "你是专业股息投资分析师。直接返回分析文字，不加标题或格式符号。",
+                prompt,
                 max_tokens=200,
-                system="你是专业股息投资分析师。直接返回分析文字，不加标题或格式符号。",
-                messages=[{"role": "user", "content": prompt}],
             )
-            text = resp.content[0].text.strip()
             if self.store and hasattr(self.store, "save_analysis_text"):
                 self.store.save_analysis_text(ticker, text)
             logger.info(f"Analysis text generated for {ticker}")
@@ -201,7 +204,7 @@ class FinancialServiceAnalyzer:
         Returns:
             DividendQualityScore对象，如果数据不足返回None
         """
-        if self.enabled and self.api_key:
+        if self.enabled and self._has_llm_key():
             sector = fundamentals.get("sector") or ""
             industry = fundamentals.get("industry") or ""
             defensiveness_score = self._get_defensiveness_score(sector, industry)
