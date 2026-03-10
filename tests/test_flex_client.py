@@ -64,6 +64,33 @@ def test_flex_client_fetch_account_summary():
     assert account.maint_margin_req == 12300.0
 
 
+def test_flex_client_cushion_computed_when_missing():
+    """When cushion attr absent from XML, derive from excessLiquidity / netLiquidation."""
+    xml_no_cushion = """<?xml version="1.0" encoding="UTF-8"?>
+<FlexQueryResponse>
+  <FlexStatements>
+    <FlexStatement accountId="U123">
+      <OpenPositions/>
+      <AccountInformation netLiquidation="120000" grossPositionValue="95000"
+        initMarginReq="18000" maintMarginReq="12300" excessLiquidity="22200"
+        availableFunds="25000"/>
+    </FlexStatement>
+  </FlexStatements>
+</FlexQueryResponse>"""
+
+    def _mock_no_cushion(url, *args, **kwargs):
+        resp = MagicMock()
+        resp.text = SEND_RESPONSE_XML if "SendRequest" in url else xml_no_cushion
+        return resp
+
+    client = FlexClient(token="tok", query_id="qid")
+    with patch("src.flex_client.requests.get", side_effect=_mock_no_cushion):
+        _, account = client.fetch()
+    # 22200 / 120000 ≈ 0.185
+    assert account.cushion == pytest.approx(0.185, rel=1e-3)
+    assert account.net_liquidation == 120000.0
+
+
 def test_flex_client_raises_on_error():
     error_xml = "<FlexStatementOperationInfo><Status>Fail</Status><ErrorMessage>Invalid token</ErrorMessage></FlexStatementOperationInfo>"
     resp = MagicMock()

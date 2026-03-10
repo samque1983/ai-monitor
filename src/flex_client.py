@@ -86,13 +86,18 @@ class FlexClient:
         if acct_el is None:
             raise RuntimeError("AccountInformation not found in Flex XML")
         a = acct_el.attrib
+        net_liq = float(a.get("netLiquidation") or 0)
+        excess_liq = float(a.get("excessLiquidity") or 0)
+        cushion = float(a.get("cushion") or 0)
+        if cushion == 0 and net_liq > 0:
+            cushion = excess_liq / net_liq
         account = AccountSummary(
-            net_liquidation=float(a.get("netLiquidation") or 0),
+            net_liquidation=net_liq,
             gross_position_value=float(a.get("grossPositionValue") or 0),
             init_margin_req=float(a.get("initMarginReq") or 0),
             maint_margin_req=float(a.get("maintMarginReq") or 0),
-            excess_liquidity=float(a.get("excessLiquidity") or 0),
+            excess_liquidity=excess_liq,
             available_funds=float(a.get("availableFunds") or 0),
-            cushion=float(a.get("cushion") or 0),
+            cushion=cushion,
         )
         return positions, account
