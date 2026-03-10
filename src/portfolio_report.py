@@ -159,6 +159,7 @@ def generate_html_report(report: RiskReport) -> str:
   .summary {{ background: var(--card); border-radius: 12px; padding: 20px; margin-bottom: 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; }}
   .stat-label {{ color: var(--subtext); font-size: 12px; margin-bottom: 4px; }}
   .stat-value {{ font-size: 20px; font-weight: 600; }}
+  .stat-note {{ color: var(--subtext); font-size: 11px; margin-top: 3px; line-height: 1.4; }}
   .alert-card {{ background: var(--card); border-radius: 12px; padding: 16px; margin-bottom: 16px; }}
   .alert-header {{ font-size: 15px; font-weight: 600; padding-left: 10px; margin-bottom: 8px; }}
   .plain-desc {{ font-size: 13px; color: var(--text); background: rgba(255,255,255,0.05); border-radius: 6px; padding: 8px 10px; margin-bottom: 10px; line-height: 1.5; }}
@@ -184,8 +185,16 @@ def generate_html_report(report: RiskReport) -> str:
   <div><div class="stat-label">报告日期</div><div class="stat-value">{_e(report.report_date)}</div></div>
   <div><div class="stat-label">净资产 (NLV)</div><div class="stat-value">${report.net_liquidation:,.0f}</div></div>
   <div><div class="stat-label">未实现盈亏</div><div class="stat-value" style="color:{pnl_color}">${report.total_pnl:+,.0f}</div></div>
-  <div><div class="stat-label">保证金缓冲</div><div class="stat-value">{cushion_pct}</div></div>
-  <div><div class="stat-label">跌10%预估亏损</div><div class="stat-value" style="color:#ff453a">${drop_10:,.0f}</div></div>
+  <div>
+    <div class="stat-label">保证金缓冲</div>
+    <div class="stat-value">{cushion_pct}</div>
+    <div class="stat-note">可用资金超出维持保证金的部分占净资产比例<br>&gt;25% 安全 · &lt;10% 危险</div>
+  </div>
+  <div>
+    <div class="stat-label">大盘跌10%预估亏损</div>
+    <div class="stat-value" style="color:#ff453a">${drop_10:,.0f}</div>
+    <div class="stat-note">假设 SPY 跌10%，用 Beta×DollarDelta 估算组合损失</div>
+  </div>
 </div>
 {cards_html if cards_html else '<p style="color:var(--subtext);text-align:center;padding:40px">暂无风险预警</p>'}
 </body>
