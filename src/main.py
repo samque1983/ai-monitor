@@ -148,6 +148,7 @@ def _build_agent_payload(
             "yield_percentile": round(float(s.yield_percentile), 0),
             "quality_score": round(float(td.dividend_quality_score), 0) if td.dividend_quality_score is not None else None,
             "payout_ratio": round(float(td.payout_ratio), 1) if td.payout_ratio is not None else None,
+            "payout_type": td.payout_type or "GAAP",
             "earnings_date": str(td.earnings_date) if td.earnings_date else None,
             "days_to_earnings": td.days_to_earnings,
             "option_strike": round(float(opt["strike"]), 0) if opt else None,
@@ -289,7 +290,8 @@ def run_scan(config_path: str = "config.yaml"):
         try:
             # Weekly refresh: run pool scan if empty or last scan >= 7 days ago
             last_scan = dividend_store.get_last_scan_date()
-            needs_weekly = (last_scan is None) or ((today - last_scan).days >= 7)
+            force_weekly = bool(os.environ.get("FORCE_WEEKLY_RESCAN"))
+            needs_weekly = force_weekly or (last_scan is None) or ((today - last_scan).days >= 7)
             if needs_weekly:
                 reason = "no previous scan" if last_scan is None else f"last scan {last_scan} ({(today - last_scan).days}d ago)"
                 logger.info(f"Dividend weekly scan triggered: {reason}")

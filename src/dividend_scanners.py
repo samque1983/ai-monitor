@@ -385,6 +385,7 @@ def scan_dividend_buy_signal(
                     consecutive_years=record.get("consecutive_years"),
                     dividend_growth_5y=record.get("dividend_growth_5y"),
                     payout_ratio=record.get("payout_ratio"),
+                    payout_type=record.get("payout_type"),
                     roe=None,
                     debt_to_equity=None,
                     industry=None,

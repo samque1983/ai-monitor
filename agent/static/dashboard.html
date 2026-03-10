@@ -578,20 +578,27 @@ function cardDividend(s) {
         // 派息切割风险
         if (p.payout_ratio != null) {
           const pr = p.payout_ratio;
+          const pt = p.payout_type || 'GAAP';
           const divRisk = pr > 100 ? '极高' : pr > 80 ? '偏高' : pr > 60 ? '中' : '低';
           const divColor = pr > 100 ? '#ef5350' : pr > 80 ? '#ff9f43' : pr > 60 ? '#ffd54f' : '#4caf50';
           const divHint = pr > 100
-            ? `派息率 ${pr}%，超过净利润，依赖借债或动用留存分红`
+            ? `${pt} 派息率 ${pr}%，超过净利润，依赖借债或动用留存分红`
             : pr > 80
-            ? `派息率 ${pr}%，盈利压力下有削减风险`
+            ? `${pt} 派息率 ${pr}%，盈利压力下有削减风险`
             : pr > 60
-            ? `派息率 ${pr}%，尚在合理区间`
-            : `派息率 ${pr}%，分红覆盖充裕`;
+            ? `${pt} 派息率 ${pr}%，尚在合理区间`
+            : `${pt} 派息率 ${pr}%，分红覆盖充裕`;
+          const ptTooltip = pt === 'FCF'
+            ? `能源/公用/REIT 行业资产折旧周期长，使用自由现金流派息率更准确`
+            : `轻资产行业使用 GAAP 净利润计算，若含大额非现金减值项可能偏高`;
           rows.push(`<div class="row" style="margin:3px 0">
             <span class="label" style="color:#a0a0c0">派息切割风险</span>
             <span class="value" style="color:${divColor}">${divRisk}</span>
           </div>
-          <p style="font-size:11px;color:#8080a0;margin:0 0 6px">${divHint}</p>`);
+          <p style="font-size:11px;color:#8080a0;margin:0 0 2px">${divHint}
+            <span class="stab-info-btn" onclick="toggleStabilityDetail(this)">ℹ️</span>
+            <span class="stability-detail" style="display:none;font-size:11px;color:#a0a0c0">${ptTooltip}</span>
+          </p>`);
         }
 
         // 综合质量风险 (with ℹ️ tooltip inline)
