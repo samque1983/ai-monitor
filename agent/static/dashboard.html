@@ -226,6 +226,16 @@ function cardSellPut(s) {
   const earningsRow = p.days_to_earnings != null
     ? `<div class="row"><span class="label">财报</span><span class="value">${p.earnings_date} (${p.days_to_earnings}天)</span></div>`
     : '';
+  const liquidityRow = p.liquidity_warn
+    ? `<div class="row"><span class="label" style="color:#ff9f43">流动性</span><span class="value" style="color:#ff9f43">⚠️ 偏差 (价差${p.spread_pct}%)</span></div>`
+    : '';
+  const bidAskDetail = (p.mid != null && p.ask != null && p.bid != null)
+    ? `<p style="font-size:11px;color:#8080a0;margin-top:4px">按中间价估算 (bid $${p.bid} / ask $${p.ask})，实际成交可能略低
+       <span class="stab-info-btn" onclick="toggleStabilityDetail(this)">ℹ️</span>
+       <span class="stability-detail" style="display:none;font-size:11px;color:#a0a0c0">
+         流动性规则：价差 ≤ 20% 正常；20–30% 流动性偏差；&gt; 30% 不展示此卡片。收益按 (bid+ask)÷2 估算。
+       </span></p>`
+    : '';
   return `<div class="card">
     <div class="card-header">
       <span class="ticker">${s.ticker}</span>
@@ -235,8 +245,10 @@ function cardSellPut(s) {
       <div class="apy">${p.apy}% APY</div>
       <div class="row"><span class="label">行权价</span><span class="value">$${p.strike}</span></div>
       <div class="row"><span class="label">到期天数</span><span class="value">${p.dte} 天</span></div>
-      <div class="row"><span class="label">权利金</span><span class="value">$${p.bid}</span></div>
+      <div class="row"><span class="label">权利金</span><span class="value">$${p.mid ?? p.bid}</span></div>
+      ${liquidityRow}
       ${earningsRow}
+      ${bidAskDetail}
     </div>
     <div class="card-time">${fmtTime(s.scanned_at)}</div>
   </div>`;
