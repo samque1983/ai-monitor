@@ -155,6 +155,7 @@ class FinancialServiceAnalyzer:
             if cached:
                 return cached
         if not self._has_llm_key():
+            logger.warning(f"{ticker}: _get_analysis_text skipped — no LLM key available")
             return ""
         try:
             client = self._get_client()
@@ -180,7 +181,7 @@ class FinancialServiceAnalyzer:
             logger.info(f"Analysis text generated for {ticker}")
             return text
         except Exception as e:
-            logger.warning(f"Analysis text failed for {ticker}: {e}")
+            logger.warning(f"Analysis text failed for {ticker}: {e}", exc_info=True)
             return ""
 
     def analyze_dividend_quality(
@@ -206,7 +207,9 @@ class FinancialServiceAnalyzer:
         Returns:
             DividendQualityScore对象，如果数据不足返回None
         """
-        if self.enabled and self._has_llm_key():
+        has_key = self._has_llm_key()
+        logger.info(f"{ticker}: analyze_dividend_quality enabled={self.enabled} has_llm_key={has_key}")
+        if self.enabled and has_key:
             sector = fundamentals.get("sector") or ""
             industry = fundamentals.get("industry") or ""
             defensiveness_score = self._get_defensiveness_score(sector, industry)
