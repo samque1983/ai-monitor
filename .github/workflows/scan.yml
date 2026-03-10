@@ -17,7 +17,7 @@ jobs:
       - name: Start scanner machine
         id: start
         run: |
-          MACHINE_ID=$(flyctl machine list --app ai-monitor-scanner | awk 'NR==2 {print $1}')
+          MACHINE_ID=$(flyctl machine list --app ai-monitor-scanner 2>&1 | grep -E '^[a-f0-9]{14}' | awk '{print $1}')
           echo "machine_id=$MACHINE_ID" >> "$GITHUB_OUTPUT"
           flyctl machine start "$MACHINE_ID" --app ai-monitor-scanner
         env:
@@ -28,7 +28,7 @@ jobs:
           MACHINE_ID="${{ steps.start.outputs.machine_id }}"
           echo "Waiting for machine $MACHINE_ID to finish..."
           for i in $(seq 1 58); do
-            STATE=$(flyctl machine status "$MACHINE_ID" --app ai-monitor-scanner 2>&1 | grep -i "^State" | awk '{print tolower($2)}')
+            STATE=$(flyctl machine status "$MACHINE_ID" --app ai-monitor-scanner 2>&1 | grep -i "^State:" | awk '{print tolower($2)}')
             echo "[$i/58] state=$STATE"
             if [ "$STATE" = "stopped" ]; then
               echo "Scan completed successfully."
