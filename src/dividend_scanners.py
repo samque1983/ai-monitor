@@ -548,6 +548,11 @@ def scan_dividend_sell_put(
         mid = (bid + ask) / 2 if ask > 0 else bid
         spread_pct = ((ask - bid) / mid * 100) if mid > 0 and ask > 0 else 0.0
 
+        # No market data (market closed or no quotes) — treat as illiquid
+        if mid == 0:
+            logger.info(f"{ticker}: Sell Put no market data (bid=0), strike=${strike:.2f}")
+            return {"sell_put_illiquid": True, "strike": strike, "dte": dte, "spread_pct": 0.0, "no_market": True}
+
         # Spread > 30%: return illiquid flag (don't discard — Dim 4 will warn)
         if spread_pct > 30:
             logger.info(f"{ticker}: Sell Put illiquid - spread={spread_pct:.1f}%, strike=${strike:.2f}")

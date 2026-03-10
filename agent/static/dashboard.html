@@ -505,17 +505,25 @@ function cardDividend(s) {
         ${floorSection}
       </div>`;
 
-    if (p.option_illiquid) return `
+    if (p.option_illiquid) {
+      const illiqMsg = p.option_no_market
+        ? `⚠️ 暂无期权报价（市场关闭或无流动性）`
+        : `⚠️ Sell Put 流动性太差，不建议操作（价差 ${p.option_spread_pct}%）`;
+      const illiqHint = p.option_no_market
+        ? `建议市场开盘后确认报价，当前可考虑现货买入`
+        : `价差超过30%，买卖成本过高，建议仅做现货买入`;
+      return `
       <div class="dc-dim">
         <h4>4️⃣ 建议操作</h4>
         <p>📈 现货买入: $${p.last_price} (股息率${p.current_yield}%)</p>
-        <p style="color:#ff9f43;margin-top:6px">⚠️ Sell Put 流动性太差，不建议操作（价差 ${p.option_spread_pct}%）</p>
-        <p style="font-size:11px;color:#8080a0">价差超过30%，买卖成本过高，建议仅做现货买入</p>
+        <p style="color:#ff9f43;margin-top:6px">${illiqMsg}</p>
+        <p style="font-size:11px;color:#8080a0">${illiqHint}</p>
       </div>
       <div class="dc-dim">
         <h4>5️⃣ 最坏情景</h4>
         ${floorSection}
       </div>`;
+    }
 
     const liqWarn = p.option_liquidity_warn
       ? `<p style="color:#ff9f43;font-size:12px">⚠️ 流动性偏差 (价差${p.option_spread_pct}%)</p>` : '';
@@ -548,7 +556,12 @@ function cardDividend(s) {
   return `<div class="card dividend-card">
     <div class="dc-header">
       <div class="dc-ticker">${s.ticker} 🛡️</div>
-      <div class="dc-yield">当前股息率: <strong>${p.current_yield}%</strong></div>
+      <div class="dc-yield">当前股息率: <strong>${p.current_yield}%</strong>${(() => {
+        if (p.yield_percentile == null) return '';
+        if (p.yield_percentile == 50) return ' | 历史分位: <span style="color:#a0a0c0;font-size:12px">(积累中)</span>';
+        const pctColor = p.yield_percentile >= 75 ? '#4caf50' : p.yield_percentile >= 50 ? '#ff9f43' : '#ef5350';
+        return ` | 历史分位: <strong style="color:${pctColor}">${p.yield_percentile}%</strong>`;
+      })()}</div>
     </div>
     <div class="dc-dim">
       <h4>1️⃣ 基本面估值</h4>
@@ -581,21 +594,20 @@ function cardDividend(s) {
           <p style="font-size:11px;color:#8080a0;margin:0 0 6px">${divHint}</p>`);
         }
 
-        // 综合质量风险
+        // 综合质量风险 (with ℹ️ tooltip inline)
         if (p.quality_score != null) {
           const qs = p.quality_score;
+          const qLabel = qs >= 80 ? '良好' : qs >= 65 ? '一般' : '偏低';
           const qRisk = qs >= 80 ? '低' : qs >= 65 ? '中' : '偏高';
           const qColor = qs >= 80 ? '#4caf50' : qs >= 65 ? '#ff9f43' : '#ef5350';
           rows.push(`<div class="row" style="margin:3px 0">
             <span class="label" style="color:#a0a0c0">综合质量风险</span>
-            <span class="value" style="color:${qColor}">${qRisk}</span>
-          </div>
-          <p style="font-size:11px;color:#8080a0;margin:0 0 2px">评分 ${qs}/100（含连续派息年数、护城河、负债等五维评估）</p>`);
+            <span class="value" style="color:${qColor}">${qRisk} — ${qLabel} (${qs}/100) ${stabDetail}</span>
+          </div>`);
         }
 
         return rows.join('');
       })()}
-      ${stab ? `<p style="margin-top:6px">${stab} ${stabDetail}</p>` : ''}
       ${riskFlags}
     </div>
     <div class="dc-dim">

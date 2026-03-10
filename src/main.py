@@ -159,6 +159,7 @@ def _build_agent_payload(
             "option_spread_pct": round(float(opt["spread_pct"]), 1) if opt else None,
             "option_liquidity_warn": bool(opt.get("liquidity_warn", False)) if opt else False,
             "option_illiquid": bool(opt.get("sell_put_illiquid", False)) if opt else False,
+            "option_no_market": bool(opt.get("no_market", False)) if opt else False,
             "combined_apy": round(float(s.current_yield) + float(opt["apy"]), 1) if opt and not opt.get("sell_put_illiquid") else None,
             "forward_dividend_rate": round(float(s.forward_dividend_rate), 2) if s.forward_dividend_rate is not None else None,
             "max_yield_5y": round(float(s.max_yield_5y), 2) if s.max_yield_5y is not None else None,
