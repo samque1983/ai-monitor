@@ -395,37 +395,41 @@ function esc(s) {
   return s == null ? '' : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function yieldLogic(pct) {
-  if (pct >= 90) return '股息率达历史高位 → 价格明显低估';
-  if (pct >= 75) return '股息率高于历史均值 → 估值偏低';
-  if (pct >= 50) return '股息率处于历史中位偏上';
-  if (pct > 0)   return '股息率处于历史中位偏下';
-  return '历史分位数据暂缺';
+// Business type from moat score (0-20)
+function bizTypeLabel(moat) {
+  if (moat == null) return null;
+  if (moat >= 16) return { tag: '优质护城河', hint: '防御型资产，现金流稳定，股息率定价法高度适用' };
+  if (moat >= 10) return { tag: '稳健型业务', hint: '适度护城河，底价公式有参考意义' };
+  if (moat >= 6)  return { tag: '成长/周期型', hint: '成长因素主导估值，底价公式仅供参考' };
+  return           { tag: '弱护城河', hint: '竞争压力较大，股息可持续性需额外关注' };
 }
+
 function stabilityLabel(score) {
   if (score == null) return null;
-  if (score >= 80) return `业务稳定性: 优秀 (${score}/100)`;
-  if (score >= 60) return `业务稳定性: 良好 (${score}/100)`;
-  return `业务稳定性: 一般 (${score}/100)`;
+  if (score >= 80) return `综合评分: 优秀 (${score}/100)`;
+  if (score >= 60) return `综合评分: 良好 (${score}/100)`;
+  return `综合评分: 一般 (${score}/100)`;
 }
 
 function qualityBreakdownHtml(breakdown) {
   if (!breakdown) return '';
   const dims = [
-    ['股息连续性', breakdown.continuity],
-    ['派息率安全', breakdown.payout_safety],
-    ['盈利稳定性', breakdown.earnings_stability],
-    ['业务护城河', breakdown.moat],
-    ['负债水平', breakdown.debt_level],
+    ['股息连续性', breakdown.continuity,      '连续派息年数 × 4，上限20分'],
+    ['派息率安全', breakdown.payout_safety,   '<60%=20分 / <70%=15 / <80%=10 / <100%=5 / ≥100%=0'],
+    ['盈利稳定性', breakdown.earnings_stability, '近5年ROE稳定性，上限20分'],
+    ['业务护城河', breakdown.moat,            '行业壁垒评估，上限20分 (直接影响业务类型判断)'],
+    ['负债水平',   breakdown.debt_level,      '债务/股权比评估，越低越安全，上限20分'],
   ];
-  return dims.map(([label, val]) => {
-    const v = val ?? 0;
-    return `<div class="breakdown-row">
-      <span class="bd-label">${label}</span>
-      <div class="bd-bar-wrap"><div class="bd-bar" style="width:${v/20*100}%"></div></div>
-      <span class="bd-score">${v}/20</span>
-    </div>`;
-  }).join('');
+  return `<p style="font-size:11px;color:#888;margin-bottom:6px">评分逻辑（各项满分20分）</p>` +
+    dims.map(([label, val, hint]) => {
+      const v = val ?? 0;
+      return `<div class="breakdown-row">
+        <span class="bd-label">${label}</span>
+        <div class="bd-bar-wrap"><div class="bd-bar" style="width:${v/20*100}%"></div></div>
+        <span class="bd-score">${v}/20</span>
+      </div>
+      <div style="font-size:11px;color:#8080a0;margin:-2px 0 6px 92px">${hint}</div>`;
+    }).join('');
 }
 
 function toggleStabilityDetail(btn) {
@@ -435,11 +439,11 @@ function toggleStabilityDetail(btn) {
 
 function cardDividend(s) {
   const p = s.payload;
-  const prWarn = p.payout_ratio != null && p.payout_ratio > 80
-    ? ' <span style="color:#ff9f43">⚠️ 接近警戒线</span>' : (p.payout_ratio != null ? ' ✓' : '');
+  const moatScore = p.quality_breakdown?.moat ?? null;
+  const biz = bizTypeLabel(moatScore);
   const stab = stabilityLabel(p.quality_score);
 
-  // Dim 1 stability tooltip
+  // Dim 1: business type + analysis text + stability score tooltip
   const stabDetail = (stab && p.quality_breakdown)
     ? `<span class="stab-info-btn" onclick="toggleStabilityDetail(this)">ℹ️</span>
        <div class="stability-detail" style="display:none">
@@ -448,22 +452,48 @@ function cardDividend(s) {
        </div>`
     : '';
 
+  // Inline risk flags for Dim 1
+  const riskFlags = (() => {
+    const flags = [];
+    if (p.payout_ratio != null && p.payout_ratio > 100)
+      flags.push('⚠️ 派息率超过100%，依赖借贷分红，股息可持续性存疑');
+    else if (p.payout_ratio != null && p.payout_ratio > 80)
+      flags.push('⚠️ 派息率偏高，注意派息可持续性');
+    if (moatScore != null && moatScore < 6)
+      flags.push('⚠️ 护城河较弱，竞争压力下股息可能面临削减');
+    if (p.quality_score != null && p.quality_score < 65)
+      flags.push('⚠️ 综合质量偏低，建议谨慎评估');
+    return flags.map(f => `<p style="color:#ff9f43;font-size:12px;margin-top:4px">${f}</p>`).join('');
+  })();
+
+  // Yield percentile context line
+  const pctLine = (() => {
+    if (p.yield_percentile === 50) return '<p style="color:#8080a0;font-size:12px">📊 历史分位数据积累中（首次运行），后续每周自动更新</p>';
+    const pct = p.yield_percentile;
+    const desc = pct >= 90 ? '处于5年历史高位，价格相对低估'
+                : pct >= 75 ? '高于历史均值，估值偏低'
+                : pct >= 50 ? '处于历史中位偏上'
+                : '处于历史中位偏下';
+    return `<p style="font-size:12px">📊 股息率 5年历史分位: <strong>${pct}%</strong> — ${desc}</p>`;
+  })();
+
   // Dim 5 floor price analysis
   const costBasis = p.option_strike != null ? (p.option_strike - p.option_bid) : null;
   const floorSection = (() => {
     if (p.floor_price == null) return '<p>极值底价数据暂缺</p>';
-    const cbRow = costBasis != null
-      ? `<p>行权成本: $${costBasis.toFixed(2)}</p>` : '';
+    const formulaHint = biz
+      ? `<p style="font-size:11px;color:#8080a0;margin-bottom:6px">📐 公式：年度股息 ÷ 历史最高股息率 = 极端悲观定价底线${moatScore != null && moatScore < 10 ? '（成长型业务适用性有限，仅供参考）' : '（防御型资产收益定价，可信度较高）'}</p>` : '';
+    const cbRow = costBasis != null ? `<p>行权成本: $${costBasis.toFixed(2)}</p>` : '';
     const warning = (costBasis != null && costBasis > p.floor_price)
       ? `<p class="floor-warn">⚠️ 行权成本高于极值底价，极端熊市下仍有浮亏风险<br>但届时股息率将达 ${p.max_yield_5y?.toFixed(1) ?? '?'}%，持有收租逻辑成立</p>` : '';
-    return `${cbRow}
+    return `${formulaHint}${cbRow}
     <p>历史最高股息率 (5年): ${p.max_yield_5y?.toFixed(1) ?? 'N/A'}%</p>
     <p>Forward 股息: $${p.forward_dividend_rate?.toFixed(2) ?? 'N/A'}/股</p>
-    <p>极值底价: $${p.floor_price.toFixed(2)} (较当前 ${p.floor_downside_pct != null ? (-p.floor_downside_pct).toFixed(1) : '?'}%)</p>
+    <p>极值底价: $${p.floor_price.toFixed(2)} (较当前 -${p.floor_downside_pct != null ? p.floor_downside_pct.toFixed(1) : '?'}%)</p>
     ${warning}`;
   })();
 
-  // Dim 4 + 5 combined section
+  // Dim 4 + 5
   const optSection = p.option_strike != null ? `
       <div class="dc-dim">
         <h4>4️⃣ 建议操作</h4>
@@ -496,16 +526,19 @@ function cardDividend(s) {
   return `<div class="card dividend-card">
     <div class="dc-header">
       <div class="dc-ticker">${s.ticker} 🛡️</div>
-      <div class="dc-yield">当前股息率: <strong>${p.current_yield}%</strong> ${p.yield_percentile === 50 ? '(历史分位积累中)' : `(5年历史${p.yield_percentile}分位)`}</div>
+      <div class="dc-yield">当前股息率: <strong>${p.current_yield}%</strong></div>
     </div>
     <div class="dc-dim">
       <h4>1️⃣ 基本面估值</h4>
-      <p>${yieldLogic(p.yield_percentile)}</p>
-      ${stab ? `<p>${stab} ${stabDetail}</p>` : ''}
+      ${biz ? `<p style="margin-bottom:4px"><strong>${biz.tag}</strong> <span style="color:#a0a0c0;font-size:12px">— ${biz.hint}</span></p>` : ''}
+      ${pctLine}
+      ${p.analysis_text ? `<p class="analysis-text" style="margin-top:6px">${esc(p.analysis_text)}</p>` : ''}
+      ${stab ? `<p style="margin-top:6px">${stab} ${stabDetail}</p>` : ''}
+      ${riskFlags}
     </div>
     <div class="dc-dim">
       <h4>2️⃣ 风险分级</h4>
-      <p>派息率: ${p.payout_ratio != null ? p.payout_ratio + '%' + prWarn : 'N/A'}</p>
+      <p>派息率: ${p.payout_ratio != null ? p.payout_ratio + '%' + (p.payout_ratio > 80 ? ' <span style="color:#ff9f43">⚠️ 接近警戒线</span>' : ' ✓') : 'N/A'}</p>
     </div>
     <div class="dc-dim">
       <h4>3️⃣ 关键事件</h4>
