@@ -148,7 +148,8 @@ class FinancialServiceAnalyzer:
             return 50.0
 
     def _get_analysis_text(self, ticker: str, sector: str, industry: str,
-                           quality_result: "DividendQualityScore") -> str:
+                           quality_result: "DividendQualityScore",
+                           fundamentals: Dict[str, Any] = None) -> str:
         """Generate 2-3 sentence business stability analysis. Cached per ticker, 7-day TTL."""
         if self.store and hasattr(self.store, "get_analysis_text"):
             cached = self.store.get_analysis_text(ticker)
@@ -159,14 +160,25 @@ class FinancialServiceAnalyzer:
             return ""
         try:
             client = self._get_client()
+            fundamentals = fundamentals or {}
+            dividend_yield = fundamentals.get("dividend_yield") or 0.0
+            annual_dividend = fundamentals.get("annual_dividend") or 0.0
+            # Derive approximate current price from yield and annual dividend
+            current_price_str = ""
+            if dividend_yield > 0 and annual_dividend > 0:
+                approx_price = annual_dividend / (dividend_yield / 100)
+                currency = "HK$" if ticker.endswith(".HK") else ("¥" if ticker.endswith(".SS") or ticker.endswith(".SZ") else "$")
+                current_price_str = f"当前价格: 约{currency}{approx_price:.2f}，年度股息: {annual_dividend:.4f}\n"
             prompt = (
                 f"股票: {ticker}\n"
                 f"行业: {sector} / {industry}\n"
+                f"当前股息率: {dividend_yield:.2f}%\n"
+                f"{current_price_str}"
                 f"综合质量评分: {quality_result.overall_score:.0f}/100\n"
                 f"稳定性: {quality_result.stability_score:.0f}, "
                 f"财务健康: {quality_result.health_score:.0f}, "
                 f"防御性: {quality_result.defensiveness_score:.0f}\n\n"
-                "请用中文按以下格式输出，每项一句话，每项末尾附上对应的合理价格或价格区间：\n"
+                "请用中文按以下格式输出，每项一句话，价格区间必须基于上方提供的当前价格锚点推导：\n"
                 "确定性业务：[核心业务描述，稳定现金流来源] → [基于此业务支撑的底部价格区间]\n"
                 "增量新业务：[增长方向或新业务风险，若无则写\"暂无明显增量业务\"] → [考虑增量后的合理价格上限]\n"
                 "估值区间：[结合股息率/PE/DCF说明定价逻辑] → [综合合理价格区间，如$XX-XX或HK$XX-XX]"
@@ -216,7 +228,7 @@ class FinancialServiceAnalyzer:
             result = self._calculate_rule_based_score(
                 ticker, fundamentals, defensiveness_override=defensiveness_score
             )
-            result.analysis_text = self._get_analysis_text(ticker, sector, industry, result)
+            result.analysis_text = self._get_analysis_text(ticker, sector, industry, result, fundamentals)
             return result
         if not self.fallback_to_rules:
             logger.warning(f"{ticker}: Financial Service disabled, no fallback allowed")
