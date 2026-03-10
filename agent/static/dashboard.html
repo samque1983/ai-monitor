@@ -397,8 +397,10 @@ function esc(s) {
 
 function yieldLogic(pct) {
   if (pct >= 90) return '股息率达历史高位 → 价格明显低估';
-  if (pct >= 80) return '股息率高于历史均值 → 估值偏低';
-  return '超越多数历史区间 → 轻度低估';
+  if (pct >= 75) return '股息率高于历史均值 → 估值偏低';
+  if (pct >= 50) return '股息率处于历史中位偏上';
+  if (pct > 0)   return '股息率处于历史中位偏下';
+  return '历史分位数据暂缺';
 }
 function stabilityLabel(score) {
   if (score == null) return null;
@@ -494,7 +496,7 @@ function cardDividend(s) {
   return `<div class="card dividend-card">
     <div class="dc-header">
       <div class="dc-ticker">${s.ticker} 🛡️</div>
-      <div class="dc-yield">当前股息率: <strong>${p.current_yield}%</strong> (5年历史${p.yield_percentile}分位)</div>
+      <div class="dc-yield">当前股息率: <strong>${p.current_yield}%</strong> ${p.yield_percentile === 50 ? '(历史分位积累中)' : `(5年历史${p.yield_percentile}分位)`}</div>
     </div>
     <div class="dc-dim">
       <h4>1️⃣ 基本面估值</h4>
