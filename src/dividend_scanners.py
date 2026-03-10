@@ -355,11 +355,21 @@ def scan_dividend_buy_signal(
 
             # Step 6: 判断触发条件 (OR: 满足任意一个即触发)
             if current_yield >= min_yield or yield_percentile >= min_yield_percentile:
-                # 创建TickerData对象（简化版，只包含必要字段）
+                # Step 6a: 获取财报日期
+                _earnings_date: Optional[date] = None
+                _days_to_earnings: Optional[int] = None
+                try:
+                    _earnings_date = provider.get_earnings_date(ticker)
+                    if _earnings_date:
+                        _days_to_earnings = (_earnings_date - date.today()).days
+                except Exception:
+                    pass
+
+                # 创建TickerData对象，从pool record回填质量数据
                 ticker_data = TickerData(
                     ticker=ticker,
-                    name=ticker,  # 简化：使用ticker作为name
-                    market="US",  # 简化：默认US市场
+                    name=record.get("name") or ticker,
+                    market=record.get("market") or "US",
                     last_price=last_price,
                     ma200=None,
                     ma50w=None,
@@ -367,19 +377,21 @@ def scan_dividend_buy_signal(
                     iv_rank=None,
                     iv_momentum=None,
                     prev_close=0.0,
-                    earnings_date=None,
-                    days_to_earnings=None,
+                    earnings_date=_earnings_date,
+                    days_to_earnings=_days_to_earnings,
                     dividend_yield=current_yield,
                     dividend_yield_5y_percentile=yield_percentile,
-                    dividend_quality_score=None,
-                    consecutive_years=None,
-                    dividend_growth_5y=None,
-                    payout_ratio=None,
+                    dividend_quality_score=record.get("quality_score"),
+                    consecutive_years=record.get("consecutive_years"),
+                    dividend_growth_5y=record.get("dividend_growth_5y"),
+                    payout_ratio=record.get("payout_ratio"),
                     roe=None,
                     debt_to_equity=None,
                     industry=None,
                     sector=None,
                     free_cash_flow=None,
+                    quality_breakdown=record.get("quality_breakdown"),
+                    analysis_text=record.get("analysis_text") or "",
                 )
 
                 # Step 7: 尝试添加期权策略（仅美国市场）
