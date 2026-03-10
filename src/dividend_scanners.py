@@ -540,23 +540,40 @@ def scan_dividend_sell_put(
 
         strike = float(closest_option['strike'])
         bid = float(closest_option['bid'])
+        ask = float(closest_option.get('ask', 0) or 0)
         dte = int(closest_option['dte'])
         expiration = closest_option['expiration']
 
-        # Step 4: 计算APY（仅用于展示）
-        apy = (bid / strike) * (365 / dte) * 100
+        # Liquidity assessment
+        mid = (bid + ask) / 2 if ask > 0 else bid
+        spread_pct = ((ask - bid) / mid * 100) if mid > 0 and ask > 0 else 0.0
+
+        # Spread > 30%: return illiquid flag (don't discard — Dim 4 will warn)
+        if spread_pct > 30:
+            logger.info(f"{ticker}: Sell Put illiquid - spread={spread_pct:.1f}%, strike=${strike:.2f}")
+            return {"sell_put_illiquid": True, "strike": strike, "dte": dte, "spread_pct": round(spread_pct, 1)}
+
+        liquidity_warn = spread_pct > 20
+
+        # APY uses midpoint
+        apy = (mid / strike) * (365 / dte) * 100
 
         result = {
             'strike': strike,
             'bid': bid,
+            'ask': ask,
+            'mid': mid,
+            'spread_pct': round(spread_pct, 1),
+            'liquidity_warn': liquidity_warn,
+            'sell_put_illiquid': False,
             'dte': dte,
             'expiration': expiration,
-            'apy': apy,
+            'apy': round(apy, 2),
         }
 
         logger.info(
-            f"{ticker}: Sell Put selected - strike=${strike:.2f}, bid=${bid:.2f}, "
-            f"dte={dte}, apy={apy:.2f}% (target_strike=${target_strike:.2f})"
+            f"{ticker}: Sell Put selected - strike=${strike:.2f}, mid=${mid:.2f}, "
+            f"dte={dte}, apy={apy:.2f}% spread={spread_pct:.1f}% (target_strike=${target_strike:.2f})"
         )
 
         return result

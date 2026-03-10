@@ -1,10 +1,10 @@
 # tests/test_dividend_scanners.py
 import pytest
 import pandas as pd
-from datetime import date
+from datetime import date, timedelta
 from unittest.mock import MagicMock, patch
 from src.data_engine import TickerData
-from src.dividend_scanners import scan_dividend_pool_weekly, scan_dividend_buy_signal, DividendBuySignal
+from src.dividend_scanners import scan_dividend_pool_weekly, scan_dividend_buy_signal, DividendBuySignal, scan_dividend_sell_put
 from src.financial_service import DividendQualityScore
 from src.dividend_store import DividendStore
 
@@ -31,6 +31,11 @@ def mock_provider():
 @pytest.fixture
 def mock_fs():
     return MagicMock()
+
+
+@pytest.fixture
+def sample_ticker_data():
+    return make_ticker(ticker="TEST", last_price=35.0, dividend_yield=4.9)
 
 
 @pytest.fixture
@@ -798,3 +803,42 @@ def test_buy_signal_needs_reeval_when_stale(tmp_path):
     assert len(results) == 1
     assert results[0].data_age_days == 15
     assert results[0].needs_reeval is True
+
+
+# ---------------------------------------------------------------------------
+# Task 3: scan_dividend_sell_put liquidity check
+# ---------------------------------------------------------------------------
+
+def test_scan_dividend_sell_put_uses_midpoint_apy(mock_provider, sample_ticker_data):
+    """APY uses midpoint, not bid."""
+    options_df = pd.DataFrame({
+        "strike": [30.0], "bid": [0.80], "ask": [1.00],
+        "dte": [60], "expiration": [date.today() + timedelta(days=60)],
+    })
+    mock_provider.get_options_chain.return_value = options_df
+    mock_provider.should_skip_options.return_value = False
+    result = scan_dividend_sell_put(sample_ticker_data, mock_provider,
+                                    annual_dividend=1.72, target_yield_percentile=90,
+                                    target_yield=5.5)
+    assert result is not None
+    assert result.get("sell_put_illiquid") is False
+    mid = (0.80 + 1.00) / 2
+    expected_apy = round((mid / 30.0) * (365 / 60) * 100, 2)
+    assert result["apy"] == pytest.approx(expected_apy, abs=0.1)
+
+
+def test_scan_dividend_sell_put_illiquid_flag_over_30pct(mock_provider, sample_ticker_data):
+    """Spread > 30% returns illiquid dict, not None."""
+    # mid=1.3, spread=(1.6-1.0)/1.3=46%
+    options_df = pd.DataFrame({
+        "strike": [30.0], "bid": [1.0], "ask": [1.6],
+        "dte": [60], "expiration": [date.today() + timedelta(days=60)],
+    })
+    mock_provider.get_options_chain.return_value = options_df
+    mock_provider.should_skip_options.return_value = False
+    result = scan_dividend_sell_put(sample_ticker_data, mock_provider,
+                                    annual_dividend=1.72, target_yield_percentile=90,
+                                    target_yield=5.5)
+    assert result is not None
+    assert result["sell_put_illiquid"] is True
+    assert result["spread_pct"] > 30
