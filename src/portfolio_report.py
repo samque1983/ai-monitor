@@ -193,7 +193,7 @@ def generate_html_report(report: RiskReport) -> str:
   <div>
     <div class="stat-label">大盘跌10%预估亏损</div>
     <div class="stat-value" style="color:#ff453a">${drop_10:,.0f}</div>
-    <div class="stat-note">假设 SPY 跌10%，用 Beta×DollarDelta 估算组合损失</div>
+    <div class="stat-note">假设 SPY 跌10%，按各仓位市值×Beta估算组合损失</div>
   </div>
 </div>
 {cards_html if cards_html else '<p style="color:var(--subtext);text-align:center;padding:40px">暂无风险预警</p>'}
