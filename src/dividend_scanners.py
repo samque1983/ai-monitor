@@ -417,7 +417,7 @@ def scan_dividend_buy_signal(
                         max_dte=option_config.get("max_dte", 90),
                     )
 
-                    if option_details:
+                    if option_details and not option_details.get("sell_put_illiquid"):
                         signal_type = "OPTION"
                         logger.debug(
                             f"{ticker}: Option strategy added - strike=${option_details['strike']:.2f}, "

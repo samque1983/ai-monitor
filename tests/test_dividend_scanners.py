@@ -421,6 +421,88 @@ class TestScanDividendSellPut:
         # Clean up
         store.close()
 
+    def test_scan_dividend_buy_signal_illiquid_option_does_not_crash(self, tmp_path):
+        """When scan_dividend_sell_put returns an illiquid dict, caller must not KeyError."""
+        from src.dividend_store import DividendStore
+        from src.dividend_scanners import scan_dividend_buy_signal
+
+        db_path = str(tmp_path / "test_dividend.db")
+        store = DividendStore(db_path)
+
+        ticker = "XYZ"
+        historical_yields = [
+            ("2021-03-01", 3.0, 1.50, 50.0),
+            ("2022-03-01", 4.0, 2.00, 50.0),
+            ("2023-03-01", 5.0, 2.50, 50.0),
+            ("2024-03-01", 6.0, 3.00, 50.0),
+            ("2025-03-01", 7.0, 3.50, 50.0),
+        ]
+        for date_str, div_yield, annual_div, price in historical_yields:
+            store.save_dividend_history(
+                ticker=ticker,
+                date=date.fromisoformat(date_str),
+                dividend_yield=div_yield,
+                annual_dividend=annual_div,
+                price=price
+            )
+
+        mock_provider = MagicMock()
+        mock_provider.should_skip_options.return_value = False  # US market
+
+        import pandas as pd
+        mock_provider.get_price_data.return_value = pd.DataFrame({
+            "Close": [46.0],
+        }, index=pd.to_datetime(["2026-03-04"]))
+        mock_provider.get_dividend_history.return_value = [
+            {"date": "2025-12-15", "amount": 0.875},
+            {"date": "2025-09-15", "amount": 0.875},
+            {"date": "2025-06-15", "amount": 0.875},
+            {"date": "2025-03-15", "amount": 0.875},
+        ]
+
+        # Option chain with wide spread (>30%) → illiquid result from scan_dividend_sell_put
+        mock_provider.get_options_chain.return_value = pd.DataFrame({
+            'strike': [34.0],
+            'bid': [1.00],
+            'ask': [1.60],   # spread = (1.60-1.00)/1.30 = 46% → illiquid
+            'dte': [60],
+            'expiration': [date(2026, 5, 3)]
+        })
+
+        config = {
+            "dividend_scanners": {
+                "min_yield": 4.0,
+                "min_yield_percentile": 90,
+                "option": {
+                    "enabled": True,
+                    "target_strike_percentile": 90,
+                    "min_dte": 45,
+                    "max_dte": 90,
+                }
+            }
+        }
+
+        pool = [{"ticker": ticker, "forward_dividend_rate": None, "max_yield_5y": None,
+                 "data_version_date": str(date.today())}]
+
+        # Must not raise KeyError
+        results = scan_dividend_buy_signal(
+            pool=pool,
+            provider=mock_provider,
+            store=store,
+            config=config
+        )
+
+        assert len(results) == 1
+        signal = results[0]
+        # Illiquid option falls back to STOCK signal type
+        assert signal.signal_type == "STOCK"
+        # option_details is still preserved (the illiquid dict is passed through)
+        assert signal.option_details is not None
+        assert signal.option_details.get("sell_put_illiquid") is True
+
+        store.close()
+
 
 def test_scan_excludes_low_yield_tickers(mock_provider, mock_fs, config):
     """Tickers with dividend_yield < 2.0% must be excluded from pool."""
