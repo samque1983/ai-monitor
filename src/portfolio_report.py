@@ -93,8 +93,10 @@ _DIM_OPTIONS_PROS_CONS = {
     ],
 }
 
-_LEVEL_COLOR = {"red": "#ff453a", "yellow": "#ffd60a"}
-_LEVEL_STRIPE = {"red": "rgba(255,69,58,0.18)", "yellow": "rgba(255,214,10,0.12)"}
+# Alert accent colors
+_LEVEL_COLOR  = {"red": "#ff453a", "yellow": "#ffb340"}
+_LEVEL_BG     = {"red": "rgba(255,69,58,0.10)",  "yellow": "rgba(255,179,64,0.09)"}
+_LEVEL_BORDER = {"red": "rgba(255,69,58,0.22)",  "yellow": "rgba(255,179,64,0.20)"}
 
 _OPT_LABELS = ["A", "B", "C", "D"]
 
@@ -103,253 +105,369 @@ def _options_rows(options: list, dim: int) -> str:
     pros_cons = _DIM_OPTIONS_PROS_CONS.get(dim, [])
     rows = ""
     for i, opt in enumerate(options):
-        label = _OPT_LABELS[i] if i < len(_OPT_LABELS) else str(i + 1)
-        pc = pros_cons[i] if i < len(pros_cons) else ("", "")
-        pro_html = f'<span class="opt-pro">✦ {_e(pc[0])}</span>' if pc[0] else ""
-        con_html = f'<span class="opt-con">↳ {_e(pc[1])}</span>' if pc[1] else ""
-        border = "border-top: 1px solid rgba(255,255,255,0.05);" if i > 0 else ""
+        label  = _OPT_LABELS[i] if i < len(_OPT_LABELS) else str(i + 1)
+        pc     = pros_cons[i] if i < len(pros_cons) else ("", "")
+        action = opt[3:] if opt.startswith(f"{label}. ") else opt
+        pro_html = f'<span class="opt-pro">↑ {_e(pc[0])}</span>' if pc[0] else ""
+        con_html = f'<span class="opt-con">↓ {_e(pc[1])}</span>' if pc[1] else ""
+        sep = ' class="opt-row opt-row--sep"' if i > 0 else ' class="opt-row"'
         rows += f"""
-<div class="opt-row" style="{border}">
+<div{sep}>
   <div class="opt-pill">{label}</div>
   <div class="opt-body">
-    <div class="opt-action">{_e(opt[3:] if opt.startswith(f"{label}. ") else opt)}</div>
+    <div class="opt-action">{_e(action)}</div>
     <div class="opt-procon">{pro_html}{con_html}</div>
   </div>
 </div>"""
     return rows
 
 
-_LEVEL_BORDER_RGB = {"red": "255,69,58", "yellow": "255,214,10"}
-
-
 def _alert_card(alert: RiskAlert) -> str:
-    color = _LEVEL_COLOR.get(alert.level, "#ffd60a")
-    stripe = _LEVEL_STRIPE.get(alert.level, "rgba(255,214,10,0.12)")
-    border_rgb = _LEVEL_BORDER_RGB.get(alert.level, "255,214,10")
-    dim_name = _DIM_NAMES.get(alert.dimension, f"维度 {alert.dimension}")
-    plain = _DIM_PLAIN.get(alert.dimension, "")
-    options_rows = _options_rows(alert.options, alert.dimension) if alert.options else ""
-    ai_html = ""
+    color      = _LEVEL_COLOR.get(alert.level,  "#ffb340")
+    bg         = _LEVEL_BG.get(alert.level,     "rgba(255,179,64,0.09)")
+    border_col = _LEVEL_BORDER.get(alert.level, "rgba(255,179,64,0.20)")
+    dim_name   = _DIM_NAMES.get(alert.dimension, f"维度 {alert.dimension}")
+    plain      = _DIM_PLAIN.get(alert.dimension, "")
+    opts_html  = _options_rows(alert.options, alert.dimension) if alert.options else ""
+    ai_html    = ""
     if alert.ai_suggestion:
         ai_html = f"""
 <div class="ai-box">
   <span class="ai-label">AI 建议</span>
   {_e(alert.ai_suggestion)}
 </div>"""
+    plain_html = f'<p class="plain-desc">{_e(plain)}</p>' if plain else ""
+    opts_block = (f'<div class="options-section">'
+                  f'<div class="options-title">处理方法</div>{opts_html}</div>') if opts_html else ""
     return f"""
-<div class="alert-card">
-  <div class="card-stripe" style="background:{stripe}">
-    <div class="card-dim-name" style="color:{color}">{_e(dim_name)}</div>
-    <div class="card-ticker" style="color:{color};border-color:rgba({border_rgb},0.3)">{_e(alert.ticker)}</div>
+<div class="alert-card" style="border-color:{border_col}">
+  <div class="card-head" style="background:{bg};border-bottom:1px solid {border_col}">
+    <div class="card-left">
+      <span class="level-dot" style="background:{color}"></span>
+      <span class="card-dim-name">{_e(dim_name)}</span>
+    </div>
+    <span class="card-ticker" style="color:{color};border-color:{border_col}">{_e(alert.ticker)}</span>
   </div>
   <div class="card-body">
-    {'<p class="plain-desc">' + _e(plain) + '</p>' if plain else ''}
+    {plain_html}
     <p class="tech-detail">{_e(alert.detail)}</p>
-    {'<div class="options-section"><div class="options-title">处理方法</div>' + options_rows + '</div>' if options_rows else ''}
+    {opts_block}
     {ai_html}
   </div>
 </div>"""
 
 
 def generate_html_report(report: RiskReport) -> str:
-    red_count = sum(1 for a in report.alerts if a.level == "red")
+    red_count    = sum(1 for a in report.alerts if a.level == "red")
     yellow_count = sum(1 for a in report.alerts if a.level == "yellow")
-    cards_html = "\n".join(_alert_card(a) for a in report.alerts)
-    pnl_color = "#30d158" if report.total_pnl >= 0 else "#ff453a"
-    cushion_val = report.cushion * 100
-    cushion_color = "#ff453a" if cushion_val < 10 else ("#ffd60a" if cushion_val < 25 else "#30d158")
-    cushion_label = "危险" if cushion_val < 10 else ("注意" if cushion_val < 25 else "安全")
-    cushion_bar_w = min(cushion_val / 40 * 100, 100)
-    stress = report.summary_stats.get("stress_test", {})
-    drop_10 = stress.get("drop_10pct", 0)
-    alert_section = cards_html if cards_html else '<p class="empty-state">暂无风险预警</p>'
+    cards_html   = "\n".join(_alert_card(a) for a in report.alerts)
+    pnl_color    = "#34c759" if report.total_pnl >= 0 else "#ff453a"
+    cushion_val  = report.cushion * 100
+    cushion_color  = "#ff453a" if cushion_val < 10 else ("#ffb340" if cushion_val < 25 else "#34c759")
+    cushion_label  = "危险" if cushion_val < 10 else ("注意" if cushion_val < 25 else "安全")
+    cushion_bar_w  = min(cushion_val / 40 * 100, 100)
+    stress   = report.summary_stats.get("stress_test", {})
+    drop_10  = stress.get("drop_10pct", 0)
+    alert_section = cards_html if cards_html else '<p class="empty-state">暂无风险预警 ✓</p>'
+    acct_name = _e(report.account_id) if report.account_id else "Portfolio"
 
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>风险报告 · {_e(report.account_id)} · {_e(report.report_date)}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>风险报告 · {acct_name} · {_e(report.report_date)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:opsz,wght@9..40,300..600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
+/* ── Reset ───────────────────────────────── */
 *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
 
+/* ── Tokens (8px grid, per spec) ─────────── */
+:root {{
+  --bg:        #080808;
+  --surface:   #101010;
+  --surface-2: #181818;
+  --border:    rgba(255,255,255,0.08);
+  --border-2:  rgba(255,255,255,0.05);
+  --text:      #ececec;
+  --text-2:    rgba(236,236,236,0.58);
+  --text-3:    rgba(236,236,236,0.38);
+  --red:       #ff453a;
+  --amber:     #ffb340;
+  --green:     #34c759;
+  --blue:      #0a84ff;
+  --r4: 4px; --r8: 8px; --r12: 12px; --r16: 16px; --r24: 24px;
+}}
+
+/* ── Base ────────────────────────────────── */
 body {{
-  background: #000;
-  color: #f5f5f7;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "DM Sans", -apple-system, "Helvetica Neue", sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
-  padding: 32px 20px 60px;
+  padding: 32px 16px 64px;
+}}
+@media (min-width: 480px) {{ body {{ padding: 40px 24px 64px; }} }}
+
+.container {{ max-width: 720px; margin: 0 auto; }}
+
+/* ── Animations ──────────────────────────── */
+@keyframes fadeUp {{
+  from {{ opacity: 0; transform: translateY(12px); }}
+  to   {{ opacity: 1; transform: translateY(0); }}
+}}
+@keyframes barGrow {{
+  from {{ width: 0; }}
 }}
 
-.container {{ max-width: 740px; margin: 0 auto; }}
+.summary     {{ animation: fadeUp 0.4s ease both; }}
+.alert-card  {{ animation: fadeUp 0.4s ease both; }}
+.alert-card:nth-child(1)  {{ animation-delay: 0.06s; }}
+.alert-card:nth-child(2)  {{ animation-delay: 0.12s; }}
+.alert-card:nth-child(3)  {{ animation-delay: 0.18s; }}
+.alert-card:nth-child(4)  {{ animation-delay: 0.24s; }}
+.alert-card:nth-child(5)  {{ animation-delay: 0.30s; }}
+.alert-card:nth-child(6)  {{ animation-delay: 0.36s; }}
+.alert-card:nth-child(n+7){{ animation-delay: 0.40s; }}
 
 /* ── Page header ─────────────────────────── */
-.page-meta {{
+.page-eyebrow {{
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: 6px;
+  align-items: center;
+  margin-bottom: 8px;
 }}
-.page-meta-label {{
+.eyebrow-label {{
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: rgba(255,255,255,0.45);
+  color: var(--text-3);
 }}
-.page-date {{ font-size: 12px; color: rgba(255,255,255,0.45); }}
+.eyebrow-date {{
+  font-family: "DM Mono", monospace;
+  font-size: 11px;
+  color: var(--text-3);
+}}
 
-h1 {{
-  font-size: 32px;
-  font-weight: 700;
-  letter-spacing: -0.025em;
-  color: #fff;
-  margin-bottom: 6px;
+.page-title {{
+  font-family: "Instrument Serif", Georgia, serif;
+  font-style: italic;
+  font-size: clamp(28px, 7vw, 40px);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  line-height: 1.1;
+  margin-bottom: 16px;
 }}
-.alert-badges {{ display: flex; gap: 8px; margin-bottom: 28px; }}
+
+.badges {{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 32px;
+}}
 .badge {{
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 4px 10px;
+  gap: 6px;
+  padding: 5px 12px;
   border-radius: 20px;
   font-size: 12px;
   font-weight: 500;
+  letter-spacing: 0.01em;
+  border: 1px solid;
 }}
-.badge-red   {{ background: rgba(255,69,58,0.15);  color: #ff453a; border: 1px solid rgba(255,69,58,0.25); }}
-.badge-yellow{{ background: rgba(255,214,10,0.12); color: #ffd60a; border: 1px solid rgba(255,214,10,0.22); }}
-.badge-dot {{ width: 6px; height: 6px; border-radius: 50%; }}
-.badge-red .badge-dot   {{ background: #ff453a; }}
-.badge-yellow .badge-dot{{ background: #ffd60a; }}
+.badge-red    {{ color: var(--red);   background: rgba(255,69,58,0.10);  border-color: rgba(255,69,58,0.22); }}
+.badge-yellow {{ color: var(--amber); background: rgba(255,179,64,0.10); border-color: rgba(255,179,64,0.22); }}
+.badge-dot {{ width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }}
 
 /* ── Summary card ────────────────────────── */
 .summary {{
-  background: #111;
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 20px;
-  padding: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r12);
+  overflow: hidden;
   margin-bottom: 32px;
 }}
-.summary-top {{
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 0;
-  padding-bottom: 20px;
-  border-bottom: 1px solid rgba(255,255,255,0.07);
-  margin-bottom: 20px;
-}}
-.summary-top .stat + .stat {{ border-left: 1px solid rgba(255,255,255,0.07); padding-left: 20px; margin-left: 0; }}
-.summary-bottom {{
+
+.summary-hero {{
+  padding: 20px 20px 0;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0;
+  gap: 0 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border-2);
 }}
-.summary-bottom .stat + .stat {{ border-left: 1px solid rgba(255,255,255,0.07); padding-left: 20px; }}
+@media (min-width: 480px) {{
+  .summary-hero {{ grid-template-columns: 1.4fr 1fr 1fr; padding: 24px 24px 20px; gap: 0; }}
+  .summary-hero .stat + .stat {{ border-left: 1px solid var(--border-2); padding-left: 20px; }}
+}}
+
+.summary-foot {{
+  padding: 20px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px 0;
+}}
+@media (min-width: 480px) {{
+  .summary-foot {{
+    padding: 20px 24px 24px;
+    gap: 0;
+  }}
+  .summary-foot .stat + .stat {{ border-left: 1px solid var(--border-2); padding-left: 20px; }}
+}}
 
 .stat-label {{
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: rgba(255,255,255,0.35);
-  margin-bottom: 6px;
-}}
-.stat-value {{
-  font-size: 26px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: #fff;
-  line-height: 1;
-  margin-bottom: 4px;
-}}
-.stat-note {{
-  font-size: 11px;
-  color: rgba(255,255,255,0.48);
-  line-height: 1.5;
-  margin-top: 5px;
-}}
-
-/* cushion bar */
-.cushion-bar-bg {{
-  height: 3px;
-  background: rgba(255,255,255,0.08);
-  border-radius: 2px;
-  margin-top: 8px;
-  overflow: hidden;
-}}
-.cushion-bar-fill {{
-  height: 100%;
-  border-radius: 2px;
-  transition: width 0.3s;
-}}
-.cushion-status {{
-  font-size: 11px;
-  margin-top: 4px;
-  font-weight: 500;
-}}
-
-/* ── Section title ───────────────────────── */
-.section-title {{
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(255,255,255,0.3);
+  color: var(--text-3);
+  margin-bottom: 6px;
+}}
+.stat-value {{
+  font-family: "DM Mono", monospace;
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  line-height: 1;
+  margin-bottom: 4px;
+}}
+.stat-value--hero {{
+  font-size: clamp(22px, 5vw, 30px);
+}}
+.stat-note {{
+  font-size: 11px;
+  color: var(--text-2);
+  line-height: 1.55;
+  margin-top: 6px;
+}}
+
+/* Cushion segments */
+.cushion-track {{
+  display: flex;
+  gap: 3px;
+  margin-top: 10px;
+  margin-bottom: 4px;
+}}
+.cushion-seg {{
+  height: 3px;
+  border-radius: 2px;
+  flex: 1;
+  background: var(--border);
+  transition: background 0.6s ease;
+}}
+.cushion-label {{
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  margin-top: 2px;
+}}
+
+/* ── Section divider ─────────────────────── */
+.section-header {{
+  display: flex;
+  align-items: center;
+  gap: 12px;
   margin-bottom: 12px;
+}}
+.section-label {{
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  white-space: nowrap;
+}}
+.section-rule {{
+  flex: 1;
+  height: 1px;
+  background: var(--border-2);
 }}
 
 /* ── Alert card ──────────────────────────── */
 .alert-card {{
-  background: #111;
-  border: 1px solid rgba(255,255,255,0.07);
-  border-radius: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r12);
   overflow: hidden;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
+  transition: border-color 0.2s;
 }}
+.alert-card:hover {{ border-color: rgba(255,255,255,0.14); }}
 
-.card-stripe {{
+.card-head {{
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
+  justify-content: space-between;
+  padding: 10px 16px;
+  gap: 12px;
+}}
+.card-left {{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}}
+.level-dot {{
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }}
 .card-dim-name {{
   font-size: 13px;
   font-weight: 600;
   letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }}
 .card-ticker {{
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  padding: 2px 8px;
-  border-radius: 6px;
+  font-family: "DM Mono", monospace;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  padding: 3px 8px;
+  border-radius: var(--r4);
   border: 1px solid;
-  background: rgba(0,0,0,0.2);
+  background: rgba(0,0,0,0.3);
+  white-space: nowrap;
+  flex-shrink: 0;
 }}
 
 .card-body {{ padding: 0 16px 16px; }}
 
 .plain-desc {{
   font-size: 14px;
-  color: rgba(255,255,255,0.72);
+  color: var(--text-2);
   line-height: 1.65;
-  padding: 12px 0 8px;
-  border-bottom: 1px solid rgba(255,255,255,0.05);
-  margin-bottom: 8px;
+  padding: 12px 0 10px;
+  border-bottom: 1px solid var(--border-2);
+  margin-bottom: 10px;
 }}
 
 .tech-detail {{
+  font-family: "DM Mono", monospace;
   font-size: 11px;
-  font-family: "SF Mono", "Menlo", monospace;
-  color: rgba(255,255,255,0.45);
-  background: rgba(255,255,255,0.06);
+  color: var(--text-3);
+  background: var(--surface-2);
   display: inline-block;
-  padding: 3px 8px;
-  border-radius: 5px;
-  margin-bottom: 14px;
+  padding: 4px 8px;
+  border-radius: var(--r4);
+  margin-bottom: 12px;
   letter-spacing: 0.01em;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }}
 
 /* ── Options ─────────────────────────────── */
@@ -359,74 +477,81 @@ h1 {{
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(255,255,255,0.38);
-  margin-bottom: 6px;
+  color: var(--text-3);
+  margin-bottom: 8px;
 }}
 
 .opt-row {{
   display: flex;
   align-items: flex-start;
-  padding: 9px 0;
+  padding: 8px 0;
   gap: 10px;
 }}
+.opt-row--sep {{ border-top: 1px solid var(--border-2); }}
+
 .opt-pill {{
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
-  background: rgba(255,255,255,0.07);
-  color: rgba(255,255,255,0.45);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-3);
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 600;
+  font-family: "DM Mono", monospace;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  margin-top: 1px;
-  letter-spacing: 0;
+  margin-top: 2px;
 }}
 .opt-body {{ flex: 1; min-width: 0; }}
 .opt-action {{
   font-size: 13px;
-  color: rgba(255,255,255,0.82);
-  line-height: 1.45;
-  margin-bottom: 3px;
+  color: var(--text);
+  line-height: 1.5;
+  margin-bottom: 4px;
 }}
-.opt-procon {{ display: flex; flex-direction: column; gap: 2px; }}
+.opt-procon {{
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}}
 .opt-pro {{
   font-size: 11px;
-  color: #30d158;
+  color: var(--green);
   line-height: 1.5;
 }}
 .opt-con {{
   font-size: 11px;
-  color: rgba(255,255,255,0.44);
+  color: var(--text-2);
   line-height: 1.5;
 }}
 
 /* ── AI box ──────────────────────────────── */
 .ai-box {{
-  margin-top: 14px;
-  background: rgba(10,132,255,0.07);
-  border: 1px solid rgba(10,132,255,0.18);
-  border-radius: 10px;
+  margin-top: 12px;
+  background: rgba(10,132,255,0.06);
+  border: 1px solid rgba(10,132,255,0.16);
+  border-radius: var(--r8);
   padding: 10px 12px;
   font-size: 13px;
-  color: rgba(255,255,255,0.55);
-  line-height: 1.6;
+  color: var(--text-2);
+  line-height: 1.65;
 }}
 .ai-label {{
   display: block;
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #0a84ff;
-  margin-bottom: 4px;
+  color: var(--blue);
+  margin-bottom: 5px;
 }}
 
 .empty-state {{
   text-align: center;
-  color: rgba(255,255,255,0.2);
+  color: var(--text-3);
   font-size: 14px;
   padding: 48px 0;
 }}
@@ -435,52 +560,73 @@ h1 {{
 <body>
 <div class="container">
 
-<div class="page-meta">
-  <span class="page-meta-label">Portfolio Risk Report</span>
-  <span class="page-date">{_e(report.report_date)}</span>
+<div class="page-eyebrow">
+  <span class="eyebrow-label">Portfolio Risk Report</span>
+  <span class="eyebrow-date">{_e(report.report_date)}</span>
 </div>
-<h1>{_e(report.account_id) if report.account_id else "Portfolio"}</h1>
-<div class="alert-badges">
+<h1 class="page-title">{acct_name}</h1>
+<div class="badges">
   <span class="badge badge-red"><span class="badge-dot"></span>{red_count} 红色预警</span>
   <span class="badge badge-yellow"><span class="badge-dot"></span>{yellow_count} 黄色提示</span>
 </div>
 
 <div class="summary">
-  <div class="summary-top">
+  <div class="summary-hero">
     <div class="stat">
       <div class="stat-label">净资产 NLV</div>
-      <div class="stat-value">${report.net_liquidation:,.0f}</div>
+      <div class="stat-value stat-value--hero">${report.net_liquidation:,.0f}</div>
     </div>
-    <div class="stat" style="padding-left:20px">
+    <div class="stat">
       <div class="stat-label">未实现盈亏</div>
       <div class="stat-value" style="color:{pnl_color}">${report.total_pnl:+,.0f}</div>
     </div>
-    <div class="stat" style="padding-left:20px">
+    <div class="stat">
       <div class="stat-label">报告日期</div>
-      <div class="stat-value" style="font-size:18px">{_e(report.report_date)}</div>
+      <div class="stat-value" style="font-size:16px;letter-spacing:0">{_e(report.report_date)}</div>
     </div>
   </div>
-  <div class="summary-bottom">
+  <div class="summary-foot">
     <div class="stat">
       <div class="stat-label">保证金缓冲</div>
       <div class="stat-value" style="color:{cushion_color}">{cushion_val:.1f}%</div>
-      <div class="cushion-bar-bg">
-        <div class="cushion-bar-fill" style="width:{cushion_bar_w:.0f}%;background:{cushion_color}"></div>
-      </div>
-      <div class="cushion-status" style="color:{cushion_color}">{cushion_label}</div>
-      <div class="stat-note">可用资金超出维持保证金的部分 &gt;25% 安全 · &lt;10% 危险</div>
+      <div class="cushion-track" id="ctrack"></div>
+      <div class="cushion-label" style="color:{cushion_color}">{cushion_label}</div>
+      <div class="stat-note">可用资金超出维持保证金的部分<br>&gt;25% 安全 · &lt;10% 危险</div>
     </div>
     <div class="stat">
       <div class="stat-label">大盘跌10%预估亏损</div>
-      <div class="stat-value" style="color:#ff453a">${drop_10:,.0f}</div>
-      <div class="stat-note">假设 SPY 跌10%<br>按各仓位市值 × Beta 估算组合损失</div>
+      <div class="stat-value" style="color:var(--red)">${drop_10:,.0f}</div>
+      <div class="stat-note">假设 SPY 跌10%<br>按各仓位市值 × Beta 估算</div>
     </div>
   </div>
 </div>
 
-<div class="section-title">风险预警 · {red_count + yellow_count} 条</div>
+<div class="section-header">
+  <span class="section-label">风险预警</span>
+  <div class="section-rule"></div>
+  <span class="section-label">{red_count + yellow_count} 条</span>
+</div>
 {alert_section}
 
 </div>
+<script>
+(function() {{
+  // Cushion track — 10 segments, fill coloured ones
+  var val = {cushion_val:.2f};
+  var color = "{cushion_color}";
+  var track = document.getElementById("ctrack");
+  var total = 10;
+  var filled = Math.round(Math.min(val / 40, 1) * total);
+  for (var i = 0; i < total; i++) {{
+    var seg = document.createElement("div");
+    seg.className = "cushion-seg";
+    if (i < filled) {{
+      seg.style.background = color;
+      seg.style.opacity = 0.8 - i * 0.04;
+    }}
+    track.appendChild(seg);
+  }}
+}})();
+</script>
 </body>
 </html>"""
