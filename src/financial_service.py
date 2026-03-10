@@ -144,7 +144,7 @@ class FinancialServiceAnalyzer:
             logger.info(f"Defensiveness scored: {sector}/{industry} → {score:.0f} ({rationale})")
             return score
         except Exception as e:
-            logger.warning(f"Defensiveness scoring failed for {sector}/{industry}: {e}, using 50.0")
+            logger.warning(f"Defensiveness scoring failed for {sector}/{industry} [{type(e).__name__}]: {e}, using 50.0")
             return 50.0
 
     def _get_analysis_text(self, ticker: str, sector: str, industry: str,
@@ -181,7 +181,7 @@ class FinancialServiceAnalyzer:
             logger.info(f"Analysis text generated for {ticker}")
             return text
         except Exception as e:
-            logger.warning(f"Analysis text failed for {ticker}: {e}", exc_info=True)
+            logger.warning(f"Analysis text failed for {ticker} [{type(e).__name__}]: {e}")
             return ""
 
     def analyze_dividend_quality(
