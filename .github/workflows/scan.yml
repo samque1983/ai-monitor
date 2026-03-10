@@ -1,0 +1,42 @@
+name: Daily Quant Scan
+
+on:
+  schedule:
+    - cron: '0 2 * * *'   # 02:00 UTC daily (10:00 HKT)
+  workflow_dispatch:        # manual trigger from GitHub UI
+
+jobs:
+  scan:
+    name: Run scanner
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Start scanner machine
+        id: start
+        run: |
+          MACHINE_ID=$(flyctl machine list --app ai-monitor-scanner --json | jq -r '.[0].id')
+          echo "machine_id=$MACHINE_ID" >> "$GITHUB_OUTPUT"
+          flyctl machine start "$MACHINE_ID" --app ai-monitor-scanner
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Wait for scan to complete
+        run: |
+          MACHINE_ID="${{ steps.start.outputs.machine_id }}"
+          echo "Waiting for machine $MACHINE_ID to finish..."
+          for i in $(seq 1 58); do
+            STATE=$(flyctl machine status "$MACHINE_ID" --app ai-monitor-scanner --json | jq -r '.state')
+            echo "[$i/58] state=$STATE"
+            if [ "$STATE" = "stopped" ]; then
+              echo "Scan completed successfully."
+              exit 0
+            fi
+            sleep 30
+          done
+          echo "Timeout waiting for scan to complete."
+          exit 1
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

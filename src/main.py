@@ -195,7 +195,7 @@ def run_scan(config_path: str = "config.yaml"):
     if os.environ.get("AGENT_URL"):
         config.setdefault("agent", {})["url"] = os.environ["AGENT_URL"]
 
-    setup_logging(config["reports"]["log_dir"])
+    setup_logging(os.environ.get("LOG_DIR") or config["reports"]["log_dir"])
     logger.info("V1.9 Quant Radar starting")
 
     # Step 1: Load universe
@@ -204,7 +204,7 @@ def run_scan(config_path: str = "config.yaml"):
     logger.info(f"Universe: {len(tickers)} tickers, {len(target_buys)} target buys")
 
     # Step 2: Connect to market data
-    iv_db_path = config["data"]["iv_history_db"]
+    iv_db_path = os.environ.get("IV_DB_PATH") or config["data"]["iv_history_db"]
     os.makedirs(os.path.dirname(iv_db_path) or ".", exist_ok=True)
     provider = MarketDataProvider(
         ibkr_config=config.get("ibkr"),
@@ -268,7 +268,7 @@ def run_scan(config_path: str = "config.yaml"):
     dividend_pool_summary = None
     div_config = config.get("dividend_scanners", {})
     if div_config.get("enabled", False):
-        db_path = config.get("data", {}).get("dividend_db_path", "data/dividend_pool.db")
+        db_path = os.environ.get("DIVIDEND_DB_PATH") or config.get("data", {}).get("dividend_db_path", "data/dividend_pool.db")
         dividend_store = DividendStore(db_path)
         financial_service = FinancialServiceAnalyzer(
             enabled=True,
@@ -428,7 +428,7 @@ def run_scan(config_path: str = "config.yaml"):
     print(report)
 
     # Save to file
-    reports_dir = config["reports"]["output_dir"]
+    reports_dir = os.environ.get("REPORTS_DIR") or config["reports"]["output_dir"]
     os.makedirs(reports_dir, exist_ok=True)
     report_path = os.path.join(reports_dir, f"{today}_radar.txt")
     with open(report_path, "w") as f:
