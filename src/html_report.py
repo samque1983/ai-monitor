@@ -401,7 +401,7 @@ def _dividend_card(signal: Any) -> str:
     floor_downside_pct = signal.floor_downside_pct
     opt = signal.option_details
     if floor_price is not None:
-        cost_basis = (opt["strike"] - opt["bid"]) if opt else None
+        cost_basis = (opt["strike"] - opt["bid"]) if opt and not opt.get("sell_put_illiquid") else None
         cb_row = f'    <p>行权成本: ${cost_basis:.2f}</p>' if cost_basis is not None else ''
         warn = ''
         if cost_basis is not None and cost_basis > floor_price:
@@ -471,12 +471,17 @@ def _dividend_card(signal: Any) -> str:
         f"    <p>📈 现货买入: ${td.last_price:.2f} (股息率{cy:.2f}%)</p>",
     ]
 
-    if opt:
+    if opt and not opt.get("sell_put_illiquid"):
         combined = cy + opt["apy"]
         parts += [
             f"    <p>📊 Sell Put ${opt['strike']:.0f} Strike ({opt['dte']}DTE)</p>",
             f"    <p>Premium: ${opt['bid']:.2f} → 年化{opt['apy']:.1f}%</p>",
             f'    <p class="dc-combined">综合年化: {combined:.1f}%</p>',
+        ]
+    elif opt and opt.get("sell_put_illiquid"):
+        parts += [
+            f"    <p>📊 Sell Put ${opt['strike']:.0f} Strike ({opt['dte']}DTE)</p>",
+            f'    <p style="color:#e67e22">⚠️ 期权流动性不足 (价差{opt["spread_pct"]:.0f}%)，不建议操作</p>',
         ]
 
     parts += [
