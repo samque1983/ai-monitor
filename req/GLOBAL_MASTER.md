@@ -177,7 +177,10 @@ class TickerData:
 | Phase 2-IV | `archive/phase_2_iv.md` | ✅ 已实现 | IV Momentum (5-day), Earnings Gap Profiler |
 | Phase 2-Dividend | `archive/phase_2_high_dividend.md` | ✅ 已实现 | 高股息防御双打 — 每周标的池筛选 + 每日买入信号 + LLM防御性评分 |
 | Phase 3 | `archive/phase_3_clawhub.md` | ✅ 已实现 | ClawHub trading-navigator skill + Fly.io agent + 多LLM支持 |
-| Phase 4 | `req/phase_4_data_sources.md` | 📋 待实现 | 多数据源互备份 (Polygon / Tradier / yfinance) |
+| Phase 4 P1 | `req/phase_4_data_sources.md` | ✅ 已实现 | 多数据源互备份 — Polygon (价格+基本面) + Tradier (期权) + providers/ 包 |
+| Phase 4 P2 | `req/phase_4_data_sources.md` | ⏳ 待审批 | IBKR REST API (OAuth 2.0) — 等待 developer.ibkr.com 审批 |
+| Phase 5 | `req/phase_5_cloud_deployment.md` | 📋 待实现 | 云端部署 + Web Dashboard + OpenClaw/WhatsApp 集成 + Flex 仓位查询 |
+| Phase 6 | `req/phase_6_portfolio_risk.md` | 📋 待实现 | 仓位风险报告 — Flex 读仓位 + 17 维度风险分析 + AI 操作建议 |
 
 **注意**: 详细需求以各 Phase 文档为准,本索引仅供快速导航。
 
