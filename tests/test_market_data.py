@@ -557,6 +557,24 @@ class TestIBKROptionsChain:
                 assert len(result) == 1
 
 
+def test_get_options_chain_includes_ask_column(provider_no_ibkr):
+    """Options chain DataFrame must include ask column."""
+    with patch("yfinance.Ticker") as mock_yf:
+        mock_ticker = MagicMock()
+        mock_yf.return_value = mock_ticker
+        mock_ticker.options = ["2026-05-16"]
+        chain = MagicMock()
+        chain.puts = pd.DataFrame({
+            "strike": [50.0, 55.0],
+            "bid": [1.0, 1.5],
+            "ask": [1.2, 1.8],
+            "impliedVolatility": [0.3, 0.35],
+        })
+        mock_ticker.option_chain.return_value = chain
+        result = provider_no_ibkr.get_options_chain("AAPL", dte_min=30, dte_max=90)
+        assert "ask" in result.columns
+
+
 # ---------------------------------------------------------------------------
 # Task 1: PolygonProvider — price data
 # ---------------------------------------------------------------------------

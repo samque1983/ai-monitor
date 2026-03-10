@@ -437,7 +437,10 @@ class MarketDataProvider:
                 dte = (exp_date - today).days
                 if dte_min <= dte <= dte_max:
                     chain = t.option_chain(exp_str)
-                    puts = chain.puts[["strike", "bid", "impliedVolatility"]].copy()
+                    available = [c for c in ["strike", "bid", "ask", "impliedVolatility"] if c in chain.puts.columns]
+                    puts = chain.puts[available].copy()
+                    if "ask" not in puts.columns:
+                        puts["ask"] = 0.0
                     puts["dte"] = dte
                     puts["expiration"] = exp_date
                     results.append(puts)
