@@ -193,7 +193,10 @@ def scan_dividend_pool_weekly(
                     and 'Close' in price_df_5y.columns
                     and annual_dividend_ttm > 0
                 ):
-                    min_5y_price = float(price_df_5y['Close'].min())
+                    close_5y = price_df_5y['Close']
+                    if hasattr(close_5y, 'columns'):  # DataFrame (yfinance multi-level columns)
+                        close_5y = close_5y.iloc[:, 0]
+                    min_5y_price = float(close_5y.min())
                     if min_5y_price > 0:
                         max_yield_5y = round((annual_dividend_ttm / min_5y_price) * 100, 2)
             except Exception as e:
@@ -324,7 +327,10 @@ def scan_dividend_buy_signal(
                 logger.debug(f"{ticker}: No price data available, skipping")
                 continue
 
-            last_price = float(price_data['Close'].iloc[-1])
+            close_col = price_data['Close']
+            if hasattr(close_col, 'columns'):  # DataFrame (yfinance multi-level columns)
+                close_col = close_col.iloc[:, 0]
+            last_price = float(close_col.iloc[-1])
             if last_price <= 0:
                 logger.warning(f"{ticker}: Invalid last price {last_price}, skipping")
                 continue
@@ -618,7 +624,10 @@ def bootstrap_yield_history(
                 continue
 
             # 月末最后一个收盘价
-            monthly = price_df['Close'].resample('ME').last().dropna()
+            close_col = price_df['Close']
+            if hasattr(close_col, 'columns'):  # DataFrame (yfinance multi-level columns)
+                close_col = close_col.iloc[:, 0]
+            monthly = close_col.resample('ME').last().dropna()
             if monthly.empty:
                 continue
 
