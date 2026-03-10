@@ -564,3 +564,96 @@ def scan_dividend_sell_put(
     except Exception as e:
         logger.error(f"{ticker}: Error in scan_dividend_sell_put - {e}", exc_info=True)
         return None
+
+
+def bootstrap_yield_history(
+    tickers: List[str],
+    provider: "MarketDataProvider",
+    store: "DividendStore",
+) -> int:
+    """用历史价格+股息数据回溯填充 dividend_history 表，供分位数计算使用。
+
+    对每个 ticker：
+    1. 获取 5 年历史价格（日线），按月末重采样
+    2. 获取 5 年股息记录
+    3. 对每个月末，计算滚动 12 个月股息率 = 年度股息 / 月末价格 * 100
+    4. 写入 dividend_history（已存在则跳过，不重复写）
+
+    Returns:
+        int: 写入的数据点总数
+    """
+    import pandas as pd
+
+    total_saved = 0
+
+    for ticker in tickers:
+        try:
+            # 1. 获取5年价格，按月末重采样
+            price_df = provider.get_price_data(ticker, period='5y')
+            if price_df is None or price_df.empty or 'Close' not in price_df.columns:
+                logger.debug(f"{ticker}: No price data for yield history bootstrap")
+                continue
+
+            # 月末最后一个收盘价
+            monthly = price_df['Close'].resample('ME').last().dropna()
+            if monthly.empty:
+                continue
+
+            # 2. 获取5年股息记录
+            div_history = provider.get_dividend_history(ticker, years=5)
+            if not div_history:
+                logger.debug(f"{ticker}: No dividend history for bootstrap")
+                continue
+
+            # 转为 Series：index=date, value=amount
+            div_dates = []
+            div_amounts = []
+            for d in div_history:
+                raw = d['date']
+                if isinstance(raw, str):
+                    dt = datetime.fromisoformat(raw)
+                else:
+                    dt = datetime.combine(raw, datetime.min.time())
+                div_dates.append(dt)
+                div_amounts.append(float(d['amount']))
+            div_series = pd.Series(div_amounts, index=pd.DatetimeIndex(div_dates)).sort_index()
+
+            # 3. 对每个月末计算滚动12个月股息率
+            saved_count = 0
+            for month_end, price in monthly.items():
+                if price <= 0:
+                    continue
+                # 该月末前12个月的股息总和
+                window_start = month_end - pd.DateOffset(months=12)
+                trailing_divs = div_series[
+                    (div_series.index > window_start) & (div_series.index <= month_end)
+                ]
+                annual_div = float(trailing_divs.sum())
+                if annual_div <= 0:
+                    continue
+
+                yield_val = round(annual_div / float(price) * 100, 4)
+                record_date = month_end.date() if hasattr(month_end, 'date') else month_end
+
+                try:
+                    store.save_dividend_history(
+                        ticker=ticker,
+                        date=record_date,
+                        dividend_yield=yield_val,
+                        annual_dividend=annual_div,
+                        price=float(price),
+                    )
+                    saved_count += 1
+                except Exception:
+                    pass  # PRIMARY KEY conflict = already exists, skip
+
+            if saved_count > 0:
+                logger.info(f"{ticker}: Bootstrapped {saved_count} historical yield points")
+            total_saved += saved_count
+
+        except Exception as e:
+            logger.warning(f"{ticker}: yield history bootstrap failed - {e}")
+            continue
+
+    logger.info(f"Yield history bootstrap complete: {total_saved} points saved for {len(tickers)} tickers")
+    return total_saved

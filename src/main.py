@@ -22,7 +22,7 @@ from src.html_report import format_html_report
 from src.email_stub import send_email
 from src.dividend_store import DividendStore
 from src.financial_service import FinancialServiceAnalyzer
-from src.dividend_scanners import scan_dividend_pool_weekly, scan_dividend_buy_signal
+from src.dividend_scanners import scan_dividend_pool_weekly, scan_dividend_buy_signal, bootstrap_yield_history
 from src.card_engine import CardEngine
 
 logger = logging.getLogger(__name__)
@@ -292,6 +292,9 @@ def run_scan(config_path: str = "config.yaml"):
                 )
                 dividend_store.save_pool(weekly_results, version=str(today))
                 logger.info(f"Dividend pool updated: {len(weekly_results)} tickers (version={today})")
+                # Bootstrap historical yield data (runs once per weekly scan)
+                pool_tickers = [t.ticker for t in weekly_results]
+                bootstrap_yield_history(pool_tickers, provider, dividend_store)
 
             current_pool = dividend_store.get_pool_records()
             if current_pool:
