@@ -571,9 +571,22 @@ def test_scan_fetches_10_years_of_dividend_history(mock_provider, mock_fs, confi
 
 
 def _make_passing_provider_and_fs(forward_dividend_rate=2.40):
-    """Helper: create a mock provider + fs that produce a passing ticker."""
+    """Helper: create a mock provider + fs that produce a passing ticker.
+
+    TTM dividend = 4 × 0.60 = 2.40 (quarterly payments within last year).
+    min_5y_price = 100.0
+    expected max_yield_5y = (2.40 / 100.0) * 100 = 2.40
+    """
+    from datetime import datetime, timedelta as _td
     provider = MagicMock()
-    provider.get_dividend_history.return_value = _history_5yr()
+    # 4 quarterly dividends within the last year + older history to satisfy 5yr check
+    _today = datetime.now().date()
+    recent_divs = [
+        {"date": str(_today - _td(days=30 + i * 90)), "amount": 0.60}
+        for i in range(4)
+    ]
+    older_divs = [{"date": f"{year}-03-01", "amount": 1.0} for year in range(2021, 2025)]
+    provider.get_dividend_history.return_value = recent_divs + older_divs
     provider.get_fundamentals.return_value = {
         "dividend_yield": 3.5,
         "payout_ratio": 60.0,
@@ -584,16 +597,10 @@ def _make_passing_provider_and_fs(forward_dividend_rate=2.40):
         "company_name": "Test Co",
         "forward_dividend_rate": forward_dividend_rate,
     }
-    # Return a DataFrame with Close and Dividends columns for 5y price history
-    import numpy as np
+    # price data only needs Close column — Dividends column no longer required
     idx = pd.date_range(end="2026-03-09", periods=252 * 5, freq="B")
-    closes = [100.0] * len(idx)
-    dividends = [0.0] * len(idx)
-    # Put 4 quarterly dividend payments in the last 252 rows
-    for i in [-63, -126, -189, -252]:
-        dividends[i] = 0.60
     provider.get_price_data.return_value = pd.DataFrame(
-        {"Close": closes, "Dividends": dividends}, index=idx
+        {"Close": [100.0] * len(idx)}, index=idx
     )
 
     fs = MagicMock()

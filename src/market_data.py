@@ -648,6 +648,7 @@ class MarketDataProvider:
                 "dividend_yield": dividend_yield,
                 "company_name": company_name,
                 "forward_dividend_rate": info.get("forwardAnnualDividendRate"),
+                "dividendRate": info.get("dividendRate"),
             }
 
         except Exception as e:

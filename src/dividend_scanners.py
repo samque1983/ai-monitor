@@ -175,9 +175,15 @@ def scan_dividend_pool_weekly(
                 continue
 
             # Step 7: 获取 forward_dividend_rate
-            forward_dividend_rate = fundamentals.get("forward_dividend_rate")
+            # forwardAnnualDividendRate is unreliable in yfinance; fall back to dividendRate (TTM)
+            forward_dividend_rate = (
+                fundamentals.get("forward_dividend_rate")
+                or fundamentals.get("dividendRate")
+            )
 
-            # Step 8: 计算 max_yield_5y
+            # Step 8: 计算 max_yield_5y using TTM annual dividend / 5y min price
+            # Uses annual_dividend_ttm (already computed from dividend history) and
+            # 5y price data. No Dividends column needed — only Close is required.
             max_yield_5y = None
             try:
                 price_df_5y = provider.get_price_data(ticker, period='5y')
@@ -185,13 +191,11 @@ def scan_dividend_pool_weekly(
                     price_df_5y is not None
                     and not price_df_5y.empty
                     and 'Close' in price_df_5y.columns
-                    and 'Dividends' in price_df_5y.columns
+                    and annual_dividend_ttm > 0
                 ):
-                    # 252 trading days ≈ 1 calendar year
-                    price_ttm_dividends = price_df_5y['Dividends'].iloc[-252:].sum()
-                    min_5y_price = price_df_5y['Close'].min()
+                    min_5y_price = float(price_df_5y['Close'].min())
                     if min_5y_price > 0:
-                        max_yield_5y = (price_ttm_dividends / min_5y_price) * 100
+                        max_yield_5y = round((annual_dividend_ttm / min_5y_price) * 100, 2)
             except Exception as e:
                 logger.warning(f"{ticker}: Could not compute max_yield_5y - {e}")
 

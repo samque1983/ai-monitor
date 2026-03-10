@@ -389,13 +389,38 @@ def run_scan(config_path: str = "config.yaml"):
                 iv_momentum=iv_momentum,
                 dividend_signals=dividend_signals,
             )
-            req_lib.post(
-                f"{agent_url}/api/scan_results",
-                json={"scan_date": str(today), "results": agent_payload},
-                headers={"X-API-Key": agent_api_key},
-                timeout=10,
-            )
-            logger.info(f"Pushed {len(agent_payload)} signals to agent")
+            import json as _json, subprocess as _sub, os as _os
+            body = _json.dumps({"scan_date": str(today), "results": agent_payload})
+            # Try requests first; fall back to curl (uses OS keychain on macOS)
+            pushed = False
+            try:
+                ca_bundle = _os.environ.get("REQUESTS_CA_BUNDLE") or (
+                    "/etc/ssl/cert.pem" if _os.path.exists("/etc/ssl/cert.pem") else True
+                )
+                req_lib.post(
+                    f"{agent_url}/api/scan_results",
+                    json={"scan_date": str(today), "results": agent_payload},
+                    headers={"X-API-Key": agent_api_key},
+                    timeout=10,
+                    verify=ca_bundle,
+                )
+                pushed = True
+            except Exception as req_err:
+                logger.debug(f"requests push failed ({req_err}), trying curl fallback")
+                result = _sub.run(
+                    ["curl", "-sf", "-X", "POST",
+                     "-H", "Content-Type: application/json",
+                     "-H", f"X-API-Key: {agent_api_key}",
+                     "-d", body,
+                     f"{agent_url}/api/scan_results"],
+                    capture_output=True, text=True, timeout=15,
+                )
+                if result.returncode == 0:
+                    pushed = True
+                else:
+                    raise RuntimeError(f"curl push failed: {result.stderr}")
+            if pushed:
+                logger.info(f"Pushed {len(agent_payload)} signals to agent")
         except Exception as e:
             logger.warning(f"Agent push failed: {e}")
 
