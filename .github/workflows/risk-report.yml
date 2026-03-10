@@ -20,3 +20,10 @@ jobs:
           ACCOUNT_ALICE_FLEX_TOKEN: ${{ secrets.ACCOUNT_ALICE_FLEX_TOKEN }}
           ACCOUNT_ALICE_FLEX_QUERY_ID: ${{ secrets.ACCOUNT_ALICE_FLEX_QUERY_ID }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      - name: Upload risk report
+        uses: actions/upload-artifact@v4
+        with:
+          name: risk-report-${{ github.run_id }}
+          path: reports/risk_*.html
+          retention-days: 30

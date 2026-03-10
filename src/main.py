@@ -481,6 +481,12 @@ def run_risk_report(account_config, config):
     report.account_id = account_config.key
     html = generate_html_report(report)
     store.save_report(report, html)
+    reports_dir = os.environ.get("REPORTS_DIR", "reports")
+    os.makedirs(reports_dir, exist_ok=True)
+    html_path = os.path.join(reports_dir, f"risk_{account_config.key}_{report.report_date}.html")
+    with open(html_path, "w", encoding="utf-8") as f:
+        f.write(html)
+    print(f"Report saved: {html_path}")
     red = sum(1 for a in report.alerts if a.level == "red")
     yellow = sum(1 for a in report.alerts if a.level == "yellow")
     print(f"[{account_config.name}] NLV=${report.net_liquidation:,.0f} "
