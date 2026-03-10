@@ -350,3 +350,35 @@ def test_build_agent_payload_illiquid_option_details():
     assert entry["option_strike"] == pytest.approx(60.0)
     assert entry["option_dte"] == 30
     assert entry["option_spread_pct"] == pytest.approx(85.0)
+
+
+def test_build_agent_payload_sell_put_has_liquidity_fields():
+    """Sell put payload must include liquidity fields from SellPutSignal."""
+    from src.main import _build_agent_payload
+    from src.scanners import SellPutSignal
+    from unittest.mock import MagicMock
+
+    signal = SellPutSignal(
+        ticker="AAPL", strike=150.0, bid=1.0, ask=1.2, mid=1.1,
+        spread_pct=18.2, dte=45,
+        expiration=date.today() + timedelta(days=45),
+        apy=5.9, earnings_risk=False, liquidity_warn=False,
+    )
+
+    ticker = MagicMock()
+    ticker.ticker = "AAPL"
+    ticker.earnings_date = None
+    ticker.days_to_earnings = None
+
+    payload = _build_agent_payload(
+        sell_puts=[(signal, ticker)],
+        iv_low=[], iv_high=[], ma200_bull=[],
+        ma200_bear=[], leaps=[], earnings_gaps=[], earnings_gap_ticker_map={},
+        iv_momentum=[], dividend_signals=[],
+    )
+
+    sp = next(p for p in payload if p["signal_type"] == "sell_put")
+    assert sp["ask"] == 1.2
+    assert sp["mid"] == 1.1
+    assert sp["spread_pct"] == 18.2
+    assert sp["liquidity_warn"] is False
