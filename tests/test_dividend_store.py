@@ -224,8 +224,9 @@ def test_analysis_text_cache(tmp_path):
     from src.dividend_store import DividendStore
     db_path = str(tmp_path / "test.db")
     store = DividendStore(db_path)
-    store.save_analysis_text("KO", "KO is a moat stock.")
-    assert store.get_analysis_text("KO") == "KO is a moat stock."
+    text = "确定性业务：KO is a moat stock. → $55-60\n增量新业务：暂无明显增量业务 → $62\n估值区间：基于股息率定价 → $55-65"
+    store.save_analysis_text("KO", text)
+    assert store.get_analysis_text("KO") == text
     assert store.get_analysis_text("MSFT") is None
     store.close()
 

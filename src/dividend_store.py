@@ -308,7 +308,7 @@ class DividendStore:
         self.conn.commit()
 
     def get_analysis_text(self, ticker: str) -> Optional[str]:
-        """Return cached analysis text if not expired, else None."""
+        """Return cached analysis text if not expired and in current format, else None."""
         cursor = self.conn.cursor()
         cursor.execute(
             "SELECT text, expires FROM analysis_cache WHERE ticker=?", (ticker,)
@@ -318,6 +318,9 @@ class DividendStore:
             return None
         text, expires = row
         if expires < date.today().isoformat():
+            return None
+        # Invalidate old-format entries that don't include price ranges (→ marker)
+        if "→" not in text:
             return None
         return text
 
