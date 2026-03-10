@@ -1,0 +1,22 @@
+name: Daily Risk Report
+on:
+  schedule:
+    - cron: "0 22 * * 1-5"   # Mon-Fri 22:00 UTC (6pm ET, post-market)
+  workflow_dispatch:
+jobs:
+  risk-report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run portfolio risk report
+        run: python3 -m src.main --risk-report --all-accounts
+        env:
+          ACCOUNT_ALICE_NAME: ${{ secrets.ACCOUNT_ALICE_NAME }}
+          ACCOUNT_ALICE_FLEX_TOKEN: ${{ secrets.ACCOUNT_ALICE_FLEX_TOKEN }}
+          ACCOUNT_ALICE_FLEX_QUERY_ID: ${{ secrets.ACCOUNT_ALICE_FLEX_QUERY_ID }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

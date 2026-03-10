@@ -1,3 +1,4 @@
+import argparse
 import os
 import sys
 import time
@@ -8,6 +9,10 @@ from typing import Dict, List, Tuple
 from src.config import load_config
 from src.data_loader import fetch_universe
 from src.market_data import MarketDataProvider
+from src.portfolio_risk import load_account_configs, PortfolioRiskAnalyzer
+from src.portfolio_report import generate_html_report
+from src.risk_store import RiskStore
+from src.flex_client import FlexClient
 from src.data_engine import TickerData, build_ticker_data
 from src.scanners import (
     scan_iv_extremes,
@@ -466,6 +471,74 @@ def run_scan(config_path: str = "config.yaml"):
     logger.info(f"Scan completed in {elapsed:.1f}s")
 
 
+def run_risk_report(account_config, config):
+    """Fetch Flex data, analyze risk, save HTML report."""
+    store = RiskStore()
+    client = FlexClient(token=account_config.flex_token, query_id=account_config.flex_query_id)
+    positions, account_summary = client.fetch()
+    analyzer = PortfolioRiskAnalyzer()
+    report = analyzer.analyze(positions, account_summary)
+    report.account_id = account_config.key
+    html = generate_html_report(report)
+    store.save_report(report, html)
+    red = sum(1 for a in report.alerts if a.level == "red")
+    yellow = sum(1 for a in report.alerts if a.level == "yellow")
+    print(f"[{account_config.name}] NLV=${report.net_liquidation:,.0f} "
+          f"cushion={report.cushion*100:.1f}% "
+          f"alerts: {red} red / {yellow} yellow")
+
+
+def run_all_accounts(config):
+    """Run risk report for all configured accounts."""
+    configs = load_account_configs()
+    if not configs:
+        print("No accounts configured. Set ACCOUNT_*_FLEX_TOKEN env vars.")
+        return
+    for acct in configs:
+        try:
+            run_risk_report(acct, config)
+        except Exception as e:
+            print(f"[{acct.key}] Error: {e}")
+
+
+def run_risk_history(account_id: str, days: int = 7):
+    """Print recent cushion/P&L history for an account."""
+    store = RiskStore()
+    history = store.get_history(account_id, days=days)
+    if not history:
+        print(f"No history found for account '{account_id}'")
+        return
+    print(f"{'Date':<12} {'Cushion':>8} {'P&L':>10} {'NLV':>12}")
+    print("-" * 44)
+    for row in history:
+        print(f"{row['report_date']:<12} {row['cushion']*100:>7.1f}% "
+              f"${row['total_pnl']:>9,.0f} ${row['net_liquidation']:>11,.0f}")
+
+
 if __name__ == "__main__":
-    config_file = sys.argv[1] if len(sys.argv) > 1 else "config.yaml"
-    run_scan(config_file)
+    parser = argparse.ArgumentParser(description="V1.9 Quant Radar")
+    parser.add_argument("config", nargs="?", default="config.yaml", help="Config file path")
+    parser.add_argument("--risk-report", action="store_true", help="Run portfolio risk report")
+    parser.add_argument("--all-accounts", action="store_true", help="Run for all configured accounts")
+    parser.add_argument("--risk-history", action="store_true", help="Show risk history")
+    parser.add_argument("--account", type=str, default="", help="Account key (e.g. ALICE)")
+    parser.add_argument("--days", type=int, default=7, help="History days")
+    args = parser.parse_args()
+
+    if args.risk_report:
+        cfg = load_config(args.config)
+        if args.all_accounts:
+            run_all_accounts(cfg)
+        elif args.account:
+            configs = load_account_configs()
+            acct = next((c for c in configs if c.key == args.account.upper()), None)
+            if acct:
+                run_risk_report(acct, cfg)
+            else:
+                print(f"Account '{args.account}' not found in env vars.")
+        else:
+            print("Specify --account NAME or --all-accounts")
+    elif args.risk_history:
+        run_risk_history(args.account.upper() if args.account else "", days=args.days)
+    else:
+        run_scan(args.config)

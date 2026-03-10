@@ -32,12 +32,17 @@ Every source file must have a corresponding test file:
 - After implementation: run test → see GREEN (100% pass).
 - On commit: all tests must pass.
 
-### 5. UI Standard
-<!-- Define your design system reference, e.g.:
-All frontend code must follow the design system defined in `docs/specs/design_system.md`:
-- Design tokens in CSS (no magic numbers).
-- Only the bridge layer imports from logic/data. Components are pure renderers.
--->
+### 5. UI Standard — HTML Design System
+
+**ALL HTML-generating modules must follow `docs/specs/html_design_system.md`.**
+
+Key rules (read the spec for full details):
+- Dark theme only. All colors via CSS variables from the token set — never hardcode color values.
+- Google Fonts required: `Instrument Serif italic` (titles) + `DM Sans` (body) + `DM Mono` (all numbers/tickers/dates).
+- Staggered `fadeUp` animation on cards (60ms increment per card, CSS-only).
+- 8px spacing grid. Card border-radius `var(--r12)`. Max-width 720px.
+- Reference implementation: `src/portfolio_report.py`.
+- When creating or modifying any HTML module, read `docs/specs/html_design_system.md` first.
 
 ### 6. Spec-to-Code Mapping
 
@@ -45,6 +50,7 @@ Each spec in `docs/specs/` maps 1:1 to source modules:
 
 | Spec File | Source Modules | Purpose |
 |-----------|----------------|---------|
+| `docs/specs/html_design_system.md` | ALL `*_report.py`, `*_page.py` HTML modules | Design system — read before any HTML work |
 | `docs/specs/data_pipeline.md` | `data_loader.py`, `market_data.py`, `iv_store.py` | 数据获取、市场分类、IV 存储 |
 | `docs/specs/indicators.md` | `data_engine.py` | 技术指标计算引擎 |
 | `docs/specs/scanners.md` | `scanners.py` | 扫描器逻辑 (Phase 1 + Phase 2) |

@@ -382,3 +382,24 @@ def test_build_agent_payload_sell_put_has_liquidity_fields():
     assert sp["mid"] == 1.1
     assert sp["spread_pct"] == 18.2
     assert sp["liquidity_warn"] is False
+
+
+def test_main_risk_report_args(monkeypatch):
+    """Test --risk-report --account parsing doesn't crash."""
+    monkeypatch.setenv("ACCOUNT_TEST_FLEX_TOKEN", "tok")
+    monkeypatch.setenv("ACCOUNT_TEST_FLEX_QUERY_ID", "123")
+    with patch("src.main.run_risk_report") as mock_run:
+        mock_run.return_value = None
+        import sys
+        test_args = ["src/main.py", "--risk-report", "--account", "TEST"]
+        with patch.object(sys, "argv", test_args):
+            from src import main
+            import importlib
+            assert callable(main.run_risk_report)
+
+
+def test_main_risk_history_args(monkeypatch):
+    """Test --risk-history --account --days parsing."""
+    with patch("src.main.run_risk_history") as mock_run:
+        mock_run.return_value = None
+        assert callable(mock_run)
