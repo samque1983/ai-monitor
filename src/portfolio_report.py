@@ -196,9 +196,9 @@ body {{
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(255,255,255,0.3);
+  color: rgba(255,255,255,0.45);
 }}
-.page-date {{ font-size: 12px; color: rgba(255,255,255,0.3); }}
+.page-date {{ font-size: 12px; color: rgba(255,255,255,0.45); }}
 
 h1 {{
   font-size: 32px;
@@ -265,7 +265,7 @@ h1 {{
 }}
 .stat-note {{
   font-size: 11px;
-  color: rgba(255,255,255,0.3);
+  color: rgba(255,255,255,0.48);
   line-height: 1.5;
   margin-top: 5px;
 }}
@@ -343,8 +343,8 @@ h1 {{
 .tech-detail {{
   font-size: 11px;
   font-family: "SF Mono", "Menlo", monospace;
-  color: rgba(255,255,255,0.28);
-  background: rgba(255,255,255,0.04);
+  color: rgba(255,255,255,0.45);
+  background: rgba(255,255,255,0.06);
   display: inline-block;
   padding: 3px 8px;
   border-radius: 5px;
@@ -359,7 +359,7 @@ h1 {{
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(255,255,255,0.22);
+  color: rgba(255,255,255,0.38);
   margin-bottom: 6px;
 }}
 
@@ -399,7 +399,7 @@ h1 {{
 }}
 .opt-con {{
   font-size: 11px;
-  color: rgba(255,255,255,0.28);
+  color: rgba(255,255,255,0.44);
   line-height: 1.5;
 }}
 
