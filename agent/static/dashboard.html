@@ -538,7 +538,58 @@ function cardDividend(s) {
     </div>
     <div class="dc-dim">
       <h4>2️⃣ 风险分级</h4>
-      <p>派息率: ${p.payout_ratio != null ? p.payout_ratio + '%' + (p.payout_ratio > 80 ? ' <span style="color:#ff9f43">⚠️ 接近警戒线</span>' : ' ✓') : 'N/A'}</p>
+      ${(() => {
+        const rows = [];
+
+        // 价格下行风险
+        if (p.floor_price != null && p.floor_downside_pct != null) {
+          const buf = p.floor_downside_pct;  // positive = stock is X% above floor
+          const priceRisk = buf >= 40 ? '低' : buf >= 20 ? '中' : '高';
+          const priceColor = buf >= 40 ? '#4caf50' : buf >= 20 ? '#ff9f43' : '#ef5350';
+          rows.push(`<div class="row" style="margin:3px 0">
+            <span class="label" style="color:#a0a0c0">价格下行风险</span>
+            <span class="value" style="color:${priceColor}">${priceRisk}</span>
+          </div>
+          <p style="font-size:11px;color:#8080a0;margin:0 0 6px">
+            极值底价 $${p.floor_price.toFixed(2)}，当前价高出 ${buf.toFixed(1)}%（跌至底价需下跌 ${buf.toFixed(1)}%）
+          </p>`);
+        } else {
+          rows.push(`<p style="font-size:12px;color:#8080a0">价格底线数据暂缺</p>`);
+        }
+
+        // 派息切割风险
+        if (p.payout_ratio != null) {
+          const pr = p.payout_ratio;
+          const divRisk = pr > 100 ? '极高' : pr > 80 ? '偏高' : pr > 60 ? '中' : '低';
+          const divColor = pr > 100 ? '#ef5350' : pr > 80 ? '#ff9f43' : pr > 60 ? '#ffd54f' : '#4caf50';
+          const divHint = pr > 100
+            ? `派息率 ${pr}%，超过净利润，依赖借债或动用留存分红`
+            : pr > 80
+            ? `派息率 ${pr}%，盈利压力下有削减风险`
+            : pr > 60
+            ? `派息率 ${pr}%，尚在合理区间`
+            : `派息率 ${pr}%，分红覆盖充裕`;
+          rows.push(`<div class="row" style="margin:3px 0">
+            <span class="label" style="color:#a0a0c0">派息切割风险</span>
+            <span class="value" style="color:${divColor}">${divRisk}</span>
+          </div>
+          <p style="font-size:11px;color:#8080a0;margin:0 0 6px">${divHint}</p>`);
+        }
+
+        // 综合质量风险
+        if (p.quality_score != null) {
+          const qs = p.quality_score;
+          const qRisk = qs >= 80 ? '低' : qs >= 65 ? '中' : '偏高';
+          const qColor = qs >= 80 ? '#4caf50' : qs >= 65 ? '#ff9f43' : '#ef5350';
+          rows.push(`<div class="row" style="margin:3px 0">
+            <span class="label" style="color:#a0a0c0">综合质量风险</span>
+            <span class="value" style="color:${qColor}">${qRisk}</span>
+          </div>
+          <p style="font-size:11px;color:#8080a0;margin:0 0 2px">评分 ${qs}/100（含连续派息年数、护城河、负债等五维评估）</p>`);
+        }
+
+        return rows.join('');
+      })()}
     </div>
     <div class="dc-dim">
       <h4>3️⃣ 关键事件</h4>
