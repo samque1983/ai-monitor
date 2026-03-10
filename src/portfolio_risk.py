@@ -112,6 +112,15 @@ class PortfolioRiskAnalyzer:
     def _sign(self, x: float) -> float:
         return 1.0 if x >= 0 else -1.0
 
+    def _has_protective_long_put(self, short_p, positions) -> bool:
+        """Return True if short_p has a long put at same (symbol, expiry) with lower strike."""
+        return any(
+            o.symbol == short_p.symbol and o.expiry == short_p.expiry
+            and o.asset_category == "OPT" and o.put_call == "P"
+            and o.position > 0 and o.strike < short_p.strike
+            for o in positions
+        )
+
     @staticmethod
     def _dte(expiry_str: str) -> Optional[int]:
         """Compute days-to-expiry from 'YYYYMMDD' string. Returns None if blank."""
@@ -122,10 +131,17 @@ class PortfolioRiskAnalyzer:
         return (exp - _date.today()).days
 
     def _dim1_dollar_delta(self, positions, account) -> List[RiskAlert]:
-        total_dollar_delta = sum(
-            p.delta * p.multiplier * abs(p.position) * p.mark_price
-            for p in positions
-        )
+        # Build underlying price map from stock positions
+        underlying_prices = {
+            p.symbol: p.mark_price for p in positions if p.asset_category == "STK"
+        }
+        total_dollar_delta = 0.0
+        for p in positions:
+            if p.asset_category == "STK":
+                total_dollar_delta += p.position * p.mark_price
+            elif p.asset_category == "OPT":
+                u_price = underlying_prices.get(p.symbol, p.strike)
+                total_dollar_delta += p.position * p.delta * p.multiplier * u_price
         nlv = account.net_liquidation
         if nlv <= 0:
             return []
@@ -214,7 +230,11 @@ class PortfolioRiskAnalyzer:
             return []
         notional_by_symbol: dict = {}
         for p in positions:
-            notional = abs(p.position) * p.mark_price * p.multiplier
+            if p.asset_category == "STK":
+                notional = abs(p.position) * p.mark_price * p.multiplier
+            else:
+                # Options: use strike-based notional (actual max exposure at assignment)
+                notional = p.strike * p.multiplier * abs(p.position)
             notional_by_symbol[p.symbol] = notional_by_symbol.get(p.symbol, 0) + notional
         alerts = []
         for symbol, notional in notional_by_symbol.items():
@@ -290,11 +310,14 @@ class PortfolioRiskAnalyzer:
                 reasons.append(f"已实值 {pct:.1f}%")
             if short_dte:
                 reasons.append(f"DTE {dte} 天")
+            is_spread = (p.position < 0 and self._has_protective_long_put(p, positions))
+            level = "yellow" if is_spread else "red"
             alerts.append(RiskAlert(
                 dimension=7,
-                level="red",
+                level=level,
                 ticker=p.symbol,
-                detail=f"{p.symbol} {p.put_call}{p.strike:.0f} — {', '.join(reasons)}",
+                detail=f"{p.symbol} {p.put_call}{p.strike:.0f} — {', '.join(reasons)}"
+                       + (" [Spread]" if is_spread else ""),
                 options=[
                     "A. 立即平仓，接受亏损止损",
                     "B. 接受指派，以行权价承接底层股票",
@@ -309,10 +332,23 @@ class PortfolioRiskAnalyzer:
         for p in positions:
             if not (p.asset_category == "OPT" and p.put_call == "P" and p.position < 0):
                 continue
-            if p.strike <= 0 or p.mark_price <= 0:
+            if p.strike <= 0:
                 continue
-            collected = abs(p.cost_basis_price)
-            current_price = abs(p.mark_price)
+            # Detect spread: find a long put at same (symbol, expiry) with lower strike
+            protective = next((
+                o for o in positions
+                if o.symbol == p.symbol and o.expiry == p.expiry
+                and o.asset_category == "OPT" and o.put_call == "P"
+                and o.position > 0 and o.strike < p.strike
+            ), None)
+            if protective:
+                net_received = abs(p.cost_basis_price) - abs(protective.cost_basis_price)
+                net_current = max(abs(p.mark_price) - abs(protective.mark_price), 0)
+                collected = net_received
+                current_price = net_current
+            else:
+                collected = abs(p.cost_basis_price)
+                current_price = abs(p.mark_price)
             if collected <= 0:
                 continue
             realized_pct = (collected - current_price) / collected

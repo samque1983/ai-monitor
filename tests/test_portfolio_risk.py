@@ -247,6 +247,125 @@ def test_generate_risk_suggestion_fallback_on_exception():
     assert len(result) > 0
 
 
+# ---------------------------------------------------------------------------
+# Bug fixes: dim1 sign/price, dim5 notional, dim7/dim8 spread detection
+# ---------------------------------------------------------------------------
+
+def test_dim1_short_put_positive_delta():
+    """Short puts must contribute positive dollar delta (correct direction)."""
+    # Underlying stock provides the price reference
+    stk = _make_position(symbol="AAPL", asset_category="STK",
+                         position=1, mark=180, delta=1.0, multiplier=1)
+    # Short 5 AAPL 150P, delta=-0.30 → contribution = (-5)×(-0.30)×100×180 = +27,000
+    opt = _make_position(symbol="AAPL", asset_category="OPT", put_call="P",
+                         strike=150, position=-5, multiplier=100,
+                         mark=2.5, delta=-0.30)
+    account = _make_account(nlv=10000)
+    report = _analyze_no_mdp([stk, opt], account)
+    # total ≈ 180 + 27,000 = 27,180 / 10,000 → red
+    dim1 = [a for a in report.alerts if a.dimension == 1]
+    assert len(dim1) == 1
+    assert dim1[0].level == "red"
+
+
+def test_dim1_long_put_reduces_delta():
+    """Long puts must subtract from dollar delta (hedging)."""
+    # 100 shares AAPL + long 1 ATM put should reduce net delta vs unhedged
+    stk = _make_position(symbol="AAPL", asset_category="STK",
+                         position=100, mark=180, delta=1.0, multiplier=1)
+    # Long 1 AAPL 180P with delta=-0.50 → contribution = (+1)×(-0.50)×100×180 = -9,000
+    opt = _make_position(symbol="AAPL", asset_category="OPT", put_call="P",
+                         strike=180, position=1, multiplier=100,
+                         mark=5.0, delta=-0.50)
+    account = _make_account(nlv=20000)
+    report_hedged = _analyze_no_mdp([stk, opt], account)
+    report_unhedged = _analyze_no_mdp([stk], account)
+    # Unhedged: 100×180 / 20,000 = 90% → yellow
+    assert any(a.dimension == 1 for a in report_unhedged.alerts)
+    # Hedged: (18,000 - 9,000) / 20,000 = 45% → no alert
+    assert not any(a.dimension == 1 for a in report_hedged.alerts)
+
+
+def test_dim5_option_uses_notional_not_market_value():
+    """Options concentration uses strike×multiplier×position, not tiny option premium."""
+    # Short 5 AAPL 150P, mark=$2.5 (option premium)
+    # OLD notional = 5×2.5×100 = 1,250 → 1.25% of 100k → no alert
+    # NEW notional = 5×150×100 = 75,000 → 75% of 100k → alert
+    opt = _make_position(symbol="AAPL", asset_category="OPT", put_call="P",
+                         strike=150, position=-5, multiplier=100, mark=2.5)
+    account = _make_account(nlv=100000)
+    report = _analyze_no_mdp([opt], account)
+    dim5 = [a for a in report.alerts if a.dimension == 5]
+    assert len(dim5) >= 1
+    assert dim5[0].ticker == "AAPL"
+
+
+def test_dim7_spread_downgraded_to_yellow():
+    """ITM short put in a put spread should be yellow, not red (max loss is capped)."""
+    expiry = (date.today() + timedelta(days=8)).strftime("%Y%m%d")
+    short_put = _make_position(symbol="NVDA", asset_category="OPT", put_call="P",
+                               strike=110, mark=107, position=-1, multiplier=100,
+                               expiry=expiry, delta=-0.65, gamma=0.08)
+    long_put = _make_position(symbol="NVDA", asset_category="OPT", put_call="P",
+                              strike=100, mark=107, position=+1, multiplier=100,
+                              expiry=expiry, delta=-0.20, gamma=0.05)
+    account = _make_account()
+    report = _analyze_no_mdp([short_put, long_put], account)
+    dim7 = [a for a in report.alerts if a.dimension == 7 and a.ticker == "NVDA"]
+    assert len(dim7) >= 1
+    assert dim7[0].level == "yellow"  # downgraded from red
+
+
+def test_dim7_naked_short_put_still_red():
+    """Naked ITM short put (no protection) must remain red."""
+    expiry = (date.today() + timedelta(days=8)).strftime("%Y%m%d")
+    short_put = _make_position(symbol="NVDA", asset_category="OPT", put_call="P",
+                               strike=110, mark=107, position=-1, multiplier=100,
+                               expiry=expiry, delta=-0.65)
+    account = _make_account()
+    report = _analyze_no_mdp([short_put], account)
+    dim7 = [a for a in report.alerts if a.dimension == 7 and a.ticker == "NVDA"]
+    assert len(dim7) >= 1
+    assert dim7[0].level == "red"
+
+
+def test_dim8_spread_uses_net_premium():
+    """Put spread cushion calculated on net premium — avoids false positive."""
+    expiry = (date.today() + timedelta(days=17)).strftime("%Y%m%d")
+    # Short 2 AAPL 177P, received $25 each, now worth $5.5 → 78% alone (would fire)
+    short_put = _make_position(symbol="AAPL", asset_category="OPT", put_call="P",
+                               strike=177, position=-2, multiplier=100,
+                               expiry=expiry, cost_basis=25.0, mark=5.5)
+    # Long 2 AAPL 165P, paid $8 each, now worth $1.0
+    long_put = _make_position(symbol="AAPL", asset_category="OPT", put_call="P",
+                              strike=165, position=+2, multiplier=100,
+                              expiry=expiry, cost_basis=8.0, mark=1.0)
+    account = _make_account()
+    # Net received = 25 - 8 = 17, net current = 5.5 - 1.0 = 4.5
+    # Realized % = (17 - 4.5) / 17 = 73.5% < 75% → no alert
+    report = _analyze_no_mdp([short_put, long_put], account)
+    dim8 = [a for a in report.alerts if a.dimension == 8 and a.ticker == "AAPL"]
+    assert len(dim8) == 0
+
+
+def test_dim8_spread_fires_when_net_pct_high():
+    """Put spread cushion alert fires when net realized % > 75%."""
+    expiry = (date.today() + timedelta(days=17)).strftime("%Y%m%d")
+    # Short 2 AAPL 177P, received $25, now $1 → net realized very high
+    short_put = _make_position(symbol="AAPL", asset_category="OPT", put_call="P",
+                               strike=177, position=-2, multiplier=100,
+                               expiry=expiry, cost_basis=25.0, mark=1.0)
+    long_put = _make_position(symbol="AAPL", asset_category="OPT", put_call="P",
+                              strike=165, position=+2, multiplier=100,
+                              expiry=expiry, cost_basis=8.0, mark=0.2)
+    # Net received = 25 - 8 = 17, net current = 1.0 - 0.2 = 0.8
+    # Realized % = (17 - 0.8) / 17 = 95% > 75% → alert
+    account = _make_account()
+    report = _analyze_no_mdp([short_put, long_put], account)
+    dim8 = [a for a in report.alerts if a.dimension == 8 and a.ticker == "AAPL"]
+    assert len(dim8) >= 1
+
+
 def test_generate_risk_suggestion_no_key_uses_fallback():
     alert = RiskAlert(dimension=1, level="red", ticker="PORTFOLIO",
                       detail="Delta 120%", options=[])
