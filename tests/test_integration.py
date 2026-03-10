@@ -398,6 +398,42 @@ def test_main_risk_report_args(monkeypatch):
             assert callable(main.run_risk_report)
 
 
+def test_run_risk_report_env_override(monkeypatch):
+    """ACCOUNT_*_NLV and ACCOUNT_*_CUSHION env vars override Flex-parsed zeros."""
+    monkeypatch.setenv("ACCOUNT_TEST_NLV", "500000")
+    monkeypatch.setenv("ACCOUNT_TEST_CUSHION", "0.32")
+    monkeypatch.setenv("ACCOUNT_TEST_MAINT_MARGIN", "85000")
+
+    from src.portfolio_risk import AccountConfig
+    acct = AccountConfig(key="TEST", name="Test", code="",
+                         flex_token="tok", flex_query_id="123")
+
+    from src.flex_client import PositionRecord, AccountSummary
+    mock_summary = AccountSummary(net_liquidation=0, gross_position_value=0,
+                                  init_margin_req=0, maint_margin_req=0,
+                                  excess_liquidity=0, available_funds=0, cushion=0)
+
+    with patch("src.main.FlexClient") as MockFlex, \
+         patch("src.main.PortfolioRiskAnalyzer") as MockAnalyzer, \
+         patch("src.main.generate_html_report", return_value="<html/>"), \
+         patch("src.main.RiskStore"):
+        MockFlex.return_value.fetch.return_value = ([], mock_summary)
+        MockAnalyzer.return_value.analyze.return_value = MagicMock(
+            account_id="", report_date="2026-03-11",
+            net_liquidation=0, total_pnl=0, cushion=0, alerts=[]
+        )
+        from src.main import run_risk_report
+        from src.config import load_config
+        run_risk_report(acct, {})
+
+    # Verify the summary passed to analyze() has overridden values
+    call_args = MockAnalyzer.return_value.analyze.call_args
+    passed_summary = call_args[0][1]
+    assert passed_summary.net_liquidation == 500000.0
+    assert passed_summary.cushion == pytest.approx(0.32)
+    assert passed_summary.maint_margin_req == 85000.0
+
+
 def test_main_risk_history_args(monkeypatch):
     """Test --risk-history --account --days parsing."""
     with patch("src.main.run_risk_history") as mock_run:

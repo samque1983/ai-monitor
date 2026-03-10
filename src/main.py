@@ -476,6 +476,16 @@ def run_risk_report(account_config, config):
     store = RiskStore()
     client = FlexClient(token=account_config.flex_token, query_id=account_config.flex_query_id)
     positions, account_summary = client.fetch()
+
+    # Manual overrides via env vars (Option D): ACCOUNT_{KEY}_NLV / _CUSHION / _MAINT_MARGIN
+    key = account_config.key
+    if nlv := os.environ.get(f"ACCOUNT_{key}_NLV"):
+        account_summary.net_liquidation = float(nlv)
+    if cushion := os.environ.get(f"ACCOUNT_{key}_CUSHION"):
+        account_summary.cushion = float(cushion)
+    if maint := os.environ.get(f"ACCOUNT_{key}_MAINT_MARGIN"):
+        account_summary.maint_margin_req = float(maint)
+
     analyzer = PortfolioRiskAnalyzer()
     report = analyzer.analyze(positions, account_summary)
     report.account_id = account_config.key
