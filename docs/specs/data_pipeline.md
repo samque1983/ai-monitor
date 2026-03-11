@@ -168,10 +168,11 @@ All providers live in `src/providers/` package and inherit from `BaseProvider`:
 
 ```
 src/providers/
-  __init__.py          # exports BaseProvider, PolygonProvider, TradierProvider
+  __init__.py          # exports BaseProvider, PolygonProvider, TradierProvider, AkshareProvider
   base.py              # BaseProvider ABC (default no-op methods)
   polygon.py           # PolygonProvider
   tradier.py           # TradierProvider
+  akshare.py           # AkshareProvider
 ```
 
 **BaseProvider** (`src/providers/base.py`)
@@ -197,15 +198,28 @@ New providers extend `BaseProvider` and override only the methods they support.
 - Auth: `Authorization: Bearer {api_key}`, `Accept: application/json`
 - Activated via: `TRADIER_API_KEY` env var or `config.data_sources.tradier.api_key`
 
+**AkshareProvider** (`src/providers/akshare.py`)
+- `get_price_data(ticker, period) → pd.DataFrame` — daily adjusted OHLCV for CN/HK/US via `ak.stock_zh_a_hist` / `ak.stock_hk_hist` / `ak.stock_us_hist`
+- `get_fundamentals(ticker) → Optional[Dict]` — CN: name/industry/dividend_yield via `stock_individual_info_em` + `stock_zh_a_lg_indicator`; HK: name/industry via `stock_hk_company_profile_em`; US: returns None (not supported)
+- `get_options_chain(ticker, dte_min, dte_max) → pd.DataFrame` — CN ETF options (50ETF/300ETF/科创50) via `option_finance_board`; US via `option_current_em` (best-effort)
+- Ticker normalization: `600519.SS` → `600519`; `0700.HK` → `00700` (5-digit pad)
+- No API key required. Activated via: `config.data_sources.akshare.enabled` (default `true`)
+- CN ETF option map: `510050`→`50ETF`, `510300`→`300ETF`, `588000`→`科创50`, `159901`→`深100ETF`
+
 ### Priority Chains
 
-| Method | US Market | HK/CN Market |
-|--------|-----------|--------------|
-| `get_price_data` | IBKR → Polygon → yfinance | yfinance |
-| `get_options_chain` | IBKR → Tradier → yfinance | skip |
-| `get_fundamentals` | Polygon+yfinance merge → yfinance fallback | yfinance |
+| Method | US Market | HK Market | CN Market |
+|--------|-----------|-----------|-----------|
+| `get_price_data` | IBKR → Polygon → AKShare → yfinance | IBKR → AKShare → yfinance | IBKR → AKShare → yfinance |
+| `get_options_chain` | IBKR → Tradier → AKShare → yfinance | skip | AKShare (ETF only) |
+| `get_fundamentals` | Polygon+yfinance merge | AKShare → yfinance | AKShare → yfinance |
 
-**Fundamentals merge:** Polygon provides `company_name`, `industry`, `roe`, `free_cash_flow`. yfinance fills in `sector`, `payout_ratio`, `debt_to_equity`, `dividend_yield`.
+**`should_skip_options` rules:**
+- HK: always skip (no options market)
+- CN: skip unless ticker is in `_CN_ETF_OPTION_MAP` (50ETF/300ETF/科创50/深100ETF)
+- US: never skip
+
+**Fundamentals merge (US):** Polygon provides `company_name`, `industry`, `roe`, `free_cash_flow`. yfinance fills in `sector`, `payout_ratio`, `debt_to_equity`, `dividend_yield`.
 
 ---
 
