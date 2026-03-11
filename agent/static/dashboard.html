@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>量化扫描雷达</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -15,15 +15,15 @@
   --surface:   #101010;
   --surface-2: #181818;
   --border:    rgba(255,255,255,0.08);
-  --border-2:  rgba(255,255,255,0.05);
+  --border-2:  rgba(255,255,255,0.06);
   --text:      #ececec;
-  --text-2:    rgba(236,236,236,0.58);
-  --text-3:    rgba(236,236,236,0.38);
+  --text-2:    rgba(236,236,236,0.60);
+  --text-3:    rgba(236,236,236,0.42);
   --red:       #ff453a;
   --amber:     #ffb340;
   --green:     #34c759;
   --blue:      #0a84ff;
-  --r4: 4px; --r8: 8px; --r12: 12px; --r16: 16px;
+  --r4: 4px; --r8: 8px; --r12: 12px;
 }
 
 /* ── Base ── */
@@ -34,176 +34,214 @@ body {
   line-height: 1.5;
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
-  padding: 32px 16px 64px;
+  padding: 28px 16px 64px;
+  padding-bottom: max(64px, env(safe-area-inset-bottom, 64px));
 }
-@media (min-width: 480px) { body { padding: 40px 24px 64px; } }
-.container { max-width: 720px; margin: 0 auto; }
+@media (min-width: 480px) { body { padding: 40px 24px 72px; } }
+.container { max-width: 680px; margin: 0 auto; }
 
 /* ── Animations ── */
 @keyframes fadeUp {
-  from { opacity: 0; transform: translateY(12px); }
+  from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-.card { animation: fadeUp 0.4s ease both; }
-.card:nth-child(1)  { animation-delay: 0.06s; }
-.card:nth-child(2)  { animation-delay: 0.12s; }
-.card:nth-child(3)  { animation-delay: 0.18s; }
-.card:nth-child(4)  { animation-delay: 0.24s; }
-.card:nth-child(5)  { animation-delay: 0.30s; }
-.card:nth-child(6)  { animation-delay: 0.36s; }
-.card:nth-child(n+7){ animation-delay: 0.40s; }
+.card { animation: fadeUp 0.32s ease both; }
+.card:nth-child(1) { animation-delay: 0.04s; }
+.card:nth-child(2) { animation-delay: 0.08s; }
+.card:nth-child(3) { animation-delay: 0.13s; }
+.card:nth-child(4) { animation-delay: 0.18s; }
+.card:nth-child(5) { animation-delay: 0.22s; }
+.card:nth-child(n+6){ animation-delay: 0.26s; }
 
-/* ── Header ── */
+/* ── Page header ── */
 .page-eyebrow {
-  display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 6px;
 }
 .eyebrow-label {
   font-size: 11px; font-weight: 600; letter-spacing: 0.1em;
   text-transform: uppercase; color: var(--text-3);
 }
-.eyebrow-meta { font-family: "DM Mono", monospace; font-size: 11px; color: var(--text-3); }
+.eyebrow-meta {
+  font-family: "DM Mono", monospace; font-size: 11px; color: var(--text-3);
+}
 .page-title {
   font-family: "Instrument Serif", Georgia, serif;
   font-style: italic;
-  font-size: clamp(28px, 7vw, 40px);
+  font-size: clamp(26px, 6.5vw, 38px);
   font-weight: 400; letter-spacing: -0.01em;
-  color: var(--text); line-height: 1.1; margin-bottom: 24px;
+  color: var(--text); line-height: 1.1; margin-bottom: 20px;
 }
 
 /* ── Filter bar ── */
-.filter-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
+.filter-row { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 18px; }
 .range-btn, .cat-btn {
-  padding: 6px 14px; border-radius: 20px; border: 1px solid var(--border);
+  padding: 7px 14px; border-radius: 20px; border: 1px solid var(--border);
   background: var(--surface); font-size: 13px; font-family: "DM Sans", sans-serif;
   cursor: pointer; color: var(--text-2); transition: all 0.15s;
+  -webkit-tap-highlight-color: transparent; outline: none;
 }
 .range-btn.active, .cat-btn.active {
   background: var(--surface-2); color: var(--text);
   border-color: rgba(255,255,255,0.18);
 }
-.cat-btn .tab-count {
+.tab-count {
   display: inline-block; background: var(--surface-2); color: var(--text-3);
-  border-radius: 10px; padding: 0 6px; font-size: 11px; margin-left: 5px;
+  border-radius: 10px; padding: 0 6px; font-size: 11px; margin-left: 4px;
   font-family: "DM Mono", monospace;
 }
-.cat-btn.active .tab-count { background: rgba(255,255,255,0.12); color: var(--text-2); }
+.cat-btn.active .tab-count { background: rgba(255,255,255,0.10); color: var(--text-2); }
 
 /* ── Section divider ── */
-.section-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
 .section-label {
   font-size: 10px; font-weight: 600; letter-spacing: 0.1em;
   text-transform: uppercase; color: var(--text-3); white-space: nowrap;
 }
 .section-rule { flex: 1; height: 1px; background: var(--border-2); }
 
-/* ── Cards ── */
+/* ── Card shell ── */
 .card-grid { display: flex; flex-direction: column; gap: 10px; }
 .card {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--r12); overflow: hidden;
-  transition: border-color 0.2s;
+  transition: border-color 0.18s;
 }
-.card:hover { border-color: rgba(255,255,255,0.14); }
+.card:hover { border-color: rgba(255,255,255,0.15); }
+
+/* Left accent strip — instant signal-type recognition */
+.card--green { box-shadow: inset 3px 0 0 var(--green); }
+.card--red   { box-shadow: inset 3px 0 0 var(--red);   }
+.card--blue  { box-shadow: inset 3px 0 0 var(--blue);  }
+.card--amber { box-shadow: inset 3px 0 0 var(--amber); }
+
+/* ── Card head: [ticker + badge]  ···  [key metric] ── */
 .card-head {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 16px; gap: 12px;
+  padding: 12px 16px; gap: 12px;
+  border-bottom: 1px solid var(--border-2);
 }
-.card-head-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.card-head-left { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; flex-wrap: wrap; }
 .card-ticker {
-  font-family: "DM Mono", monospace; font-size: 15px; font-weight: 500;
-  letter-spacing: 0.04em; color: var(--text);
+  font-family: "DM Mono", monospace; font-size: 16px; font-weight: 500;
+  letter-spacing: 0.04em; color: var(--text); flex-shrink: 0;
 }
 .type-badge {
   font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 20px;
-  text-transform: uppercase; letter-spacing: 0.06em; border: 1px solid; white-space: nowrap;
+  text-transform: uppercase; letter-spacing: 0.05em; border: 1px solid; white-space: nowrap; flex-shrink: 0;
 }
-.badge-opportunity { color: var(--green); background: rgba(52,199,89,0.10);  border-color: rgba(52,199,89,0.22); }
-.badge-risk        { color: var(--red);   background: rgba(255,69,58,0.10);  border-color: rgba(255,69,58,0.22); }
-.badge-leaps       { color: var(--blue);  background: rgba(10,132,255,0.10); border-color: rgba(10,132,255,0.22); }
-.badge-dividend    { color: var(--amber); background: rgba(255,179,64,0.10); border-color: rgba(255,179,64,0.22); }
+.badge-opportunity { color: var(--green); background: rgba(52,199,89,0.10);  border-color: rgba(52,199,89,0.24); }
+.badge-risk        { color: var(--red);   background: rgba(255,69,58,0.10);  border-color: rgba(255,69,58,0.24); }
+.badge-leaps       { color: var(--blue);  background: rgba(10,132,255,0.10); border-color: rgba(10,132,255,0.24); }
+.badge-dividend    { color: var(--amber); background: rgba(255,179,64,0.10); border-color: rgba(255,179,64,0.24); }
 .badge-warn        { color: var(--amber); background: rgba(255,179,64,0.09); border-color: rgba(255,179,64,0.20); }
 
-.card-body { padding: 0 16px 16px; }
-.card-row { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--border-2); }
-.card-row:last-child { border-bottom: none; }
-.row-label { color: var(--text-3); font-size: 12px; }
-.row-value { font-family: "DM Mono", monospace; font-size: 13px; font-weight: 500; color: var(--text); }
-.apy-hero { font-family: "DM Mono", monospace; font-size: 26px; font-weight: 500; color: var(--green); letter-spacing: -0.02em; padding: 8px 0 4px; }
-.card-warn { font-size: 12px; color: var(--red); padding: 6px 0; }
-.card-time { font-family: "DM Mono", monospace; font-size: 11px; color: var(--text-3); padding: 8px 16px 12px; border-top: 1px solid var(--border-2); }
-
-/* ── Chip ── */
-.chip {
-  font-family: "DM Mono", monospace; font-size: 11px; color: var(--text-3);
-  background: var(--surface-2); display: inline-block; padding: 3px 7px;
-  border-radius: var(--r4); letter-spacing: 0.01em;
-}
-
-/* ── Dividend card ── */
-.dc-yield-row {
-  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-  padding: 0 16px 12px; border-bottom: 1px solid var(--border-2);
-}
-.dc-yield-val {
+/* Key metric — right side of header */
+.card-kpi {
   font-family: "DM Mono", monospace; font-size: 22px; font-weight: 500;
-  color: var(--green); letter-spacing: -0.02em;
+  letter-spacing: -0.02em; flex-shrink: 0; line-height: 1; text-align: right;
 }
-.dc-yield-label { font-size: 11px; color: var(--text-3); }
+.card-kpi small {
+  display: block; font-size: 10px; font-weight: 400; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--text-3); margin-top: 2px;
+}
+.kpi-green { color: var(--green); }
+.kpi-red   { color: var(--red);   }
+.kpi-blue  { color: var(--blue);  }
+.kpi-amber { color: var(--amber); }
+
+/* ── Card body rows ── */
+.card-body { padding: 2px 16px 12px; }
+.card-row {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  padding: 8px 0; border-bottom: 1px solid var(--border-2);
+  min-height: 36px; gap: 12px;
+}
+.card-row:last-child { border-bottom: none; }
+.row-label { color: var(--text-3); font-size: 12px; flex-shrink: 0; padding-top: 1px; }
+.row-value {
+  font-family: "DM Mono", monospace; font-size: 13px; font-weight: 500;
+  color: var(--text); text-align: right; line-height: 1.4;
+}
+.card-warn { font-size: 12px; color: var(--red); padding: 6px 0; }
+.card-foot {
+  font-family: "DM Mono", monospace; font-size: 11px; color: var(--text-3);
+  padding: 7px 16px 9px; border-top: 1px solid var(--border-2);
+}
+
+/* ── Chips ── */
 .pct-chip {
-  font-family: "DM Mono", monospace; font-size: 12px; font-weight: 500;
-  padding: 2px 8px; border-radius: 20px; border: 1px solid;
+  font-family: "DM Mono", monospace; font-size: 11px; font-weight: 500;
+  padding: 2px 7px; border-radius: 20px; border: 1px solid; flex-shrink: 0;
 }
-.pct-high   { color: var(--green); background: rgba(52,199,89,0.10);  border-color: rgba(52,199,89,0.22); }
-.pct-mid    { color: var(--amber); background: rgba(255,179,64,0.10); border-color: rgba(255,179,64,0.22); }
-.pct-low    { color: var(--red);   background: rgba(255,69,58,0.10);  border-color: rgba(255,69,58,0.22); }
-.pct-acc    { color: var(--text-3); background: var(--surface-2); border-color: var(--border); }
+.pct-high { color: var(--green); background: rgba(52,199,89,0.10);  border-color: rgba(52,199,89,0.22); }
+.pct-mid  { color: var(--amber); background: rgba(255,179,64,0.10); border-color: rgba(255,179,64,0.22); }
+.pct-low  { color: var(--red);   background: rgba(255,69,58,0.10);  border-color: rgba(255,69,58,0.22); }
+.pct-acc  { color: var(--text-3); background: var(--surface-2); border-color: var(--border); }
 
-.dc-section { padding: 12px 0; border-bottom: 1px solid var(--border-2); }
-.dc-section:last-child { border-bottom: none; }
-.dc-section-title {
-  font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
-  text-transform: uppercase; color: var(--text-3); margin-bottom: 8px;
+/* ── Dividend card groups ── */
+.dc-group { border-bottom: 1px solid var(--border-2); padding-bottom: 8px; margin-bottom: 2px; }
+.dc-group:last-child { border-bottom: none; }
+.dc-group-title {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 11px; font-weight: 600; color: var(--text-3);
+  padding: 10px 0 5px; letter-spacing: 0.04em;
 }
-.analysis-text {
-  font-size: 13px; color: var(--text-2); line-height: 1.65;
-  white-space: pre-line; margin-top: 4px;
+.dc-group-title::before {
+  content: ''; width: 3px; height: 3px; border-radius: 50%;
+  background: currentColor; flex-shrink: 0;
 }
-.biz-tag {
-  display: inline-block; font-size: 12px; font-weight: 600;
-  color: var(--blue); margin-bottom: 4px;
-}
-.biz-hint { font-size: 11px; color: var(--text-3); margin-bottom: 6px; }
 
-/* Stability tooltip */
-.stab-info-btn { cursor: pointer; font-size: 11px; margin-left: 4px; opacity: 0.6; }
+/* Analysis collapse */
+.analysis-toggle {
+  display: flex; align-items: center; justify-content: space-between;
+  cursor: pointer; padding: 4px 0; user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.biz-label {
+  font-size: 12px; font-weight: 600; color: var(--blue);
+  background: rgba(10,132,255,0.08); border: 1px solid rgba(10,132,255,0.18);
+  padding: 1px 7px; border-radius: 20px; display: inline-block; margin-right: 4px;
+}
+.biz-hint { font-size: 12px; color: var(--text-3); }
+.toggle-arrow {
+  font-size: 10px; color: var(--text-3);
+  transition: transform 0.2s; flex-shrink: 0; margin-left: 8px;
+}
+.analysis-body {
+  font-size: 13px; color: var(--text-2); line-height: 1.7;
+  white-space: pre-line; overflow: hidden;
+  max-height: 0; transition: max-height 0.28s ease, padding 0.2s ease;
+}
+.analysis-body.open { max-height: 600px; padding-top: 6px; }
+
+/* Quality breakdown */
+.stab-info-btn {
+  cursor: pointer; font-size: 10px; opacity: 0.55; margin-left: 4px;
+  -webkit-tap-highlight-color: transparent;
+}
 .stab-info-btn:hover { opacity: 1; }
 .stability-detail {
-  margin-top: 8px; padding: 10px; background: var(--surface-2);
+  margin-top: 6px; padding: 10px; background: var(--surface-2);
   border-radius: var(--r8); border: 1px solid var(--border);
 }
-.breakdown-row { display: flex; align-items: center; gap: 6px; margin: 5px 0; font-size: 12px; }
-.bd-label { width: 80px; color: var(--text-3); flex-shrink: 0; font-size: 11px; }
-.bd-bar-wrap { flex: 1; background: var(--border); border-radius: 2px; height: 4px; }
-.bd-bar { height: 4px; background: var(--blue); border-radius: 2px; }
-.bd-score { width: 32px; text-align: right; color: var(--text-2); flex-shrink: 0; font-family: "DM Mono", monospace; font-size: 11px; }
+.breakdown-row { display: flex; align-items: center; gap: 6px; margin: 5px 0; }
+.bd-label  { width: 72px; color: var(--text-3); flex-shrink: 0; font-size: 11px; }
+.bd-bar-wrap { flex: 1; background: var(--border); border-radius: 2px; height: 3px; }
+.bd-bar    { height: 3px; background: var(--blue); border-radius: 2px; }
+.bd-score  { width: 30px; text-align: right; color: var(--text-2); flex-shrink: 0; font-family: "DM Mono", monospace; font-size: 11px; }
 
 .dc-combined {
-  font-family: "DM Mono", monospace; font-size: 16px; font-weight: 500;
-  color: var(--amber); margin-top: 6px;
+  font-family: "DM Mono", monospace; font-size: 15px; font-weight: 500;
+  color: var(--amber); padding: 4px 0;
 }
-.floor-warn { font-size: 12px; color: var(--amber); margin-top: 4px; }
-.freshness-warn { font-size: 12px; color: var(--amber); padding: 6px 0; }
-.freshness-old  { font-size: 12px; color: var(--text-3); padding: 6px 0; }
-.ai-note { font-size: 11px; color: var(--text-3); line-height: 1.6; }
+.floor-warn    { font-size: 12px; color: var(--amber); padding: 4px 0; }
+.freshness-warn{ font-size: 12px; color: var(--amber); padding: 4px 0; }
+.freshness-old { font-size: 12px; color: var(--text-3); padding: 4px 0; }
 
 /* ── Empty / Loading ── */
-.empty-state { text-align: center; color: var(--text-3); font-size: 14px; padding: 64px 0; }
-.loading { text-align: center; padding: 64px; color: var(--text-3); font-family: "DM Mono", monospace; font-size: 13px; }
-
-/* ── Mobile ── */
-@media (max-width: 480px) {
-  .card-grid { gap: 8px; }
-}
+.empty-state { text-align: center; color: var(--text-3); font-size: 14px; padding: 72px 0; }
+.loading { text-align: center; padding: 72px 0; color: var(--text-3); font-family: "DM Mono", monospace; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -221,7 +259,7 @@ body {
     <button class="range-btn" data-range="30d">最近一月</button>
   </div>
 
-  <div class="filter-row" style="margin-bottom:20px">
+  <div class="filter-row">
     <button class="cat-btn active" data-cat="all">
       全部 <span class="tab-count" id="count-all">0</span>
     </button>
@@ -252,10 +290,9 @@ let currentRange = '24h';
 let currentCat   = 'all';
 let allSignals   = [];
 
-// ── Fetch ──────────────────────────────────────────────────────────────────
+// ── Fetch ─────────────────────────────────────────────────────────────────
 async function load() {
-  document.getElementById('cards-container').innerHTML =
-    '<div class="loading">加载中...</div>';
+  document.getElementById('cards-container').innerHTML = '<div class="loading">加载中...</div>';
   try {
     const resp = await fetch(`/api/signals?time_range=${currentRange}`);
     const data = await resp.json();
@@ -264,11 +301,11 @@ async function load() {
     document.getElementById('count-opp').textContent  = data.opportunity_count;
     document.getElementById('count-risk').textContent = data.risk_count;
     document.getElementById('last-updated').textContent =
-      `数据范围: ${rangeLabel(currentRange)} · 共 ${data.count} 条信号`;
+      `${rangeLabel(currentRange)} · ${data.count} 条`;
     render();
   } catch (e) {
     document.getElementById('cards-container').innerHTML =
-      '<div class="empty-state"><div class="icon">⚠️</div><p>加载失败，请稍后重试</p></div>';
+      '<div class="empty-state">⚠ 加载失败，请稍后重试</div>';
   }
 }
 
@@ -276,37 +313,35 @@ function rangeLabel(r) {
   return { '24h': '最近24小时', '7d': '最近一周', '30d': '最近一月' }[r] || r;
 }
 
-// ── Render ─────────────────────────────────────────────────────────────────
+// ── Render ────────────────────────────────────────────────────────────────
 function render() {
   const filtered = currentCat === 'all'
     ? allSignals
     : allSignals.filter(s => s.category === currentCat);
 
   const hdr = document.getElementById('section-header-row');
-  const lbl = document.getElementById('section-label-text');
-  const cnt = document.getElementById('section-count-text');
-
   if (!filtered.length) {
     hdr.style.display = 'none';
     document.getElementById('cards-container').innerHTML =
-      `<div class="empty-state">该时间段内暂无信号</div>`;
+      '<div class="empty-state">该时间段内暂无信号</div>';
     return;
   }
 
   hdr.style.display = 'flex';
-  lbl.textContent = currentCat === 'opportunity' ? '机会提醒' : currentCat === 'risk' ? '市场风控' : '所有信号';
-  cnt.textContent = filtered.length + ' 条';
+  document.getElementById('section-label-text').textContent =
+    currentCat === 'opportunity' ? '机会提醒' : currentCat === 'risk' ? '市场风控' : '所有信号';
+  document.getElementById('section-count-text').textContent = filtered.length + ' 条';
 
-  const html = filtered.map(renderCard).join('');
   document.getElementById('cards-container').innerHTML =
-    `<div class="card-grid">${html}</div>`;
+    `<div class="card-grid">${filtered.map(renderCard).join('')}</div>`;
 }
 
 function fmtTime(iso) {
   if (!iso) return '';
   const d = new Date(iso);
-  return d.toLocaleString('zh-CN', { month: 'numeric', day: 'numeric',
-    hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleString('zh-CN', {
+    month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'
+  });
 }
 
 function renderCard(s) {
@@ -325,7 +360,7 @@ function renderCard(s) {
   }
 }
 
-// ── Card Templates ─────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────
 function row(label, value, valueStyle) {
   return `<div class="card-row">
     <span class="row-label">${label}</span>
@@ -335,404 +370,194 @@ function row(label, value, valueStyle) {
 
 function earningsRow(p) {
   return p.days_to_earnings != null
-    ? row('财报', `${p.earnings_date} (${p.days_to_earnings}天)`)
+    ? row('财报', `${p.earnings_date}&nbsp;(${p.days_to_earnings}天)`)
     : '';
 }
 
+function esc(s) {
+  return s == null ? '' : String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ── Card: Sell Put ────────────────────────────────────────────────────────
 function cardSellPut(s) {
   const p = s.payload;
   const liqRow = p.liquidity_warn
-    ? row('流动性', `⚠ 偏差 (价差${p.spread_pct}%)`, 'color:var(--amber)')
-    : '';
+    ? row('流动性', `⚠ 偏差 (价差${p.spread_pct}%)`, 'color:var(--amber)') : '';
   const bidAsk = (p.mid != null && p.bid != null && p.ask != null)
-    ? `<div style="font-size:11px;color:var(--text-3);padding:6px 0">按中间价估算 (bid $${p.bid} / ask $${p.ask})</div>` : '';
-  return `<div class="card">
+    ? `<div style="font-size:11px;color:var(--text-3);padding:5px 0">按中间价 (bid $${p.bid} / ask $${p.ask})</div>` : '';
+  return `<div class="card card--green">
     <div class="card-head">
       <div class="card-head-left">
         <span class="card-ticker">${s.ticker}</span>
+        <span class="type-badge badge-opportunity">Sell Put</span>
       </div>
-      <span class="type-badge badge-opportunity">Sell Put</span>
+      <div class="card-kpi kpi-green">${p.apy}%<small>APY</small></div>
     </div>
     <div class="card-body">
-      <div class="apy-hero">${p.apy}% <span style="font-size:14px;color:var(--text-3)">APY</span></div>
       ${row('行权价', `$${p.strike}`)}
       ${row('到期天数', `${p.dte} 天`)}
       ${row('权利金', `$${p.mid ?? p.bid}`)}
-      ${liqRow}
-      ${earningsRow(p)}
-      ${bidAsk}
+      ${liqRow}${earningsRow(p)}${bidAsk}
     </div>
-    <div class="card-time">${fmtTime(s.scanned_at)}</div>
+    <div class="card-foot">${fmtTime(s.scanned_at)}</div>
   </div>`;
 }
 
+// ── Card: Sell Put Risk ───────────────────────────────────────────────────
 function cardSellPutRisk(s) {
   const p = s.payload;
-  return `<div class="card">
+  return `<div class="card card--red">
     <div class="card-head">
       <div class="card-head-left">
         <span class="card-ticker">${s.ticker}</span>
+        <span class="type-badge badge-risk">财报风险</span>
       </div>
-      <span class="type-badge badge-risk">财报风险</span>
+      <div class="card-kpi kpi-red">${p.apy}%<small>APY</small></div>
     </div>
     <div class="card-body">
       ${row('行权价', `$${p.strike}`)}
-      ${row('APY', `${p.apy}%`)}
       ${earningsRow(p)}
-      <div class="card-warn">财报日在 DTE 窗口内，跳空风险</div>
+      <div class="card-warn">财报日在 DTE 窗口内，跳空风险高</div>
     </div>
-    <div class="card-time">${fmtTime(s.scanned_at)}</div>
+    <div class="card-foot">${fmtTime(s.scanned_at)}</div>
   </div>`;
 }
 
+// ── Card: IV Low ──────────────────────────────────────────────────────────
 function cardIvLow(s) {
   const p = s.payload;
-  return `<div class="card">
+  return `<div class="card card--blue">
     <div class="card-head">
       <div class="card-head-left">
         <span class="card-ticker">${s.ticker}</span>
+        <span class="type-badge badge-opportunity">IV 低位</span>
       </div>
-      <span class="type-badge badge-opportunity">IV 低位</span>
+      <div class="card-kpi kpi-blue">${p.iv_rank}%<small>IVR</small></div>
     </div>
     <div class="card-body">
-      ${row('IV Rank', `${p.iv_rank}%`)}
-      ${row('适合', '买入期权 / LEAPS')}
+      ${row('适合策略', '买入期权 / LEAPS')}
       ${earningsRow(p)}
     </div>
-    <div class="card-time">${fmtTime(s.scanned_at)}</div>
+    <div class="card-foot">${fmtTime(s.scanned_at)}</div>
   </div>`;
 }
 
+// ── Card: IV High ─────────────────────────────────────────────────────────
 function cardIvHigh(s) {
   const p = s.payload;
-  return `<div class="card">
+  return `<div class="card card--red">
     <div class="card-head">
       <div class="card-head-left">
         <span class="card-ticker">${s.ticker}</span>
+        <span class="type-badge badge-risk">IV 高位</span>
       </div>
-      <span class="type-badge badge-risk">IV 高位</span>
+      <div class="card-kpi kpi-red">${p.iv_rank}%<small>IVR</small></div>
     </div>
     <div class="card-body">
-      ${row('IV Rank', `${p.iv_rank}%`)}
       ${earningsRow(p)}
       <div class="card-warn">IV 处于历史高位，期权虚值溢价高</div>
     </div>
-    <div class="card-time">${fmtTime(s.scanned_at)}</div>
+    <div class="card-foot">${fmtTime(s.scanned_at)}</div>
   </div>`;
 }
 
+// ── Card: MA200 ───────────────────────────────────────────────────────────
 function cardMa200(s, bullish) {
-  const p = s.payload;
-  const sign = p.pct >= 0 ? '+' : '';
-  const badgeClass = bullish ? 'badge-opportunity' : 'badge-risk';
-  const label = bullish ? '突破 MA200 ↑' : '跌破 MA200 ↓';
-  return `<div class="card">
+  const p          = s.payload;
+  const sign       = p.pct >= 0 ? '+' : '';
+  const accentCls  = bullish ? 'card--green' : 'card--red';
+  const badgeCls   = bullish ? 'badge-opportunity' : 'badge-risk';
+  const label      = bullish ? '突破 MA200 ↑' : '跌破 MA200 ↓';
+  const kpiCls     = bullish ? 'kpi-green' : 'kpi-red';
+  return `<div class="card ${accentCls}">
     <div class="card-head">
       <div class="card-head-left">
         <span class="card-ticker">${s.ticker}</span>
+        <span class="type-badge ${badgeCls}">${label}</span>
       </div>
-      <span class="type-badge ${badgeClass}">${label}</span>
+      <div class="card-kpi ${kpiCls}">${sign}${p.pct}%<small>偏离</small></div>
     </div>
     <div class="card-body">
       ${row('现价', `$${p.last_price}`)}
-      ${row('MA200', `$${p.ma200} (${sign}${p.pct}%)`)}
+      ${row('MA200', `$${p.ma200}`)}
       ${earningsRow(p)}
     </div>
-    <div class="card-time">${fmtTime(s.scanned_at)}</div>
+    <div class="card-foot">${fmtTime(s.scanned_at)}</div>
   </div>`;
 }
 
+// ── Card: LEAPS ───────────────────────────────────────────────────────────
 function cardLeaps(s) {
   const p = s.payload;
   const ma50wRow = p.ma50w != null
-    ? row('MA50w', `$${p.ma50w} (${p.ma50w_pct > 0 ? '+' : ''}${p.ma50w_pct}%)`)
-    : '';
-  return `<div class="card">
+    ? row('MA50w', `$${p.ma50w} (${p.ma50w_pct > 0 ? '+' : ''}${p.ma50w_pct}%)`) : '';
+  return `<div class="card card--blue">
     <div class="card-head">
       <div class="card-head-left">
         <span class="card-ticker">${s.ticker}</span>
+        <span class="type-badge badge-leaps">LEAPS 共振</span>
       </div>
-      <span class="type-badge badge-leaps">LEAPS 共振</span>
+      <div class="card-kpi kpi-blue">${p.iv_rank}%<small>IVR</small></div>
     </div>
     <div class="card-body">
       ${row('现价', `$${p.last_price}`)}
       ${row('MA200', `$${p.ma200}`)}
       ${ma50wRow}
-      ${row('RSI', p.rsi14)}
-      ${row('IV Rank', `${p.iv_rank}%`)}
+      ${row('RSI14', p.rsi14)}
       ${earningsRow(p)}
     </div>
-    <div class="card-time">${fmtTime(s.scanned_at)}</div>
+    <div class="card-foot">${fmtTime(s.scanned_at)}</div>
   </div>`;
 }
 
+// ── Card: Earnings Gap ────────────────────────────────────────────────────
 function cardEarningsGap(s) {
-  const p = s.payload;
+  const p         = s.payload;
   const riskBadge = p.high_iv_risk
-    ? `<span class="type-badge badge-warn" style="margin-left:6px">高IV</span>` : '';
-  const ivRow = p.iv_rank != null ? row('IV Rank', `${p.iv_rank}%`) : '';
+    ? `<span class="type-badge badge-warn" style="margin-left:4px">高IV</span>` : '';
+  const ivRow     = p.iv_rank != null ? row('IV Rank', `${p.iv_rank}%`) : '';
   const sampleRow = p.sample_count != null ? row('样本数', p.sample_count) : '';
-  return `<div class="card">
+  return `<div class="card card--red">
     <div class="card-head">
       <div class="card-head-left">
-        <span class="card-ticker">${s.ticker}</span>${riskBadge}
+        <span class="card-ticker">${s.ticker}</span>
+        <span class="type-badge badge-risk">财报 Gap</span>
+        ${riskBadge}
       </div>
-      <span class="type-badge badge-risk">财报 Gap</span>
+      <div class="card-kpi kpi-red">${p.days_to_earnings ?? '—'}<small>天</small></div>
     </div>
     <div class="card-body">
-      ${row('财报倒计时', `${p.days_to_earnings ?? 'N/A'} 天`)}
       ${row('历史平均 Gap', `±${p.avg_gap}%`)}
       ${row('上涨概率', `${p.up_ratio}%`)}
       ${row('最大跳空', `${p.max_gap > 0 ? '+' : ''}${p.max_gap}%`)}
-      ${ivRow}
-      ${sampleRow}
+      ${ivRow}${sampleRow}
     </div>
-    <div class="card-time">${fmtTime(s.scanned_at)}</div>
+    <div class="card-foot">${fmtTime(s.scanned_at)}</div>
   </div>`;
 }
 
+// ── Card: IV Momentum ─────────────────────────────────────────────────────
 function cardIvMomentum(s) {
   const p = s.payload;
-  return `<div class="card">
+  return `<div class="card card--amber">
     <div class="card-head">
       <div class="card-head-left">
         <span class="card-ticker">${s.ticker}</span>
+        <span class="type-badge badge-risk">IV 异动</span>
       </div>
-      <span class="type-badge badge-risk">IV 异动</span>
+      <div class="card-kpi kpi-amber">+${p.iv_momentum}%<small>5日</small></div>
     </div>
     <div class="card-body">
-      ${row('5日IV动量', `+${p.iv_momentum}%`)}
       ${row('IV Rank', `${p.iv_rank}%`)}
       ${earningsRow(p)}
     </div>
-    <div class="card-time">${fmtTime(s.scanned_at)}</div>
+    <div class="card-foot">${fmtTime(s.scanned_at)}</div>
   </div>`;
 }
 
-function esc(s) {
-  return s == null ? '' : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-// Business type from moat score (0-20)
-function bizTypeLabel(moat) {
-  if (moat == null) return null;
-  if (moat >= 16) return { tag: '优质护城河', hint: '防御型资产，现金流稳定，股息率定价法高度适用' };
-  if (moat >= 10) return { tag: '稳健型业务', hint: '适度护城河，底价公式有参考意义' };
-  if (moat >= 6)  return { tag: '成长/周期型', hint: '成长因素主导估值，底价公式仅供参考' };
-  return           { tag: '弱护城河', hint: '竞争压力较大，股息可持续性需额外关注' };
-}
-
-function stabilityLabel(score) {
-  if (score == null) return null;
-  if (score >= 80) return `综合评分: 优秀 (${score}/100)`;
-  if (score >= 60) return `综合评分: 良好 (${score}/100)`;
-  return `综合评分: 一般 (${score}/100)`;
-}
-
-function qualityBreakdownHtml(breakdown) {
-  if (!breakdown) return '';
-  const dims = [
-    ['连续性', breakdown.continuity],
-    ['派息安全', breakdown.payout_safety],
-    ['盈利稳定', breakdown.earnings_stability],
-    ['护城河', breakdown.moat],
-    ['负债水平', breakdown.debt_level],
-  ];
-  return `<div style="font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-3);margin-bottom:8px">评分明细（各项满分20分）</div>` +
-    dims.map(([label, val]) => {
-      const v = val ?? 0;
-      return `<div class="breakdown-row">
-        <span class="bd-label">${label}</span>
-        <div class="bd-bar-wrap"><div class="bd-bar" style="width:${v/20*100}%"></div></div>
-        <span class="bd-score">${v}/20</span>
-      </div>`;
-    }).join('');
-}
-
-function toggleStabilityDetail(btn) {
-  const detail = btn.nextElementSibling;
-  if (detail) detail.style.display = detail.style.display === 'none' ? 'block' : 'none';
-}
-
-function cardDividend(s) {
-  const p = s.payload;
-  const moatScore = p.quality_breakdown?.moat ?? null;
-  const biz = bizTypeLabel(moatScore);
-
-  // Yield percentile chip
-  const pctChip = (() => {
-    if (p.yield_percentile == null) return '';
-    if (p.yield_percentile === 50) return '<span class="pct-chip pct-acc">分位积累中</span>';
-    const cls = p.yield_percentile >= 75 ? 'pct-high' : p.yield_percentile >= 50 ? 'pct-mid' : 'pct-low';
-    return `<span class="pct-chip ${cls}">历史 ${p.yield_percentile}%</span>`;
-  })();
-
-  // Stability tooltip
-  const stabDetail = p.quality_breakdown
-    ? `<span class="stab-info-btn" onclick="toggleStabilityDetail(this)">ℹ</span>
-       <div class="stability-detail" style="display:none">${qualityBreakdownHtml(p.quality_breakdown)}</div>`
-    : '';
-
-  // Risk flags
-  const riskFlags = (() => {
-    const flags = [];
-    if (p.payout_ratio != null && p.payout_ratio > 100)
-      flags.push('派息率超过100%，依赖借贷分红，股息可持续性存疑');
-    else if (p.payout_ratio != null && p.payout_ratio > 80)
-      flags.push('派息率偏高，注意派息可持续性');
-    if (moatScore != null && moatScore < 6)
-      flags.push('护城河较弱，竞争压力下股息可能面临削减');
-    if (p.quality_score != null && p.quality_score < 65)
-      flags.push('综合质量偏低，建议谨慎评估');
-    return flags.map(f => `<div style="font-size:12px;color:var(--amber);padding:3px 0">⚠ ${f}</div>`).join('');
-  })();
-
-  // Payout risk row
-  const payoutRiskRow = (() => {
-    if (p.payout_ratio == null) return '';
-    const pr = p.payout_ratio;
-    const pt = p.payout_type || 'GAAP';
-    const divRisk = pr > 100 ? '极高' : pr > 80 ? '偏高' : pr > 60 ? '中' : '低';
-    const divStyle = pr > 100 ? 'color:var(--red)' : pr > 80 ? 'color:var(--amber)' : pr > 60 ? 'color:var(--amber)' : 'color:var(--green)';
-    const ptTooltip = pt === 'FCF' ? '能源/公用/REIT 行业用自由现金流派息率更准确' : '轻资产行业使用 GAAP 净利润计算';
-    return `<div class="card-row">
-      <span class="row-label">派息切割风险</span>
-      <span class="row-value" style="${divStyle}">${divRisk} · ${pt} ${pr}%
-        <span class="stab-info-btn" onclick="toggleStabilityDetail(this)">ℹ</span>
-        <div class="stability-detail" style="display:none;font-size:11px;color:var(--text-3)">${ptTooltip}</div>
-      </span>
-    </div>`;
-  })();
-
-  // Quality score row
-  const qualityRow = (() => {
-    if (p.quality_score == null) return '';
-    const qs = p.quality_score;
-    const qLabel = qs >= 80 ? '良好' : qs >= 65 ? '一般' : '偏低';
-    const qStyle = qs >= 80 ? 'color:var(--green)' : qs >= 65 ? 'color:var(--amber)' : 'color:var(--red)';
-    return `<div class="card-row">
-      <span class="row-label">综合质量</span>
-      <span class="row-value" style="${qStyle}">${qs}/100 · ${qLabel} ${stabDetail}</span>
-    </div>`;
-  })();
-
-  // Floor price
-  const costBasis = p.option_strike != null ? (p.option_strike - p.option_bid) : null;
-  const floorRows = (() => {
-    if (p.floor_price == null) return '<div style="font-size:12px;color:var(--text-3)">极值底价数据暂缺</div>';
-    const cbRow = costBasis != null ? row('行权成本', `$${costBasis.toFixed(2)}`) : '';
-    const warning = (costBasis != null && costBasis > p.floor_price)
-      ? `<div class="floor-warn">⚠ 行权成本高于极值底价，届时股息率将达 ${p.max_yield_5y?.toFixed(1) ?? '?'}%</div>` : '';
-    return `${cbRow}
-      ${row('历史最高股息率 (5y)', `${p.max_yield_5y?.toFixed(1) ?? 'N/A'}%`)}
-      ${row('Forward 股息', `$${p.forward_dividend_rate?.toFixed(2) ?? 'N/A'}/股`)}
-      ${row('极值底价', `$${p.floor_price.toFixed(2)} (−${p.floor_downside_pct?.toFixed(1) ?? '?'}%)`)}
-      ${warning}`;
-  })();
-
-  // Action section
-  const optSection = (() => {
-    if (!p.option_strike) return `
-      <div class="dc-section">
-        <div class="dc-section-title">建议操作</div>
-        ${row('现货买入', `$${p.last_price}  (${p.current_yield}%)`)}
-      </div>
-      <div class="dc-section">
-        <div class="dc-section-title">最坏情景</div>
-        ${floorRows}
-      </div>`;
-
-    if (p.option_illiquid) {
-      const msg = p.option_no_market ? '暂无期权报价（市场关闭或无流动性）' : `Sell Put 流动性太差 (价差 ${p.option_spread_pct}%)`;
-      return `
-      <div class="dc-section">
-        <div class="dc-section-title">建议操作</div>
-        ${row('现货买入', `$${p.last_price}  (${p.current_yield}%)`)}
-        <div style="font-size:12px;color:var(--amber);padding:4px 0">⚠ ${msg}</div>
-      </div>
-      <div class="dc-section">
-        <div class="dc-section-title">最坏情景</div>
-        ${floorRows}
-      </div>`;
-    }
-
-    const liqWarn = p.option_liquidity_warn
-      ? `<div style="font-size:12px;color:var(--amber);padding:3px 0">⚠ 流动性偏差 (价差${p.option_spread_pct}%)</div>` : '';
-    return `
-      <div class="dc-section">
-        <div class="dc-section-title">建议操作</div>
-        ${row('现货买入', `$${p.last_price}  (${p.current_yield}%)`)}
-        ${row('Sell Put', `$${p.option_strike} Strike · ${p.option_dte} DTE`)}
-        ${liqWarn}
-        ${row('权利金', `$${p.option_mid ?? p.option_bid} → 年化 ${p.option_apy}%`)}
-        <div class="dc-combined">综合年化: ${p.combined_apy}%</div>
-      </div>
-      <div class="dc-section">
-        <div class="dc-section-title">最坏情景</div>
-        ${floorRows}
-      </div>`;
-  })();
-
-  // Freshness
-  const freshness = (() => {
-    if (p.needs_reeval) return '<div class="freshness-warn">⚠ 财报后数据，建议重新评估</div>';
-    if (p.data_age_days != null && p.data_age_days > 14) return `<div class="freshness-old">数据较旧 (${p.data_age_days}天前)</div>`;
-    return '';
-  })();
-
-  const earningsStr = p.earnings_date ? `${p.earnings_date} (${p.days_to_earnings}天)` : 'N/A';
-
-  return `<div class="card">
-    <div class="card-head" style="background:rgba(255,179,64,0.05);border-bottom:1px solid rgba(255,179,64,0.14)">
-      <div class="card-head-left">
-        <span class="card-ticker">${s.ticker}</span>
-        <span class="type-badge badge-dividend">股息</span>
-      </div>
-      <div style="display:flex;align-items:center;gap:6px">
-        ${pctChip}
-      </div>
-    </div>
-    <div class="dc-yield-row">
-      <div>
-        <div style="font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-3);margin-bottom:4px">当前股息率</div>
-        <span class="dc-yield-val">${p.current_yield}%</span>
-      </div>
-    </div>
-    <div class="card-body">
-
-      <div class="dc-section">
-        <div class="dc-section-title">基本面估值</div>
-        ${biz ? `<div class="biz-tag">${biz.tag}</div><div class="biz-hint">${biz.hint}</div>` : ''}
-        ${p.analysis_text
-          ? `<div class="analysis-text">${esc(p.analysis_text)}</div>`
-          : '<div style="font-size:12px;color:var(--text-3)">业务分析暂缺</div>'}
-      </div>
-
-      <div class="dc-section">
-        <div class="dc-section-title">风险分级</div>
-        ${payoutRiskRow}
-        ${qualityRow}
-        ${riskFlags}
-      </div>
-
-      <div class="dc-section">
-        <div class="dc-section-title">关键事件</div>
-        ${row('下次财报', earningsStr)}
-      </div>
-
-      ${optSection}
-
-      <div class="dc-section" style="border-bottom:none">
-        <div class="dc-section-title">AI 监控</div>
-        <div class="ai-note">派息率>100% 立即预警 · 财报前7天提醒 · 股息率回落至中位数时提示</div>
-      </div>
-
-      ${freshness}
-    </div>
-    <div class="card-time">${fmtTime(s.scanned_at)}</div>
-  </div>`;
-}
-
+// ── Card: Generic ─────────────────────────────────────────────────────────
 function cardGeneric(s) {
   return `<div class="card">
     <div class="card-head">
@@ -741,11 +566,219 @@ function cardGeneric(s) {
         <span class="type-badge badge-opportunity">${s.signal_type}</span>
       </div>
     </div>
-    <div class="card-time">${fmtTime(s.scanned_at)}</div>
+    <div class="card-foot">${fmtTime(s.scanned_at)}</div>
   </div>`;
 }
 
-// ── Event Bindings ─────────────────────────────────────────────────────────
+// ── Dividend helpers ──────────────────────────────────────────────────────
+function bizTypeLabel(moat) {
+  if (moat == null) return null;
+  if (moat >= 16) return { tag: '优质护城河', hint: '防御型资产，现金流稳定' };
+  if (moat >= 10) return { tag: '稳健型业务', hint: '适度护城河，底价有参考意义' };
+  if (moat >= 6)  return { tag: '成长/周期型', hint: '成长因素主导估值，底价仅参考' };
+  return           { tag: '弱护城河',   hint: '竞争压力大，股息可持续性需关注' };
+}
+
+function qualityBreakdownHtml(breakdown) {
+  if (!breakdown) return '';
+  const dims = [
+    ['连续性',   breakdown.continuity],
+    ['派息安全', breakdown.payout_safety],
+    ['盈利稳定', breakdown.earnings_stability],
+    ['护城河',   breakdown.moat],
+    ['负债水平', breakdown.debt_level],
+  ];
+  return `<div style="font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-3);margin-bottom:8px">评分明细（各项满分20分）</div>` +
+    dims.map(([label, val]) => {
+      const v = val ?? 0;
+      return `<div class="breakdown-row">
+        <span class="bd-label">${label}</span>
+        <div class="bd-bar-wrap"><div class="bd-bar" style="width:${v / 20 * 100}%"></div></div>
+        <span class="bd-score">${v}/20</span>
+      </div>`;
+    }).join('');
+}
+
+function toggleDetail(btn) {
+  const el = btn.nextElementSibling;
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function toggleAnalysis(el) {
+  const arrow = el.querySelector('.toggle-arrow');
+  const body  = el.nextElementSibling;
+  if (!body) return;
+  const open = body.classList.toggle('open');
+  if (arrow) arrow.style.transform = open ? 'rotate(180deg)' : '';
+}
+
+// ── Card: Dividend ────────────────────────────────────────────────────────
+function cardDividend(s) {
+  const p         = s.payload;
+  const moatScore = p.quality_breakdown?.moat ?? null;
+  const biz       = bizTypeLabel(moatScore);
+
+  // Header: yield percentile chip
+  const pctChip = (() => {
+    if (p.yield_percentile == null) return '';
+    if (p.yield_percentile === 50) return '<span class="pct-chip pct-acc">积累中</span>';
+    const cls = p.yield_percentile >= 75 ? 'pct-high' : p.yield_percentile >= 50 ? 'pct-mid' : 'pct-low';
+    return `<span class="pct-chip ${cls}">历史${p.yield_percentile}%</span>`;
+  })();
+
+  // Analysis section — collapsible
+  const analysisSection = (() => {
+    const bizBlock = biz
+      ? `<span class="biz-label">${biz.tag}</span><span class="biz-hint">${biz.hint}</span>`
+      : '';
+    if (!p.analysis_text) {
+      return bizBlock
+        ? `<div style="padding:4px 0">${bizBlock}</div>`
+        : `<div style="font-size:12px;color:var(--text-3);padding:4px 0">业务分析暂缺</div>`;
+    }
+    return `<div class="analysis-toggle" onclick="toggleAnalysis(this)">
+      <span>${bizBlock}</span>
+      <span class="toggle-arrow">▼</span>
+    </div>
+    <div class="analysis-body">${esc(p.analysis_text)}</div>`;
+  })();
+
+  // Risk flags
+  const riskFlags = (() => {
+    const flags = [];
+    if (p.payout_ratio != null && p.payout_ratio > 100)
+      flags.push('派息率 >100%，可持续性存疑');
+    else if (p.payout_ratio != null && p.payout_ratio > 80)
+      flags.push('派息率偏高，注意可持续性');
+    if (moatScore != null && moatScore < 6)
+      flags.push('护城河弱，股息或面临削减');
+    if (p.quality_score != null && p.quality_score < 65)
+      flags.push('综合质量偏低，建议谨慎');
+    return flags.map(f =>
+      `<div style="font-size:12px;color:var(--amber);padding:3px 0">⚠ ${f}</div>`
+    ).join('');
+  })();
+
+  // Payout risk row
+  const payoutRiskRow = (() => {
+    if (p.payout_ratio == null) return '';
+    const pr       = p.payout_ratio;
+    const pt       = p.payout_type || 'GAAP';
+    const riskLbl  = pr > 100 ? '极高' : pr > 80 ? '偏高' : pr > 60 ? '中等' : '低';
+    const riskStyl = pr > 100 ? 'color:var(--red)' : pr > 80 ? 'color:var(--amber)' : pr > 60 ? 'color:var(--amber)' : 'color:var(--green)';
+    const tooltip  = pt === 'FCF' ? '能源/公用/REIT 使用自由现金流派息率' : '轻资产行业使用 GAAP 净利润';
+    return `<div class="card-row">
+      <span class="row-label">派息切割风险</span>
+      <span class="row-value" style="${riskStyl}">${riskLbl} · ${pt} ${pr}%
+        <span class="stab-info-btn" onclick="toggleDetail(this)">ℹ</span>
+        <div style="display:none;font-size:11px;color:var(--text-3);margin-top:4px;font-family:'DM Sans',sans-serif">${tooltip}</div>
+      </span>
+    </div>`;
+  })();
+
+  // Quality row
+  const qualityRow = (() => {
+    if (p.quality_score == null) return '';
+    const qs       = p.quality_score;
+    const qLbl     = qs >= 80 ? '优' : qs >= 65 ? '良' : '差';
+    const qStyl    = qs >= 80 ? 'color:var(--green)' : qs >= 65 ? 'color:var(--amber)' : 'color:var(--red)';
+    const stabHtml = p.quality_breakdown
+      ? `<span class="stab-info-btn" onclick="toggleDetail(this)">ℹ</span>
+         <div class="stability-detail" style="display:none">${qualityBreakdownHtml(p.quality_breakdown)}</div>`
+      : '';
+    return `<div class="card-row">
+      <span class="row-label">综合质量</span>
+      <span class="row-value" style="${qStyl}">${qs}/100 · ${qLbl}${stabHtml}</span>
+    </div>`;
+  })();
+
+  // Floor price
+  const costBasis = p.option_strike != null ? (p.option_strike - p.option_bid) : null;
+  const floorRows = (() => {
+    if (p.floor_price == null)
+      return '<div style="font-size:12px;color:var(--text-3);padding:4px 0">极值底价数据暂缺</div>';
+    const cbRow   = costBasis != null ? row('行权成本', `$${costBasis.toFixed(2)}`) : '';
+    const warning = (costBasis != null && costBasis > p.floor_price)
+      ? `<div class="floor-warn">⚠ 行权成本高于极值底价，届时股息率将达 ${p.max_yield_5y?.toFixed(1) ?? '?'}%</div>` : '';
+    return `${cbRow}
+      ${row('历史最高股息率', `${p.max_yield_5y?.toFixed(1) ?? 'N/A'}% (5年)`)}
+      ${row('Forward 股息', `$${p.forward_dividend_rate?.toFixed(2) ?? 'N/A'}/股`)}
+      ${row('极值底价', `$${p.floor_price.toFixed(2)} (−${p.floor_downside_pct?.toFixed(1) ?? '?'}%)`)}
+      ${warning}`;
+  })();
+
+  // Action + floor merged group
+  const actionGroup = (() => {
+    if (!p.option_strike) {
+      return `${row('建议买入', `$${p.last_price}  ·  ${p.current_yield}%`)}${floorRows}`;
+    }
+    if (p.option_illiquid) {
+      const msg = p.option_no_market ? '暂无期权报价' : `Sell Put 流动性差 (价差 ${p.option_spread_pct}%)`;
+      return `${row('建议买入', `$${p.last_price}  ·  ${p.current_yield}%`)}
+        <div style="font-size:12px;color:var(--amber);padding:3px 0">⚠ ${msg}</div>
+        ${floorRows}`;
+    }
+    const liqWarn = p.option_liquidity_warn
+      ? `<div style="font-size:12px;color:var(--amber);padding:3px 0">⚠ 流动性偏差 (价差${p.option_spread_pct}%)</div>` : '';
+    return `${row('建议买入', `$${p.last_price}  ·  ${p.current_yield}%`)}
+      ${row('Sell Put', `$${p.option_strike} Strike · ${p.option_dte} DTE`)}
+      ${liqWarn}
+      ${row('权利金', `$${p.option_mid ?? p.option_bid}  →  ${p.option_apy}% 年化`)}
+      <div class="dc-combined">综合年化: ${p.combined_apy}%</div>
+      ${floorRows}`;
+  })();
+
+  // Freshness
+  const freshness = (() => {
+    if (p.needs_reeval)
+      return '<div class="freshness-warn">⚠ 财报后数据，建议重新评估</div>';
+    if (p.data_age_days != null && p.data_age_days > 14)
+      return `<div class="freshness-old">数据较旧 (${p.data_age_days}天前)</div>`;
+    return '';
+  })();
+
+  const earningsStr = p.earnings_date ? `${p.earnings_date} (${p.days_to_earnings}天)` : 'N/A';
+
+  return `<div class="card card--amber">
+    <div class="card-head" style="background:rgba(255,179,64,0.04)">
+      <div class="card-head-left">
+        <span class="card-ticker">${s.ticker}</span>
+        <span class="type-badge badge-dividend">股息</span>
+        ${pctChip}
+      </div>
+      <div class="card-kpi kpi-amber">${p.current_yield}%<small>股息率</small></div>
+    </div>
+    <div class="card-body">
+
+      <div class="dc-group">
+        <div class="dc-group-title">基本面</div>
+        ${analysisSection}
+      </div>
+
+      <div class="dc-group">
+        <div class="dc-group-title">风险</div>
+        ${payoutRiskRow}
+        ${qualityRow}
+        ${riskFlags}
+      </div>
+
+      <div class="dc-group">
+        <div class="dc-group-title">操作 · 最坏情景</div>
+        ${actionGroup}
+      </div>
+
+      <div class="dc-group">
+        <div class="dc-group-title">关键事件</div>
+        ${row('下次财报', earningsStr)}
+        ${freshness}
+      </div>
+
+    </div>
+    <div class="card-foot">${fmtTime(s.scanned_at)}</div>
+  </div>`;
+}
+
+// ── Event Bindings ────────────────────────────────────────────────────────
 document.querySelectorAll('.range-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
@@ -764,7 +797,7 @@ document.querySelectorAll('.cat-btn').forEach(btn => {
   });
 });
 
-// ── Init ───────────────────────────────────────────────────────────────────
+// ── Init ──────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', load);
 </script>
 </body>
