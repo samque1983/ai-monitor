@@ -48,6 +48,12 @@ class TickerData:
     data_version_date: Optional[str] = None
     needs_reeval: bool = False
 
+    # Phase 4 / Dividend Card UX v2: SGOV + strategy fields (computed at signal time)
+    sgov_yield: Optional[float] = None          # SGOV annualized yield % (US only)
+    sgov_adjusted_apy: Optional[float] = None   # option_apy + sgov_yield
+    recommended_strategy: Optional[str] = None  # "sell_put" | "spot"
+    recommended_reason: Optional[str] = None    # one-sentence Chinese reason
+
 
 @dataclass
 class EarningsGap:

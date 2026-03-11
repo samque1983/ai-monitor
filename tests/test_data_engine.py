@@ -364,3 +364,35 @@ class TestTickerDataEnrichmentFields:
             earnings_date=None, days_to_earnings=None,
         )
         assert td.needs_reeval is False
+
+
+def test_ticker_data_new_sgov_fields():
+    from src.data_engine import TickerData
+    td = TickerData(
+        ticker="AAPL", name="Apple", market="US",
+        last_price=150.0, ma200=None, ma50w=None, rsi14=None,
+        iv_rank=None, iv_momentum=None, prev_close=0.0,
+        earnings_date=None, days_to_earnings=None,
+        sgov_yield=4.8,
+        sgov_adjusted_apy=26.8,
+        recommended_strategy="sell_put",
+        recommended_reason="综合年化显著高于股息率",
+    )
+    assert td.sgov_yield == 4.8
+    assert td.sgov_adjusted_apy == 26.8
+    assert td.recommended_strategy == "sell_put"
+    assert td.recommended_reason == "综合年化显著高于股息率"
+
+
+def test_ticker_data_new_fields_default_none():
+    from src.data_engine import TickerData
+    td = TickerData(
+        ticker="AAPL", name="Apple", market="US",
+        last_price=150.0, ma200=None, ma50w=None, rsi14=None,
+        iv_rank=None, iv_momentum=None, prev_close=0.0,
+        earnings_date=None, days_to_earnings=None,
+    )
+    assert td.sgov_yield is None
+    assert td.sgov_adjusted_apy is None
+    assert td.recommended_strategy is None
+    assert td.recommended_reason is None
