@@ -439,3 +439,41 @@ def test_main_risk_history_args(monkeypatch):
     with patch("src.main.run_risk_history") as mock_run:
         mock_run.return_value = None
         assert callable(mock_run)
+
+
+def test_run_risk_report_populates_ai_suggestions(monkeypatch):
+    """run_risk_report calls generate_risk_suggestion for red alerts and sets ai_suggestion."""
+    monkeypatch.setenv("ACCOUNT_TEST_NLV", "100000")
+    monkeypatch.setenv("ACCOUNT_TEST_CUSHION", "0.05")
+
+    from src.portfolio_risk import AccountConfig, RiskAlert
+    from src.flex_client import AccountSummary
+    acct = AccountConfig(key="TEST", name="Test", code="",
+                         flex_token="tok", flex_query_id="123")
+    mock_summary = AccountSummary(net_liquidation=0, gross_position_value=0,
+                                  init_margin_req=0, maint_margin_req=0,
+                                  excess_liquidity=0, available_funds=0, cushion=0)
+
+    red_alert = RiskAlert(dimension=4, level="red", ticker="ACCOUNT",
+                          detail="cushion 5.0%", options=["A", "B"])
+
+    with patch("src.main.FlexClient") as MockFlex, \
+         patch("src.main.PortfolioRiskAnalyzer") as MockAnalyzer, \
+         patch("src.main.generate_html_report", return_value="<html/>"), \
+         patch("src.main.RiskStore"), \
+         patch("src.main.generate_risk_suggestion", return_value="AI建议文本") as mock_suggest:
+        MockFlex.return_value.fetch.return_value = ([], mock_summary)
+        mock_report = MagicMock()
+        mock_report.account_id = ""
+        mock_report.report_date = "2026-03-11"
+        mock_report.net_liquidation = 100000
+        mock_report.total_pnl = 0
+        mock_report.cushion = 0.05
+        mock_report.alerts = [red_alert]
+        MockAnalyzer.return_value.analyze.return_value = mock_report
+
+        from src.main import run_risk_report
+        run_risk_report(acct, {})
+
+    mock_suggest.assert_called()
+    assert red_alert.ai_suggestion == "AI建议文本"

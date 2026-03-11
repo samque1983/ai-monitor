@@ -7,6 +7,29 @@ from typing import List, Optional
 from src.llm_client import make_llm_client_from_env
 from src.market_data import MarketDataProvider
 
+# ETFs and instruments treated as cash equivalents (near-zero equity beta)
+CASH_LIKE_TICKERS = {
+    "SGOV", "BIL", "SHV", "SHY", "VGSH", "JPST", "ICSH",
+    "VMFXX", "SPAXX", "FDRXX", "SPRXX",  # money market funds
+}
+
+# FX rate defaults: USD per 1 unit of local currency
+_FX_DEFAULTS = {"HKD": 0.1280, "CNH": 0.1378, "CNY": 0.1378,
+                "EUR": 1.08, "GBP": 1.27, "CAD": 0.73, "JPY": 0.0066}
+
+
+def _get_fx_rate(currency: str) -> float:
+    """Return USD per 1 unit of currency. Reads FX_{CCY}USD env var or uses defaults."""
+    if not currency or currency == "USD":
+        return 1.0
+    env_val = os.environ.get(f"FX_{currency}USD")
+    if env_val:
+        try:
+            return float(env_val)
+        except ValueError:
+            pass
+    return _FX_DEFAULTS.get(currency, 1.0)
+
 
 # ---------------------------------------------------------------------------
 # Data models
@@ -131,16 +154,19 @@ class PortfolioRiskAnalyzer:
         return (exp - _date.today()).days
 
     def _dim1_dollar_delta(self, positions, account) -> List[RiskAlert]:
-        # Build underlying price map from stock positions
+        # Build underlying price map from stock positions (in USD)
         underlying_prices = {
-            p.symbol: p.mark_price for p in positions if p.asset_category == "STK"
+            p.symbol: p.mark_price * _get_fx_rate(getattr(p, "currency", "USD"))
+            for p in positions if p.asset_category == "STK"
         }
         total_dollar_delta = 0.0
         for p in positions:
+            fx = _get_fx_rate(getattr(p, "currency", "USD"))
             if p.asset_category == "STK":
-                total_dollar_delta += p.position * p.mark_price
+                total_dollar_delta += p.position * p.mark_price * fx
             elif p.asset_category == "OPT":
-                u_price = underlying_prices.get(p.symbol, p.strike)
+                u_sym = p.underlying_symbol or p.symbol
+                u_price = underlying_prices.get(u_sym, p.strike * fx)
                 total_dollar_delta += p.position * p.delta * p.multiplier * u_price
         nlv = account.net_liquidation
         if nlv <= 0:
@@ -230,11 +256,14 @@ class PortfolioRiskAnalyzer:
             return []
         notional_by_symbol: dict = {}
         for p in positions:
+            if p.symbol in CASH_LIKE_TICKERS:
+                continue  # cash equivalents don't add concentration risk
+            fx = _get_fx_rate(getattr(p, "currency", "USD"))
             if p.asset_category == "STK":
-                notional = abs(p.position) * p.mark_price * p.multiplier
+                notional = abs(p.position) * p.mark_price * p.multiplier * fx
             else:
                 # Options: use strike-based notional (actual max exposure at assignment)
-                notional = p.strike * p.multiplier * abs(p.position)
+                notional = p.strike * p.multiplier * abs(p.position) * fx
             notional_by_symbol[p.symbol] = notional_by_symbol.get(p.symbol, 0) + notional
         alerts = []
         for symbol, notional in notional_by_symbol.items():
@@ -401,21 +430,38 @@ class PortfolioRiskAnalyzer:
         """Returns (alerts, stress_dict). stress_dict always populated."""
         nlv = account.net_liquidation
         mdp = MarketDataProvider()
+        # Build USD price map from stock positions for option underlying price lookup
+        underlying_prices_usd = {
+            p.symbol: p.mark_price * _get_fx_rate(getattr(p, "currency", "USD"))
+            for p in positions if p.asset_category == "STK"
+        }
         total_loss_10 = 0.0
         total_loss_20 = 0.0
         max_assignment_loss = 0.0
         for p in positions:
-            try:
-                underlying = p.underlying_symbol or p.symbol
-                fund = mdp.get_fundamentals(underlying)
-                beta = float(fund.get("beta") or 1.0)
-            except Exception:
-                beta = 1.0
-            dollar_delta = p.delta * p.multiplier * abs(p.position) * p.mark_price
+            underlying = p.underlying_symbol or p.symbol
+            # Cash-like instruments carry zero equity beta
+            if underlying in CASH_LIKE_TICKERS or p.symbol in CASH_LIKE_TICKERS:
+                beta = 0.0
+            else:
+                try:
+                    fund = mdp.get_fundamentals(underlying)
+                    beta = float(fund.get("beta") or 1.0)
+                except Exception:
+                    beta = 1.0
+            fx = _get_fx_rate(getattr(p, "currency", "USD"))
+            if p.asset_category == "STK":
+                # Flex does not report delta for stocks; use 1.0 by convention
+                dollar_delta = 1.0 * p.multiplier * abs(p.position) * p.mark_price * fx
+            else:
+                # For options, use the underlying stock price (not tiny option premium)
+                u_sym = p.underlying_symbol or p.symbol
+                u_price_usd = underlying_prices_usd.get(u_sym, p.strike * fx)
+                dollar_delta = abs(p.delta) * p.multiplier * abs(p.position) * u_price_usd
             total_loss_10 += dollar_delta * beta * 0.10
             total_loss_20 += dollar_delta * beta * 0.20
             if p.asset_category == "OPT" and p.put_call == "P" and p.position < 0:
-                max_assignment_loss += p.strike * p.multiplier * abs(p.position)
+                max_assignment_loss += p.strike * p.multiplier * abs(p.position) * fx
         stress = {
             "drop_10pct": -abs(total_loss_10),
             "drop_20pct": -abs(total_loss_20),

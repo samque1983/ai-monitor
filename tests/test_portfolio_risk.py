@@ -51,12 +51,14 @@ def test_load_account_configs_empty(monkeypatch):
 def _make_position(symbol="AAPL", asset_category="STK", put_call="",
                    strike=0, expiry="", multiplier=1, position=100,
                    cost_basis=150, mark=182, pnl=3200,
-                   delta=1.0, gamma=0.0, theta=0.0, vega=0.0):
+                   delta=1.0, gamma=0.0, theta=0.0, vega=0.0,
+                   underlying_symbol="", currency="USD"):
     return PositionRecord(
         symbol=symbol, asset_category=asset_category, put_call=put_call,
         strike=strike, expiry=expiry, multiplier=multiplier, position=position,
         cost_basis_price=cost_basis, mark_price=mark, unrealized_pnl=pnl,
         delta=delta, gamma=gamma, theta=theta, vega=vega,
+        underlying_symbol=underlying_symbol, currency=currency,
     )
 
 
@@ -373,3 +375,81 @@ def test_generate_risk_suggestion_no_key_uses_fallback():
         result = generate_risk_suggestion(alert, {})
     assert isinstance(result, str)
     assert len(result) > 0
+
+
+# ---------------------------------------------------------------------------
+# Phase 6 fixes: stress test formula, cash-like, FX, AI suggestions
+# ---------------------------------------------------------------------------
+
+def test_dim10_stk_uses_delta_one():
+    """STK positions use delta=1.0 even when Flex reports delta=0 (stocks have no delta attr)."""
+    stk = _make_position(symbol="AAPL", asset_category="STK",
+                         position=100, mark=200, delta=0.0, multiplier=1)
+    account = _make_account(nlv=10000)
+    # 100 × $200 × beta=1.0 × 0.10 = $2,000 = 20% of NLV → red dim10
+    report = _analyze_no_mdp([stk], account)
+    stress = report.summary_stats["stress_test"]
+    assert stress["drop_10pct"] < -1000
+    assert any(a.dimension == 10 for a in report.alerts)
+
+
+def test_dim10_opt_uses_underlying_price():
+    """OPT stress loss uses underlying stock price, not tiny option premium."""
+    stk = _make_position(symbol="NVDA", asset_category="STK",
+                         position=1, mark=800, delta=0.0)
+    opt = _make_position(symbol="NVDA", asset_category="OPT", put_call="P",
+                         strike=750, position=-10, multiplier=100,
+                         mark=5.0, delta=-0.25, underlying_symbol="NVDA")
+    account = _make_account(nlv=20000)
+    # OPT correct: 10 × 0.25 × 100 × $800 × 0.10 = $20,000
+    # OPT wrong (option mark): 10 × 0.25 × 100 × $5 × 0.10 = $125
+    report = _analyze_no_mdp([stk, opt], account)
+    stress = report.summary_stats["stress_test"]
+    assert abs(stress["drop_10pct"]) > 5000
+
+
+def test_dim10_cash_like_zero_contribution():
+    """SGOV contributes zero to stress loss (beta=0, cash substitute)."""
+    sgov = _make_position(symbol="SGOV", asset_category="STK",
+                          position=1000, mark=100, delta=0.0)
+    account = _make_account(nlv=10000)
+    # If beta=1 (wrong): 1000×100×0.10 = $10,000 = 100% NLV → red
+    # If beta=0 (correct): $0 → no alert
+    report = _analyze_no_mdp([sgov], account)
+    stress = report.summary_stats["stress_test"]
+    assert abs(stress["drop_10pct"]) < 100
+    assert not any(a.dimension == 10 for a in report.alerts)
+
+
+def test_dim5_skips_cash_like():
+    """SGOV should not trigger concentration alerts (it's a cash substitute)."""
+    sgov = _make_position(symbol="SGOV", asset_category="STK",
+                          position=5000, mark=100)
+    account = _make_account(nlv=100000)
+    report = _analyze_no_mdp([sgov], account)
+    dim5 = [a for a in report.alerts if a.dimension == 5]
+    assert len(dim5) == 0
+
+
+def test_dim1_hkd_position_fx_converted():
+    """HKD position dollar delta is converted to USD before ratio check."""
+    # 1000 shares at HKD 80 = HKD 80,000 ≈ USD 10,240 (at ~0.128)
+    # USD 10,240 / USD 100,000 NLV = 10.2% → well below 80% → no dim1 alert
+    hk = _make_position(symbol="CHT", asset_category="STK",
+                        position=1000, mark=80, delta=0.0, currency="HKD")
+    account = _make_account(nlv=100000)
+    report = _analyze_no_mdp([hk], account)
+    dim1 = [a for a in report.alerts if a.dimension == 1]
+    assert len(dim1) == 0
+
+
+def test_dim1_large_hkd_position_triggers_alert():
+    """Large HKD portfolio still triggers dim1 alert after FX conversion."""
+    # 10000 shares at HKD 800 = HKD 8,000,000 ≈ USD 1,024,000 >> USD 100,000 NLV → red
+    hk = _make_position(symbol="CMB", asset_category="STK",
+                        position=10000, mark=800, delta=0.0, currency="HKD")
+    account = _make_account(nlv=100000)
+    report = _analyze_no_mdp([hk], account)
+    dim1 = [a for a in report.alerts if a.dimension == 1]
+    assert len(dim1) == 1
+    assert dim1[0].level == "red"

@@ -99,3 +99,40 @@ def test_flex_client_raises_on_error():
     with patch("src.flex_client.requests.get", return_value=resp):
         with pytest.raises(RuntimeError, match="Invalid token"):
             client.fetch()
+
+
+def test_flex_client_parses_currency():
+    """PositionRecord.currency is parsed from Flex XML currency attribute."""
+    xml_with_currency = """<?xml version="1.0" encoding="UTF-8"?>
+<FlexQueryResponse>
+  <FlexStatements>
+    <FlexStatement accountId="U123">
+      <OpenPositions>
+        <OpenPosition symbol="AAPL" assetCategory="STK" putCall="" strike="0"
+          expiry="" multiplier="1" position="100" costBasisPrice="150.00"
+          markPrice="182.00" unrealizedPnL="3200" delta="0"
+          gamma="0" theta="0" vega="0" currency="USD"/>
+        <OpenPosition symbol="CHT" assetCategory="STK" putCall="" strike="0"
+          expiry="" multiplier="1" position="2000" costBasisPrice="75.00"
+          markPrice="80.00" unrealizedPnL="10000" delta="0"
+          gamma="0" theta="0" vega="0" currency="HKD"/>
+      </OpenPositions>
+      <AccountInformation netLiquidation="120000" grossPositionValue="95000"
+        initMarginReq="18000" maintMarginReq="12300" excessLiquidity="22200"
+        availableFunds="25000" cushion="0.185"/>
+    </FlexStatement>
+  </FlexStatements>
+</FlexQueryResponse>"""
+
+    def _mock_currency(url, *args, **kwargs):
+        resp = MagicMock()
+        resp.text = SEND_RESPONSE_XML if "SendRequest" in url else xml_with_currency
+        return resp
+
+    client = FlexClient(token="tok", query_id="qid")
+    with patch("src.flex_client.requests.get", side_effect=_mock_currency):
+        positions, _ = client.fetch()
+    aapl = next(p for p in positions if p.symbol == "AAPL")
+    cht = next(p for p in positions if p.symbol == "CHT")
+    assert aapl.currency == "USD"
+    assert cht.currency == "HKD"

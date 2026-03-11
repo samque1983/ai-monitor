@@ -9,7 +9,7 @@ from typing import Dict, List, Tuple
 from src.config import load_config
 from src.data_loader import fetch_universe
 from src.market_data import MarketDataProvider
-from src.portfolio_risk import load_account_configs, PortfolioRiskAnalyzer
+from src.portfolio_risk import load_account_configs, PortfolioRiskAnalyzer, generate_risk_suggestion
 from src.portfolio_report import generate_html_report
 from src.risk_store import RiskStore
 from src.flex_client import FlexClient
@@ -491,6 +491,12 @@ def run_risk_report(account_config, config):
     analyzer = PortfolioRiskAnalyzer()
     report = analyzer.analyze(positions, account_summary)
     report.account_id = account_config.key
+
+    # Generate AI suggestions for all alerts (red first, then yellow)
+    llm_cfg = config.get("llm", {}) if config else {}
+    for alert in sorted(report.alerts, key=lambda a: 0 if a.level == "red" else 1):
+        alert.ai_suggestion = generate_risk_suggestion(alert, llm_cfg)
+
     html = generate_html_report(report)
     store.save_report(report, html)
     reports_dir = os.environ.get("REPORTS_DIR", "reports")
