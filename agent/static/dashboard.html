@@ -116,7 +116,7 @@ body {
 /* ── Card head ── */
 .card-head {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 16px; gap: 12px;
+  padding: 10px 16px; gap: 12px;
   border-bottom: 1px solid var(--border-2);
 }
 .card-head-left { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
@@ -150,16 +150,16 @@ body {
 .kpi-amber { color: var(--amber); }
 
 /* ── Card body rows ── */
-.card-body { padding: 2px 16px 12px; }
+.card-body { padding: 0 16px 10px; }
 .card-row {
   display: flex; justify-content: space-between; align-items: flex-start;
-  padding: 8px 0; border-bottom: 1px solid var(--border-2);
-  min-height: 36px; gap: 12px;
+  padding: 6px 0; border-bottom: 1px solid var(--border-2);
+  min-height: 32px; gap: 12px;
 }
 .card-row:last-child { border-bottom: none; }
-.row-label { color: var(--text-3); font-size: 12px; flex-shrink: 0; padding-top: 1px; }
+.row-label { color: var(--text-3); font-size: 13px; flex-shrink: 0; padding-top: 1px; }
 .row-value {
-  font-family: "DM Mono", monospace; font-size: 13px; font-weight: 500;
+  font-family: "DM Mono", monospace; font-size: 14px; font-weight: 500;
   color: var(--text); text-align: right; line-height: 1.4;
 }
 .card-warn { font-size: 12px; color: var(--red); padding: 6px 0; }
@@ -179,14 +179,14 @@ body {
 .pct-acc  { color: var(--text-3); background: var(--surface-2); border-color: var(--border); }
 
 /* ── Dividend card groups ── */
-.dc-group { border-bottom: 1px solid var(--border-2); padding-bottom: 8px; margin-bottom: 2px; }
+.dc-group { border-bottom: 1px solid var(--border-2); padding-bottom: 6px; margin-bottom: 1px; }
 .dc-group:last-child { border-bottom: none; }
 
-/* Group title — now text-2 with extending rule */
+/* Group title */
 .dc-group-title {
   display: flex; align-items: center; gap: 6px;
-  font-size: 11px; font-weight: 600; color: var(--text-2);
-  padding: 10px 0 7px; letter-spacing: 0.04em;
+  font-size: 11px; font-weight: 600; color: rgba(236,236,236,0.85);
+  padding: 8px 0 5px; letter-spacing: 0.04em;
 }
 .dc-group-title::before {
   content: ''; width: 3px; height: 3px; border-radius: 50%;
@@ -196,10 +196,10 @@ body {
   content: ''; flex: 1; height: 1px; background: var(--border-2);
 }
 
-/* Analysis collapse — improved arrow visibility */
+/* Analysis collapse */
 .analysis-toggle {
   display: flex; align-items: center; justify-content: space-between;
-  cursor: pointer; padding: 5px 8px; margin: 0 -8px;
+  cursor: pointer; padding: 5px 6px; margin: 0;
   border-radius: var(--r8); user-select: none;
   -webkit-tap-highlight-color: transparent;
   transition: background 0.15s;
@@ -213,9 +213,10 @@ body {
 }
 .biz-hint { font-size: 12px; color: var(--text-3); }
 
-/* Arrow: larger, brighter, rotates on open */
+/* Arrow */
 .toggle-arrow {
-  font-size: 18px; font-weight: 300; color: var(--text-2);
+  font-size: 20px; font-weight: 400; color: var(--text);
+  opacity: 0.70;
   transition: transform 0.22s ease; flex-shrink: 0; margin-left: 10px;
   line-height: 1; display: inline-block;
 }
@@ -294,6 +295,7 @@ body {
 .strategy-tab.active { background: rgba(10,132,255,0.15); border-color: rgba(10,132,255,0.4); color: var(--blue); font-weight: 600; }
 .strategy-tab.active-green { background: rgba(52,199,89,0.12); border-color: rgba(52,199,89,0.35); color: var(--green); font-weight: 600; }
 .strategy-tab.disabled { opacity: 0.38; cursor: default; pointer-events: none; }
+.strategy-tab.disabled-reason { opacity: 0.45; cursor: pointer; }
 .strategy-panel { display: none; }
 .strategy-panel.visible { display: block; }
 .strategy-row { display: flex; justify-content: space-between; align-items: baseline; padding: 5px 0; border-bottom: 1px solid var(--border-2); }
@@ -771,14 +773,15 @@ function buildStrategySection(s) {
   var sgov = p.sgov_yield;
   var sgovApy = p.sgov_adjusted_apy;
   var rec = p.recommended_strategy || (hasOption ? 'sell_put' : 'spot');
-  var recReason = p.recommended_reason || '';
+  var recReason = p.recommended_reason
+    || (rec === 'sell_put' ? 'Sell Put 综合年化显著高于现货股息率，优先考虑期权策略' : '现货持仓吃股息，策略稳健');
 
-  var tabSellPutClass = !isUS ? 'disabled' : (illiquid ? '' : (hasOption ? '' : 'disabled'));
+  var tabSellPutClass = !isUS ? 'disabled-reason' : (illiquid ? 'disabled-reason' : (hasOption ? '' : 'disabled'));
   var tabSellPutClick = !isUS
-    ? 'showTabTooltip("港股/A股暂无期权市场", this)'
+    ? 'showTabTooltip(\'港股/A股暂无期权市场\', this)'
     : (illiquid
-        ? 'showTabTooltip("流动性不足，价差 ' + ((p.option_spread_pct || 0) * 100).toFixed(1) + '%", this)'
-        : (hasOption ? 'switchStrategyTab("' + ticker + '","sell_put",this)' : ''));
+        ? 'showTabTooltip(\'流动性不足，价差 ' + ((p.option_spread_pct || 0) * 100).toFixed(1) + '%\', this)'
+        : (hasOption ? 'switchStrategyTab(\'' + ticker + '\',\'sell_put\',this)' : ''));
 
   var spotActive = rec === 'spot' ? 'active-green' : '';
   var spActive = (rec === 'sell_put' && hasOption) ? 'active' : '';
