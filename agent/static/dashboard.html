@@ -719,13 +719,16 @@ function initWatchStates() {
 }
 
 function switchStrategyTab(ticker, strategy, tabEl) {
-  document.querySelectorAll('#stabs-' + ticker + ' .strategy-tab').forEach(function(t) {
-    t.classList.remove('active', 'active-green');
-  });
+  var tabsContainer = tabEl.closest('.strategy-tabs');
+  if (tabsContainer) {
+    tabsContainer.querySelectorAll('.strategy-tab').forEach(function(t) {
+      t.classList.remove('active', 'active-green');
+    });
+  }
   tabEl.classList.add(strategy === 'spot' ? 'active-green' : 'active');
-  ['spot', 'sell_put'].forEach(function(s) {
-    var p = document.getElementById('spanel-' + ticker + '-' + s);
-    if (p) p.classList.toggle('visible', s === strategy);
+  ['spot', 'sell_put'].forEach(function(sid) {
+    var panel = document.getElementById('spanel-' + ticker + '-' + sid);
+    if (panel) panel.classList.toggle('visible', sid === strategy);
   });
 }
 
@@ -786,14 +789,19 @@ function buildStrategySection(s) {
   var spotActive = rec === 'spot' ? 'active-green' : '';
   var spActive = (rec === 'sell_put' && hasOption) ? 'active' : '';
 
+  // AI reason block (rendered inside the recommended panel, disappears on tab switch)
+  var reasonHtml = recReason ? '<div class="strategy-ai-reason"><div class="strategy-ai-label">AI 推荐</div>' + recReason + '</div>' : '';
+
   // Spot panel
-  var spotPanel = '<div class="strategy-row"><span class="strategy-row-label">当前股息率</span><span class="strategy-row-value highlight">' + (p.current_yield || 0).toFixed(2) + '%</span></div>'
+  var spotPanel = (rec === 'spot' ? reasonHtml : '')
+    + '<div class="strategy-row"><span class="strategy-row-label">当前股息率</span><span class="strategy-row-value highlight">' + (p.current_yield || 0).toFixed(2) + '%</span></div>'
     + '<div class="strategy-row"><span class="strategy-row-label">历史分位</span><span class="strategy-row-value">' + Math.round(p.yield_percentile || 0) + '%</span></div>';
 
   // Sell Put panel
   var spPanel = '';
   if (hasOption) {
-    spPanel = '<div class="strategy-row"><span class="strategy-row-label">行权价</span><span class="strategy-row-value">$' + (p.option_strike || 0).toFixed(2) + ' · ' + (p.option_dte || 0) + ' DTE</span></div>'
+    spPanel = (rec === 'sell_put' ? reasonHtml : '')
+      + '<div class="strategy-row"><span class="strategy-row-label">行权价</span><span class="strategy-row-value">$' + (p.option_strike || 0).toFixed(2) + ' · ' + (p.option_dte || 0) + ' DTE</span></div>'
       + '<div class="strategy-row"><span class="strategy-row-label">权利金</span><span class="strategy-row-value">$' + (p.option_bid || 0).toFixed(2) + ' → ' + (p.option_apy || 0).toFixed(1) + '% 年化</span></div>'
       + (sgov != null ? '<div class="strategy-row"><span class="strategy-row-label">SGOV 叠加</span><span class="strategy-row-value">+' + sgov.toFixed(1) + '% <span style="color:var(--text-3);font-size:11px">现金短期国债收益</span></span></div>' : '')
       + '<div class="strategy-row"><span class="strategy-row-label">综合年化</span><span class="strategy-row-value highlight">' + (sgovApy != null ? sgovApy.toFixed(1) : (p.option_apy || 0).toFixed(1)) + '% <span style="color:var(--text-3);font-size:11px">' + (sgovApy != null ? '(Sell Put + SGOV)' : '(Sell Put)') + '</span></span></div>';
@@ -804,7 +812,6 @@ function buildStrategySection(s) {
     + '<span class="strategy-tab ' + tabSellPutClass + ' ' + spActive + '" onclick="' + tabSellPutClick + '">Sell Put</span>'
     + '<span class="strategy-tab disabled" onclick="showTabTooltip(\'功能开发中\',this)">Spread ·</span>'
     + '</div>'
-    + (recReason ? '<div class="strategy-ai-reason"><div class="strategy-ai-label">AI 推荐</div>' + recReason + '</div>' : '')
     + '<div class="strategy-panel ' + (rec === 'spot' ? 'visible' : '') + '" id="spanel-' + ticker + '-spot">' + spotPanel + '</div>'
     + '<div class="strategy-panel ' + (rec === 'sell_put' && hasOption ? 'visible' : '') + '" id="spanel-' + ticker + '-sell_put">' + spPanel + '</div>';
 }
