@@ -403,6 +403,7 @@ function render() {
 
   document.getElementById('cards-container').innerHTML =
     `<div class="card-grid">${filtered.map(renderCard).join('')}</div>`;
+  initWatchStates();
 }
 
 function fmtTime(iso) {
@@ -681,12 +682,38 @@ function toggleAnalysis(el) {
   if (arrow) arrow.style.transform = open ? 'rotate(90deg)' : 'rotate(0deg)';
 }
 
-function toggleWatch(btn) {
-  const watched = btn.classList.toggle('watched');
-  const star    = btn.querySelector('.watch-star');
-  const label   = btn.querySelector('.watch-label');
-  if (watched) { star.textContent = '★'; label.textContent = '已关注'; }
-  else         { star.textContent = '☆'; label.textContent = '关注此标的'; }
+var WATCH_KEY = 'watched_opportunities';
+
+function getWatched() {
+  try { return JSON.parse(localStorage.getItem(WATCH_KEY) || '{}'); }
+  catch(e) { return {}; }
+}
+
+function toggleWatch(btn, ticker) {
+  var watched = getWatched();
+  var isWatched = !watched[ticker];
+  if (isWatched) watched[ticker] = Date.now();
+  else delete watched[ticker];
+  localStorage.setItem(WATCH_KEY, JSON.stringify(watched));
+  btn.classList.toggle('watched', isWatched);
+  var star = btn.querySelector('.watch-star');
+  var label = btn.querySelector('.watch-label');
+  if (star) star.textContent = isWatched ? '★' : '☆';
+  if (label) label.textContent = isWatched ? '已关注' : '关注此机会';
+}
+
+function initWatchStates() {
+  var watched = getWatched();
+  document.querySelectorAll('[data-watch-ticker]').forEach(function(btn) {
+    var ticker = btn.dataset.watchTicker;
+    if (watched[ticker]) {
+      btn.classList.add('watched');
+      var star = btn.querySelector('.watch-star');
+      var label = btn.querySelector('.watch-label');
+      if (star) star.textContent = '★';
+      if (label) label.textContent = '已关注';
+    }
+  });
 }
 
 function switchStrategyTab(ticker, strategy, tabEl) {
@@ -930,11 +957,11 @@ function cardDividend(s) {
       </div>
 
       <div class="dc-group">
-        <div class="dc-group-title">关注监控</div>
+        <div class="dc-group-title">关注机会</div>
         <div class="watch-section">
-          <button class="watch-btn" onclick="toggleWatch(this)">
+          <button class="watch-btn" data-watch-ticker="${s.ticker_data.ticker}" onclick="toggleWatch(this, '${s.ticker_data.ticker}')">
             <span class="watch-star">☆</span>
-            <span class="watch-label">关注此标的</span>
+            <span class="watch-label">关注此机会</span>
           </button>
           <div class="watch-items">
             <div class="watch-item"><span class="watch-dot"></span>派息率 &gt;100% 立即预警</div>
