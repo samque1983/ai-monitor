@@ -974,3 +974,47 @@ def test_weekly_scan_sets_sgov_yield_us(monkeypatch):
     hk_sgov = sgov if classify_market("0005.HK") == "US" else None
     assert us_sgov == 4.8
     assert hk_sgov is None
+
+
+# ---------------------------------------------------------------------------
+# Task 4: _get_recommended_strategy() rule-based recommendation
+# ---------------------------------------------------------------------------
+
+def test_recommend_spot_no_options():
+    from src.dividend_scanners import _get_recommended_strategy
+    strategy, reason = _get_recommended_strategy(
+        ticker="0005.HK", current_yield=5.0, sgov_adjusted_apy=None,
+        option_available=False, option_illiquid=False,
+    )
+    assert strategy == "spot"
+    assert "无期权" in reason
+
+
+def test_recommend_spot_illiquid():
+    from src.dividend_scanners import _get_recommended_strategy
+    strategy, reason = _get_recommended_strategy(
+        ticker="AAPL", current_yield=5.0, sgov_adjusted_apy=22.0,
+        option_available=True, option_illiquid=True,
+    )
+    assert strategy == "spot"
+    assert "流动性" in reason
+
+
+def test_recommend_sell_put_when_superior():
+    from src.dividend_scanners import _get_recommended_strategy
+    # sgov_adjusted_apy (8.5) > current_yield (5.0) * 1.5 (7.5) → sell_put
+    strategy, reason = _get_recommended_strategy(
+        ticker="AAPL", current_yield=5.0, sgov_adjusted_apy=8.5,
+        option_available=True, option_illiquid=False,
+    )
+    assert strategy == "sell_put"
+
+
+def test_recommend_spot_when_option_not_much_better():
+    from src.dividend_scanners import _get_recommended_strategy
+    # sgov_adjusted_apy (6.0) <= current_yield (5.0) * 1.5 (7.5) → spot
+    strategy, reason = _get_recommended_strategy(
+        ticker="AAPL", current_yield=5.0, sgov_adjusted_apy=6.0,
+        option_available=True, option_illiquid=False,
+    )
+    assert strategy == "spot"

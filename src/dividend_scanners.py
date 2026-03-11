@@ -48,6 +48,27 @@ def get_sgov_yield() -> float:
         return 4.8
 
 
+def _get_recommended_strategy(
+    ticker: str,
+    current_yield: float,
+    sgov_adjusted_apy: Optional[float],
+    option_available: bool,
+    option_illiquid: bool,
+) -> tuple:
+    """Rule-based strategy recommendation. Returns (strategy, reason_text)."""
+    if not option_available:
+        return "spot", "无期权市场，现货持仓吃股息"
+    if option_illiquid:
+        return "spot", "期权流动性不足，现货持仓更稳"
+    if sgov_adjusted_apy is not None and sgov_adjusted_apy > current_yield * 1.5:
+        multiplier = sgov_adjusted_apy / current_yield
+        return (
+            "sell_put",
+            f"Sell Put 综合年化 {sgov_adjusted_apy:.1f}% 是股息率 {current_yield:.1f}% 的 {multiplier:.1f} 倍",
+        )
+    return "spot", "Sell Put 综合年化与股息率接近，现货持仓吃股息更稳"
+
+
 @dataclass
 class DividendBuySignal:
     """股息买入信号数据类"""
@@ -414,6 +435,7 @@ def scan_dividend_buy_signal(
                     free_cash_flow=None,
                     quality_breakdown=record.get("quality_breakdown"),
                     analysis_text=record.get("analysis_text") or "",
+                    sgov_yield=record.get("sgov_yield"),
                 )
 
                 # Step 7: 尝试添加期权策略（仅美国市场）
@@ -445,6 +467,22 @@ def scan_dividend_buy_signal(
                             f"{ticker}: Option strategy added - strike=${option_details['strike']:.2f}, "
                             f"apy={option_details['apy']:.2f}%"
                         )
+
+                # Compute SGOV-adjusted APY and recommended strategy
+                _option_illiquid = bool(option_details and option_details.get("sell_put_illiquid"))
+                _option_apy = option_details.get("apy") if option_details and not _option_illiquid else None
+                _option_available = option_details is not None and record.get("market", "US") == "US"
+                if _option_apy is not None and ticker_data.sgov_yield is not None:
+                    ticker_data.sgov_adjusted_apy = round(_option_apy + ticker_data.sgov_yield, 2)
+                _rec_strategy, _rec_reason = _get_recommended_strategy(
+                    ticker=ticker,
+                    current_yield=current_yield,
+                    sgov_adjusted_apy=ticker_data.sgov_adjusted_apy,
+                    option_available=_option_available,
+                    option_illiquid=_option_illiquid,
+                )
+                ticker_data.recommended_strategy = _rec_strategy
+                ticker_data.recommended_reason = _rec_reason
 
                 # Positive value = stock is X% above the floor price (downside buffer)
                 _floor_downside_pct: Optional[float] = None
