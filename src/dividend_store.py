@@ -1,11 +1,20 @@
 import sqlite3
 import json
 import logging
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import List, Dict, Optional
 from src.data_engine import TickerData
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class YieldPercentileResult:
+    percentile: float
+    p10: Optional[float]
+    p90: Optional[float]
+    hist_max: Optional[float]
 
 
 class DividendStore:
@@ -262,27 +271,45 @@ class DividendStore:
         ))
         self.conn.commit()
 
-    def get_yield_percentile(self, ticker: str, current_yield: float) -> float:
-        """计算当前股息率在5年历史中的分位数"""
+    def get_yield_percentile(self, ticker: str, current_yield: float) -> "YieldPercentileResult":
+        """计算当前股息率在5年历史中的分位数（Winsorized — 剔除顶部5%极值）"""
         cursor = self.conn.cursor()
         cursor.execute("""
             SELECT dividend_yield FROM dividend_history
             WHERE ticker = ?
             ORDER BY date DESC
+            LIMIT 1250
         """, (ticker,))
 
         historical_yields = [row[0] for row in cursor.fetchall()]
 
         if not historical_yields:
             logger.warning(f"No historical dividend data for {ticker}, returning default percentile 50.0")
-            return 50.0
+            return YieldPercentileResult(percentile=50.0, p10=None, p90=None, hist_max=None)
 
-        # 计算分位数：低于当前收益率的历史值占比
-        # 高百分位数 = 当前收益率高 = 股票便宜
-        count_below_or_equal = len([y for y in historical_yields if y <= current_yield])
-        percentile = (count_below_or_equal / len(historical_yields)) * 100
+        n = len(historical_yields)
+        hist_max = max(historical_yields)
 
-        return percentile
+        # p10/p90 require at least 30 data points
+        p10: Optional[float] = None
+        p90: Optional[float] = None
+        if n >= 30:
+            sorted_yields = sorted(historical_yields)
+            p10 = sorted_yields[int(n * 0.10)]
+            p90 = sorted_yields[int(n * 0.90)]
+
+        # Winsorized percentile: exclude top 5% to dampen crisis spikes
+        cutoff_idx = max(1, int(n * 0.95))
+        trimmed = sorted(historical_yields)[:cutoff_idx]
+        count_below_or_equal = sum(1 for y in trimmed if y <= current_yield)
+        percentile = (count_below_or_equal / len(trimmed)) * 100
+
+        return YieldPercentileResult(
+            percentile=round(percentile, 1),
+            p10=round(p10, 2) if p10 is not None else None,
+            p90=round(p90, 2) if p90 is not None else None,
+            hist_max=round(hist_max, 2),
+        )
 
     def get_defensiveness_score(self, sector: str, industry: str):
         """Return (score, rationale) if cached and not expired, else None."""

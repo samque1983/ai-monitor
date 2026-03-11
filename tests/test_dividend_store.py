@@ -1,6 +1,6 @@
 import pytest
-from datetime import date
-from src.dividend_store import DividendStore
+from datetime import date, timedelta
+from src.dividend_store import DividendStore, YieldPercentileResult
 from src.data_engine import TickerData
 from tests.test_scanners import make_ticker  # Use existing helper
 
@@ -66,12 +66,12 @@ def test_save_and_get_yield_percentile():
         )
 
     # 测试高分位数：当前收益率7.2%高于90%的历史值
-    percentile_high = store.get_yield_percentile('AAPL', 7.2)
-    assert percentile_high >= 90.0
+    result_high = store.get_yield_percentile('AAPL', 7.2)
+    assert result_high.percentile >= 90.0
 
     # 测试中等分位数：当前收益率5.1%处于中间位置
-    percentile_mid = store.get_yield_percentile('AAPL', 5.1)
-    assert 40.0 <= percentile_mid <= 60.0
+    result_mid = store.get_yield_percentile('AAPL', 5.1)
+    assert 40.0 <= result_mid.percentile <= 60.0
 
 
 def test_list_versions_returns_version_history(tmp_path):
@@ -282,3 +282,63 @@ def test_sgov_yield_defaults_none(tmp_path):
     store.save_pool([td], "2026-03-11")
     records = store.get_pool_records()
     assert records[0]["sgov_yield"] is None
+
+
+def test_get_yield_percentile_returns_result_type():
+    """get_yield_percentile should return YieldPercentileResult, not float.
+    Uses 30 data points so p10/p90 are populated."""
+    store = DividendStore(db_path=':memory:')
+    for i in range(30):
+        y = 3.0 + i * 0.15  # 3.0 .. 7.35
+        store.save_dividend_history('AAPL', date(2021, 1, 1) + timedelta(days=i * 7),
+                                    y, y * 100, 100.0)
+
+    result = store.get_yield_percentile('AAPL', 7.2)
+
+    assert isinstance(result, YieldPercentileResult)
+    assert result.percentile >= 90.0
+    assert result.p10 is not None
+    assert result.p90 is not None
+    assert result.hist_max is not None
+    assert result.p10 < result.p90
+    assert result.hist_max >= result.p90
+
+
+def test_get_yield_percentile_winsorized():
+    """Top 5% values should not inflate the percentile calculation."""
+    store = DividendStore(db_path=':memory:')
+    # 100 normal values 3.0–7.0, then 10 extreme crisis values at 25.0
+    for i in range(100):
+        store.save_dividend_history('AAPL', date(2021, 1, 1) + timedelta(days=i),
+                                    3.0 + i * 0.04, (3.0 + i * 0.04) * 100, 100.0)
+    for i in range(10):
+        store.save_dividend_history('AAPL', date(2023, 1, 1) + timedelta(days=i),
+                                    25.0, 100.0, 100.0)
+
+    result = store.get_yield_percentile('AAPL', 6.5)
+    # After Winsorizing top 5%, a 6.5% yield should still show as high percentile
+    assert result.percentile >= 70.0
+    # hist_max should capture the real extreme (25.0)
+    assert result.hist_max >= 20.0
+
+
+def test_get_yield_percentile_p10_p90_requires_30_points():
+    """p10/p90 should be None when fewer than 30 data points exist."""
+    store = DividendStore(db_path=':memory:')
+    for i in range(10):
+        store.save_dividend_history('AAPL', date(2021, 1, i + 1), 4.0 + i * 0.1, 100.0, 100.0)
+
+    result = store.get_yield_percentile('AAPL', 4.5)
+    assert result.p10 is None
+    assert result.p90 is None
+    assert isinstance(result.percentile, float)
+
+
+def test_get_yield_percentile_no_history_returns_default():
+    """No history returns 50.0 percentile with None p10/p90 (existing behavior)."""
+    store = DividendStore(db_path=':memory:')
+    result = store.get_yield_percentile('AAPL', 5.0)
+    assert result.percentile == 50.0
+    assert result.p10 is None
+    assert result.p90 is None
+    assert result.hist_max is None
