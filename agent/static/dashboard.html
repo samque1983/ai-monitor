@@ -788,8 +788,8 @@ function buildStrategySection(s) {
   var isUS = (p.market || 'US') === 'US';
   var illiquid = !!p.option_illiquid;
   var hasOption = isUS && p.option_apy != null && !illiquid;
-  var sgov = p.sgov_yield != null ? p.sgov_yield : (hasOption ? 4.8 : null);
-  var sgovApy = p.sgov_adjusted_apy != null ? p.sgov_adjusted_apy : (hasOption && p.option_apy != null ? Math.round((p.option_apy + 4.8) * 10) / 10 : null);
+  var sgov = p.sgov_yield != null ? p.sgov_yield : (hasOption ? 3.75 : null);
+  var sgovApy = p.sgov_adjusted_apy != null ? p.sgov_adjusted_apy : (hasOption && p.option_apy != null ? Math.round((p.option_apy + 3.75) * 10) / 10 : null);
   var sgovIsEst = p.sgov_adjusted_apy == null && sgovApy != null;
   var rec = p.recommended_strategy || (hasOption ? 'sell_put' : 'spot');
   var recReason = p.recommended_reason
