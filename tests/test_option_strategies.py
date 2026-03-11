@@ -60,3 +60,47 @@ def test_long_put_recognition():
     assert len(groups) == 1
     assert groups[0].strategy_type == "Long Put"
     assert groups[0].intent == "speculation"
+
+
+def test_bull_put_spread():
+    short_p = _opt("AAPL  261201P00180000", "P", 180, -5, delta=-0.3)
+    long_p = _opt("AAPL  261201P00170000", "P", 170, 5, delta=-0.2)
+    groups = OptionStrategyRecognizer().recognize([short_p, long_p])
+    assert len(groups) == 1
+    g = groups[0]
+    assert g.strategy_type == "Bull Put Spread"
+    assert g.intent == "income"
+    assert len(g.legs) == 2
+
+
+def test_covered_call():
+    stock = _stk("AAPL", 100)
+    call = _opt("AAPL  261201C00200000", "C", 200, -1, delta=0.3)
+    groups = OptionStrategyRecognizer().recognize([stock, call])
+    assert len(groups) == 1
+    assert groups[0].strategy_type == "Covered Call"
+    assert groups[0].stock_leg is not None
+
+
+def test_protective_put():
+    stock = _stk("AAPL", 100)
+    put = _opt("AAPL  261201P00160000", "P", 160, 1, delta=-0.2)
+    groups = OptionStrategyRecognizer().recognize([stock, put])
+    assert len(groups) == 1
+    assert groups[0].strategy_type == "Protective Put"
+
+
+def test_straddle():
+    call = _opt("AAPL  261201C00180000", "C", 180, -3, delta=0.5)
+    put = _opt("AAPL  261201P00180000", "P", 180, -3, delta=-0.5)
+    groups = OptionStrategyRecognizer().recognize([call, put])
+    assert len(groups) == 1
+    assert groups[0].strategy_type == "Straddle"
+
+
+def test_strangle():
+    call = _opt("AAPL  261201C00200000", "C", 200, -3, delta=0.3)
+    put = _opt("AAPL  261201P00160000", "P", 160, -3, delta=-0.3)
+    groups = OptionStrategyRecognizer().recognize([call, put])
+    assert len(groups) == 1
+    assert groups[0].strategy_type == "Strangle"
