@@ -763,38 +763,37 @@ function renderAnalysisText(raw) {
 }
 
 function buildStrategySection(s) {
-  var td = s.ticker_data || {};
-  var opt = s.option_details || {};
-  var ticker = td.ticker || '';
-  var isUS = (td.market || 'US') === 'US';
-  var illiquid = !!opt.sell_put_illiquid;
-  var hasOption = isUS && opt.apy != null && !illiquid;
-  var sgov = td.sgov_yield;
-  var sgovApy = td.sgov_adjusted_apy;
-  var rec = td.recommended_strategy || (hasOption ? 'sell_put' : 'spot');
-  var recReason = td.recommended_reason || '';
+  var p = s.payload || {};
+  var ticker = s.ticker || '';
+  var isUS = (p.market || 'US') === 'US';
+  var illiquid = !!p.option_illiquid;
+  var hasOption = isUS && p.option_apy != null && !illiquid;
+  var sgov = p.sgov_yield;
+  var sgovApy = p.sgov_adjusted_apy;
+  var rec = p.recommended_strategy || (hasOption ? 'sell_put' : 'spot');
+  var recReason = p.recommended_reason || '';
 
   var tabSellPutClass = !isUS ? 'disabled' : (illiquid ? '' : (hasOption ? '' : 'disabled'));
   var tabSellPutClick = !isUS
     ? 'showTabTooltip("港股/A股暂无期权市场", this)'
     : (illiquid
-        ? 'showTabTooltip("流动性不足，价差 ' + ((opt.spread_pct || 0) * 100).toFixed(1) + '%", this)'
+        ? 'showTabTooltip("流动性不足，价差 ' + ((p.option_spread_pct || 0) * 100).toFixed(1) + '%", this)'
         : (hasOption ? 'switchStrategyTab("' + ticker + '","sell_put",this)' : ''));
 
   var spotActive = rec === 'spot' ? 'active-green' : '';
   var spActive = (rec === 'sell_put' && hasOption) ? 'active' : '';
 
   // Spot panel
-  var spotPanel = '<div class="strategy-row"><span class="strategy-row-label">当前股息率</span><span class="strategy-row-value highlight">' + (s.current_yield || 0).toFixed(2) + '%</span></div>'
-    + '<div class="strategy-row"><span class="strategy-row-label">历史分位</span><span class="strategy-row-value">' + Math.round(s.yield_percentile || 0) + '%</span></div>';
+  var spotPanel = '<div class="strategy-row"><span class="strategy-row-label">当前股息率</span><span class="strategy-row-value highlight">' + (p.current_yield || 0).toFixed(2) + '%</span></div>'
+    + '<div class="strategy-row"><span class="strategy-row-label">历史分位</span><span class="strategy-row-value">' + Math.round(p.yield_percentile || 0) + '%</span></div>';
 
   // Sell Put panel
   var spPanel = '';
   if (hasOption) {
-    spPanel = '<div class="strategy-row"><span class="strategy-row-label">行权价</span><span class="strategy-row-value">$' + (opt.strike || 0).toFixed(2) + ' · ' + (opt.dte || 0) + ' DTE</span></div>'
-      + '<div class="strategy-row"><span class="strategy-row-label">权利金</span><span class="strategy-row-value">$' + (opt.bid || 0).toFixed(2) + ' → ' + (opt.apy || 0).toFixed(1) + '% 年化</span></div>'
+    spPanel = '<div class="strategy-row"><span class="strategy-row-label">行权价</span><span class="strategy-row-value">$' + (p.option_strike || 0).toFixed(2) + ' · ' + (p.option_dte || 0) + ' DTE</span></div>'
+      + '<div class="strategy-row"><span class="strategy-row-label">权利金</span><span class="strategy-row-value">$' + (p.option_bid || 0).toFixed(2) + ' → ' + (p.option_apy || 0).toFixed(1) + '% 年化</span></div>'
       + (sgov != null ? '<div class="strategy-row"><span class="strategy-row-label">SGOV 叠加</span><span class="strategy-row-value">+' + sgov.toFixed(1) + '% <span style="color:var(--text-3);font-size:11px">现金短期国债收益</span></span></div>' : '')
-      + '<div class="strategy-row"><span class="strategy-row-label">综合年化</span><span class="strategy-row-value highlight">' + (sgovApy != null ? sgovApy.toFixed(1) : (opt.apy || 0).toFixed(1)) + '% <span style="color:var(--text-3);font-size:11px">' + (sgovApy != null ? '(Sell Put + SGOV)' : '(Sell Put)') + '</span></span></div>';
+      + '<div class="strategy-row"><span class="strategy-row-label">综合年化</span><span class="strategy-row-value highlight">' + (sgovApy != null ? sgovApy.toFixed(1) : (p.option_apy || 0).toFixed(1)) + '% <span style="color:var(--text-3);font-size:11px">' + (sgovApy != null ? '(Sell Put + SGOV)' : '(Sell Put)') + '</span></span></div>';
   }
 
   return '<div class="strategy-tabs" id="stabs-' + ticker + '">'
