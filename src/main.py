@@ -531,7 +531,25 @@ def run_risk_history(account_id: str, days: int = 7):
               f"${row['total_pnl']:>9,.0f} ${row['net_liquidation']:>11,.0f}")
 
 
+def _load_dotenv() -> None:
+    """Load .env file from project root into os.environ (env vars take precedence)."""
+    env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+    if not os.path.exists(env_path):
+        return
+    with open(env_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            key = key.strip()
+            val = val.strip().strip("\"'")
+            if key and key not in os.environ:
+                os.environ[key] = val
+
+
 if __name__ == "__main__":
+    _load_dotenv()
     parser = argparse.ArgumentParser(description="V1.9 Quant Radar")
     parser.add_argument("config", nargs="?", default="config.yaml", help="Config file path")
     parser.add_argument("--risk-report", action="store_true", help="Run portfolio risk report")
