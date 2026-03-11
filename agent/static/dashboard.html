@@ -742,6 +742,17 @@ function showTabTooltip(msg, el) {
   setTimeout(function() { if (tip.parentNode) tip.remove(); }, 2500);
 }
 
+// Strategy tab click — event delegation avoids inline-onclick issues in innerHTML
+document.addEventListener('click', function(e) {
+  var tab = e.target.closest('.strategy-tab');
+  if (!tab) return;
+  var ticker = tab.dataset.ticker;
+  var strategy = tab.dataset.strategy;
+  var tooltip = tab.dataset.tooltip;
+  if (tooltip) { showTabTooltip(tooltip, tab); return; }
+  if (ticker && strategy) switchStrategyTab(ticker, strategy, tab);
+});
+
 function parseAnalysisText(raw) {
   if (!raw) return null;
   var lineRe = /^(.+?)：(.+?)→\s*(.+)$/;
@@ -780,11 +791,9 @@ function buildStrategySection(s) {
     || (rec === 'sell_put' ? 'Sell Put 综合年化显著高于现货股息率，优先考虑期权策略' : '现货持仓吃股息，策略稳健');
 
   var tabSellPutClass = !isUS ? 'disabled-reason' : (illiquid ? 'disabled-reason' : (hasOption ? '' : 'disabled'));
-  var tabSellPutClick = !isUS
-    ? 'showTabTooltip(\'港股/A股暂无期权市场\', this)'
-    : (illiquid
-        ? 'showTabTooltip(\'流动性不足，价差 ' + ((p.option_spread_pct || 0) * 100).toFixed(1) + '%\', this)'
-        : (hasOption ? 'switchStrategyTab(\'' + ticker + '\',\'sell_put\',this)' : ''));
+  var tabSellPutTooltip = !isUS
+    ? '港股/A股暂无期权市场'
+    : (illiquid ? '流动性不足，价差 ' + ((p.option_spread_pct || 0) * 100).toFixed(1) + '%' : '');
 
   var spotActive = rec === 'spot' ? 'active-green' : '';
   var spActive = (rec === 'sell_put' && hasOption) ? 'active' : '';
@@ -807,10 +816,13 @@ function buildStrategySection(s) {
       + '<div class="strategy-row"><span class="strategy-row-label">综合年化</span><span class="strategy-row-value highlight">' + (sgovApy != null ? sgovApy.toFixed(1) : (p.option_apy || 0).toFixed(1)) + '% <span style="color:var(--text-3);font-size:11px">' + (sgovApy != null ? '(Sell Put + SGOV)' : '(Sell Put)') + '</span></span></div>';
   }
 
+  var spTooltipAttr = tabSellPutTooltip ? ' data-tooltip="' + tabSellPutTooltip + '"' : '';
+  var spStrategyAttr = (hasOption && !tabSellPutTooltip) ? ' data-ticker="' + ticker + '" data-strategy="sell_put"' : '';
+
   return '<div class="strategy-tabs" id="stabs-' + ticker + '">'
-    + '<span class="strategy-tab ' + spotActive + '" onclick="switchStrategyTab(\'' + ticker + '\',\'spot\',this)">现货</span>'
-    + '<span class="strategy-tab ' + tabSellPutClass + ' ' + spActive + '" onclick="' + tabSellPutClick + '">Sell Put</span>'
-    + '<span class="strategy-tab disabled" onclick="showTabTooltip(\'功能开发中\',this)">Spread ·</span>'
+    + '<span class="strategy-tab ' + spotActive + '" data-ticker="' + ticker + '" data-strategy="spot">现货</span>'
+    + '<span class="strategy-tab ' + tabSellPutClass + ' ' + spActive + '"' + spTooltipAttr + spStrategyAttr + '>Sell Put</span>'
+    + '<span class="strategy-tab disabled" data-tooltip="功能开发中">Spread ·</span>'
     + '</div>'
     + '<div class="strategy-panel ' + (rec === 'spot' ? 'visible' : '') + '" id="spanel-' + ticker + '-spot">' + spotPanel + '</div>'
     + '<div class="strategy-panel ' + (rec === 'sell_put' && hasOption ? 'visible' : '') + '" id="spanel-' + ticker + '-sell_put">' + spPanel + '</div>';
