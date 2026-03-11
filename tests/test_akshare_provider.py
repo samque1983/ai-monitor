@@ -158,3 +158,58 @@ def test_us_fundamentals_returns_none():
     p = AkshareProvider(enabled=True)
     result = p.get_fundamentals("AAPL")
     assert result is None
+
+
+# ── options chain ─────────────────────────────────────────────────────────────
+
+MOCK_CN_OPTIONS = pd.DataFrame({
+    "期权名称": ["50ETF购3月2800", "50ETF沽3月2700", "50ETF沽4月2600"],
+    "行权价":   [2.800,            2.700,            2.600],
+    "买价":     [0.049,            0.079,            0.119],
+    "到期日":   ["2024-03-27",     "2024-03-27",     "2024-04-24"],
+})
+
+
+def test_cn_options_chain():
+    """50ETF options: filter puts by DTE range, return strike/bid/dte/expiration."""
+    import datetime
+    p = AkshareProvider(enabled=True)
+    with patch("src.providers.akshare.ak") as mock_ak:
+        with patch("src.providers.akshare.date") as mock_date:
+            mock_date.today.return_value = datetime.date(2024, 2, 1)
+            mock_ak.option_finance_board.return_value = MOCK_CN_OPTIONS.copy()
+            df = p.get_options_chain("510050.SS", dte_min=30, dte_max=120)
+    assert not df.empty
+    assert set(df.columns) >= {"strike", "bid", "dte", "expiration"}
+    # Only puts (沽) — 2 put rows
+    assert len(df) == 2
+    assert all("strike" in df.columns for _ in [1])
+
+
+def test_cn_options_outside_dte_filtered():
+    """Puts outside DTE range are excluded."""
+    import datetime
+    p = AkshareProvider(enabled=True)
+    with patch("src.providers.akshare.ak") as mock_ak:
+        with patch("src.providers.akshare.date") as mock_date:
+            mock_date.today.return_value = datetime.date(2024, 2, 1)
+            mock_ak.option_finance_board.return_value = MOCK_CN_OPTIONS.copy()
+            # March 27 = 55 DTE, April 24 = 83 DTE — only April in [60,120]
+            df = p.get_options_chain("510050.SS", dte_min=60, dte_max=120)
+    assert len(df) == 1
+    assert df.iloc[0]["strike"] == pytest.approx(2.600)
+
+
+def test_unknown_cn_ticker_options_returns_empty():
+    """CN tickers not in ETF option map return empty."""
+    p = AkshareProvider(enabled=True)
+    df = p.get_options_chain("600519.SS")
+    assert df.empty
+
+
+def test_options_chain_api_error_returns_empty():
+    p = AkshareProvider(enabled=True)
+    with patch("src.providers.akshare.ak") as mock_ak:
+        mock_ak.option_finance_board.side_effect = Exception("API down")
+        df = p.get_options_chain("510050.SS")
+    assert df.empty

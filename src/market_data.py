@@ -7,7 +7,7 @@ import pandas as pd
 import yfinance as yf
 from src.data_loader import classify_market
 from src.iv_store import IVStore
-from src.providers import PolygonProvider, TradierProvider
+from src.providers import PolygonProvider, TradierProvider, AkshareProvider
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +48,11 @@ class MarketDataProvider:
         self._tradier: Optional[TradierProvider] = (
             TradierProvider(tradier_key, sandbox=tradier_sandbox) if (tradier_enabled and tradier_key) else None
         )
+
+        # AKShare — free, no API key; enabled by default
+        akshare_cfg = ds_config.get("akshare", {})
+        akshare_enabled = akshare_cfg.get("enabled", True)
+        self._akshare = AkshareProvider(enabled=akshare_enabled)
 
     def _make_yf_session(self):
         """Create a curl_cffi session with SSL verification disabled (handles corporate proxy)."""
@@ -142,7 +147,7 @@ class MarketDataProvider:
         raise ValueError(f"No IBKR data for {ticker} (tried real-time and delayed)")
 
     def get_price_data(self, ticker: str, period: str = "1y") -> pd.DataFrame:
-        """Fetch OHLCV. Routing: IBKR → Polygon (US only) → yfinance."""
+        """Fetch OHLCV. Routing: IBKR → Polygon (US) → AKShare (CN/HK/US) → yfinance."""
         if self.ibkr:
             try:
                 return self._ibkr_price_data(ticker, period)
@@ -152,6 +157,11 @@ class MarketDataProvider:
             df = self._polygon.get_price_data(ticker, period)
             if not df.empty:
                 logger.debug(f"{ticker}: price data via Polygon")
+                return df
+        if self._akshare:
+            df = self._akshare.get_price_data(ticker, period)
+            if not df.empty:
+                logger.debug(f"{ticker}: price data via AKShare")
                 return df
         return self._yf_price_data(ticker, period)
 
@@ -403,11 +413,21 @@ class MarketDataProvider:
             return []
 
     def should_skip_options(self, ticker: str) -> bool:
-        """Return True if options data should be skipped for this ticker."""
-        return classify_market(ticker) == "CN"
+        """Return True if options data should be skipped for this ticker.
+        CN ETF options (50ETF/300ETF) are supported via AKShare — allow through.
+        All other CN and HK tickers: skip.
+        """
+        from src.providers.akshare import _CN_ETF_OPTION_MAP
+        market = classify_market(ticker)
+        if market == "HK":
+            return True
+        if market == "CN":
+            symbol = ticker.replace(".SS", "").replace(".SZ", "")
+            return symbol not in _CN_ETF_OPTION_MAP
+        return False
 
     def get_options_chain(self, ticker: str, dte_min: int = 45, dte_max: int = 60) -> pd.DataFrame:
-        """Fetch put options. Routing: IBKR → Tradier (US only) → yfinance."""
+        """Fetch put options. Routing: IBKR → Tradier (US) → AKShare → yfinance."""
         if self.should_skip_options(ticker):
             return pd.DataFrame()
         if self.ibkr:
@@ -415,10 +435,16 @@ class MarketDataProvider:
                 return self._ibkr_options_chain(ticker, dte_min, dte_max)
             except Exception as e:
                 logger.warning(f"IBKR options chain failed for {ticker}, falling back: {e}")
-        if self._tradier and classify_market(ticker) == "US":
+        market = classify_market(ticker)
+        if self._tradier and market == "US":
             df = self._tradier.get_options_chain(ticker, dte_min=dte_min, dte_max=dte_max)
             if not df.empty:
                 logger.debug(f"{ticker}: options via Tradier")
+                return df
+        if self._akshare:
+            df = self._akshare.get_options_chain(ticker, dte_min=dte_min, dte_max=dte_max)
+            if not df.empty:
+                logger.debug(f"{ticker}: options via AKShare")
                 return df
         return self._yf_options_chain(ticker, dte_min, dte_max)
 
@@ -660,16 +686,23 @@ class MarketDataProvider:
 
     def get_fundamentals(self, ticker: str) -> Optional[Dict[str, Any]]:
         """Fetch fundamentals. Routing: Polygon → yfinance (US); yfinance (HK/CN).
-        Polygon result has None for fields it can't provide; yfinance fills them in."""
-        if self._polygon and classify_market(ticker) == "US":
+        Polygon result has None for fields it can't provide; yfinance fills them in.
+        CN/HK: AKShare → yfinance."""
+        market = classify_market(ticker)
+        if self._polygon and market == "US":
             poly = self._polygon.get_fundamentals(ticker)
             if poly is not None:
                 # Fill None fields from yfinance
-                yf = self._yf_fundamentals(ticker) or {}
+                yf_data = self._yf_fundamentals(ticker) or {}
                 for key, val in poly.items():
-                    if val is None and yf.get(key) is not None:
-                        poly[key] = yf[key]
+                    if val is None and yf_data.get(key) is not None:
+                        poly[key] = yf_data[key]
                 return poly
+        if self._akshare and market in ("CN", "HK"):
+            result = self._akshare.get_fundamentals(ticker)
+            if result is not None:
+                logger.debug(f"{ticker}: fundamentals via AKShare")
+                return result
         return self._yf_fundamentals(ticker)
 
     def disconnect(self):

@@ -38,6 +38,8 @@ data_sources:
     enabled: false     # set true after getting API key
     api_key: ""        # env: TRADIER_API_KEY
     sandbox: true      # true=sandbox (delayed), false=production
+  akshare:
+    enabled: true      # free, no api_key needed
 
 scanners:
   iv_momentum_threshold: 30

@@ -67,8 +67,9 @@ class TestClassifyAndSkip:
     def test_should_not_skip_options_us_ticker(self, provider_no_ibkr):
         assert provider_no_ibkr.should_skip_options("AAPL") is False
 
-    def test_should_not_skip_options_hk_ticker(self, provider_no_ibkr):
-        assert provider_no_ibkr.should_skip_options("0700.HK") is False
+    def test_should_skip_options_hk_ticker(self, provider_no_ibkr):
+        # HK has no options per GLOBAL_MASTER.md §2.1
+        assert provider_no_ibkr.should_skip_options("0700.HK") is True
 
 
 class TestLoadEarningsFromCSV:
@@ -1086,3 +1087,138 @@ def test_tradier_provider_returns_empty_on_exception():
         df = provider.get_options_chain("AAPL", dte_min=45, dte_max=90)
 
     assert df.empty
+
+
+# ── AKShare wiring ────────────────────────────────────────────────────────────
+
+def test_akshare_enabled_by_default():
+    provider = MarketDataProvider(config={})
+    assert provider._akshare is not None
+    assert provider._akshare.enabled is True
+
+
+def test_akshare_activated_by_config():
+    provider = MarketDataProvider(config={"data_sources": {"akshare": {"enabled": True}}})
+    assert provider._akshare.enabled is True
+
+
+def test_akshare_disabled_by_config():
+    provider = MarketDataProvider(config={"data_sources": {"akshare": {"enabled": False}}})
+    assert provider._akshare.enabled is False
+
+
+# ── get_price_data routing ────────────────────────────────────────────────────
+
+def test_cn_price_uses_akshare_before_yfinance():
+    mock_df = pd.DataFrame({"Open": [1.0], "Close": [1.0]})
+    provider = MarketDataProvider(config={"data_sources": {"akshare": {"enabled": True}}})
+    provider.ibkr = None
+    provider._akshare.get_price_data = MagicMock(return_value=mock_df)
+
+    with patch.object(provider, "_yf_price_data") as mock_yf:
+        result = provider.get_price_data("600519.SS")
+
+    provider._akshare.get_price_data.assert_called_once_with("600519.SS", "1y")
+    mock_yf.assert_not_called()
+    assert not result.empty
+
+
+def test_cn_price_falls_back_to_yfinance_when_akshare_empty():
+    provider = MarketDataProvider(config={"data_sources": {"akshare": {"enabled": True}}})
+    provider.ibkr = None
+    provider._akshare.get_price_data = MagicMock(return_value=pd.DataFrame())
+
+    with patch.object(provider, "_yf_price_data", return_value=pd.DataFrame({"Close": [100.0]})) as mock_yf:
+        result = provider.get_price_data("600519.SS")
+
+    mock_yf.assert_called_once()
+    assert not result.empty
+
+
+def test_hk_price_uses_akshare_before_yfinance():
+    mock_df = pd.DataFrame({"Open": [300.0], "Close": [301.0]})
+    provider = MarketDataProvider(config={"data_sources": {"akshare": {"enabled": True}}})
+    provider.ibkr = None
+    provider._akshare.get_price_data = MagicMock(return_value=mock_df)
+
+    with patch.object(provider, "_yf_price_data") as mock_yf:
+        provider.get_price_data("0700.HK")
+
+    provider._akshare.get_price_data.assert_called_once()
+    mock_yf.assert_not_called()
+
+
+def test_us_price_akshare_after_polygon():
+    mock_df = pd.DataFrame({"Open": [185.0], "Close": [186.0]})
+    provider = MarketDataProvider(config={"data_sources": {"akshare": {"enabled": True}}})
+    provider.ibkr = None
+    provider._polygon = MagicMock()
+    provider._polygon.get_price_data.return_value = pd.DataFrame()
+    provider._akshare.get_price_data = MagicMock(return_value=mock_df)
+
+    with patch.object(provider, "_yf_price_data") as mock_yf:
+        provider.get_price_data("AAPL")
+
+    provider._akshare.get_price_data.assert_called_once()
+    mock_yf.assert_not_called()
+
+
+# ── get_fundamentals routing ──────────────────────────────────────────────────
+
+def test_cn_fundamentals_uses_akshare_before_yfinance():
+    provider = MarketDataProvider(config={"data_sources": {"akshare": {"enabled": True}}})
+    provider._akshare.get_fundamentals = MagicMock(return_value={
+        "company_name": "贵州茅台", "industry": "白酒",
+        "sector": None, "roe": None, "free_cash_flow": None,
+        "payout_ratio": None, "debt_to_equity": None, "dividend_yield": 2.5,
+    })
+
+    with patch.object(provider, "_yf_fundamentals") as mock_yf:
+        result = provider.get_fundamentals("600519.SS")
+
+    provider._akshare.get_fundamentals.assert_called_once_with("600519.SS")
+    mock_yf.assert_not_called()
+    assert result["company_name"] == "贵州茅台"
+
+
+def test_cn_fundamentals_falls_back_to_yfinance_when_akshare_none():
+    provider = MarketDataProvider(config={"data_sources": {"akshare": {"enabled": True}}})
+    provider._akshare.get_fundamentals = MagicMock(return_value=None)
+
+    with patch.object(provider, "_yf_fundamentals", return_value={"company_name": "Moutai"}) as mock_yf:
+        result = provider.get_fundamentals("600519.SS")
+
+    mock_yf.assert_called_once()
+    assert result["company_name"] == "Moutai"
+
+
+# ── get_options_chain routing ─────────────────────────────────────────────────
+
+def test_cn_options_uses_akshare():
+    mock_opts = pd.DataFrame({"strike": [2.7], "bid": [0.08], "dte": [55], "expiration": ["2024-03-27"]})
+    provider = MarketDataProvider(config={"data_sources": {"akshare": {"enabled": True}}})
+    provider.ibkr = None
+    provider._akshare.get_options_chain = MagicMock(return_value=mock_opts)
+
+    with patch.object(provider, "_yf_options_chain") as mock_yf:
+        result = provider.get_options_chain("510050.SS")
+
+    provider._akshare.get_options_chain.assert_called_once()
+    mock_yf.assert_not_called()
+    assert not result.empty
+
+
+def test_us_options_akshare_after_tradier():
+    mock_opts = pd.DataFrame({"strike": [170.0], "bid": [2.5], "dte": [50], "expiration": ["2024-04-19"]})
+    provider = MarketDataProvider(config={"data_sources": {"akshare": {"enabled": True}}})
+    provider.ibkr = None
+    provider._tradier = MagicMock()
+    provider._tradier.get_options_chain.return_value = pd.DataFrame()
+    provider._akshare.get_options_chain = MagicMock(return_value=mock_opts)
+
+    with patch.object(provider, "_yf_options_chain") as mock_yf:
+        result = provider.get_options_chain("AAPL")
+
+    provider._akshare.get_options_chain.assert_called_once()
+    mock_yf.assert_not_called()
+    assert not result.empty
