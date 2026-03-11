@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 from src.data_engine import TickerData
 from src.dividend_scanners import scan_dividend_pool_weekly, scan_dividend_buy_signal, DividendBuySignal, scan_dividend_sell_put
 from src.financial_service import DividendQualityScore
-from src.dividend_store import DividendStore
+from src.dividend_store import DividendStore, YieldPercentileResult
 
 
 def _history_5yr():
@@ -1018,3 +1018,54 @@ def test_recommend_spot_when_option_not_much_better():
         option_available=True, option_illiquid=False,
     )
     assert strategy == "spot"
+
+
+def test_buy_signal_includes_yield_p10_p90_hist_max():
+    """DividendBuySignal should carry yield_p10, yield_p90, yield_hist_max from store."""
+    store_mock = MagicMock()
+    store_mock.get_yield_percentile.return_value = YieldPercentileResult(
+        percentile=85.0, p10=3.5, p90=5.8, hist_max=12.0
+    )
+    store_mock.save_dividend_history = MagicMock()
+
+    provider_mock = MagicMock()
+    provider_mock.config = {"default_market": "US"}
+    price_df = pd.DataFrame({"Close": [100.0]})
+    provider_mock.get_price_data.return_value = price_df
+    from datetime import datetime, timedelta
+    recent = (datetime.now() - timedelta(days=60)).strftime("%Y-%m-%d")
+    older = (datetime.now() - timedelta(days=240)).strftime("%Y-%m-%d")
+    provider_mock.get_dividend_history.return_value = [
+        {"date": recent, "amount": 1.0},
+        {"date": older, "amount": 1.0},
+    ]
+    provider_mock.should_skip_options.return_value = True
+    provider_mock.get_earnings_date.return_value = None
+
+    pool = [{
+        "ticker": "AAPL",
+        "name": "Apple",
+        "market": "US",
+        "quality_score": 85.0,
+        "consecutive_years": 10,
+        "dividend_growth_5y": 6.0,
+        "payout_ratio": 65.0,
+        "payout_type": "GAAP",
+        "forward_dividend_rate": 1.0,
+        "max_yield_5y": 5.0,
+        "data_version_date": "2026-03-10",
+        "sgov_yield": 4.8,
+        "quality_breakdown": {},
+        "analysis_text": "",
+    }]
+
+    config = {"dividend_scanners": {"min_yield": 1.5, "min_yield_percentile": 80}}
+
+    signals = scan_dividend_buy_signal(pool=pool, provider=provider_mock, store=store_mock, config=config)
+
+    assert len(signals) == 1
+    sig = signals[0]
+    assert sig.yield_p10 == 3.5
+    assert sig.yield_p90 == 5.8
+    assert sig.yield_hist_max == 12.0
+    assert sig.yield_percentile == 85.0

@@ -22,6 +22,8 @@ from src.financial_service import (
     calculate_dividend_growth_rate,
 )
 
+from src.dividend_store import YieldPercentileResult
+
 if TYPE_CHECKING:
     from src.market_data import MarketDataProvider
     from src.financial_service import FinancialServiceAnalyzer
@@ -83,6 +85,9 @@ class DividendBuySignal:
     floor_downside_pct: Optional[float] = None  # Positive = stock is X% above floor price (downside buffer; negate to show drop direction)
     data_age_days: Optional[int] = None
     needs_reeval: bool = False
+    yield_p10: Optional[float] = None       # P10 of 5-year yield history
+    yield_p90: Optional[float] = None       # P90 of 5-year yield history
+    yield_hist_max: Optional[float] = None  # Historical max yield (includes crises)
 
 
 def scan_dividend_pool_weekly(
@@ -396,7 +401,11 @@ def scan_dividend_buy_signal(
             current_yield = (annual_dividend / last_price) * 100
 
             # Step 5: 获取历史分位数
-            yield_percentile = store.get_yield_percentile(ticker, current_yield)
+            _percentile_result = store.get_yield_percentile(ticker, current_yield)
+            yield_percentile = _percentile_result.percentile
+            _yield_p10 = _percentile_result.p10
+            _yield_p90 = _percentile_result.p90
+            _yield_hist_max = _percentile_result.hist_max
 
             # Step 6: 判断触发条件 (OR: 满足任意一个即触发)
             if current_yield >= min_yield or yield_percentile >= min_yield_percentile:
@@ -510,6 +519,9 @@ def scan_dividend_buy_signal(
                     floor_downside_pct=_floor_downside_pct,
                     data_age_days=_data_age_days,
                     needs_reeval=_needs_reeval,
+                    yield_p10=_yield_p10,
+                    yield_p90=_yield_p90,
+                    yield_hist_max=_yield_hist_max,
                 )
 
                 results.append(signal)
