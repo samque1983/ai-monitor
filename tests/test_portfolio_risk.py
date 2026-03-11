@@ -80,6 +80,16 @@ def _analyze_no_mdp(positions, account):
         return analyzer.analyze(positions, account)
 
 
+def _near_expiry_str(days: int = 7) -> str:
+    """Return expiry string YYYYMMDD that is `days` days in the future."""
+    return (date.today() + timedelta(days=days)).strftime("%Y%m%d")
+
+
+def _far_expiry_str(days: int = 90) -> str:
+    """Return expiry string YYYYMMDD that is `days` days in the future."""
+    return (date.today() + timedelta(days=days)).strftime("%Y%m%d")
+
+
 # ---------------------------------------------------------------------------
 # Task 3: Dims 1–5
 # ---------------------------------------------------------------------------
@@ -453,3 +463,124 @@ def test_dim1_large_hkd_position_triggers_alert():
     dim1 = [a for a in report.alerts if a.dimension == 1]
     assert len(dim1) == 1
     assert dim1[0].level == "red"
+
+
+def test_dim1_excludes_cash_like():
+    """SGOV (cash-like) must not contribute to dollar delta."""
+    sgov = _make_position(symbol="SGOV", asset_category="STK",
+                          position=5000, mark=100, delta=0.0)
+    stk = _make_position(symbol="AAPL", asset_category="STK",
+                         position=100, mark=100, delta=0.0)
+    account = _make_account(nlv=100000)
+    # Without SGOV: 100×100 / 100000 = 10% → no dim1 alert
+    # With SGOV (wrong): (500000+10000) / 100000 = 510% → red
+    report = _analyze_no_mdp([sgov, stk], account)
+    dim1 = [a for a in report.alerts if a.dimension == 1]
+    assert len(dim1) == 0
+
+
+def test_dim10_hk_numeric_symbol_formatted():
+    """Numeric HK stock symbols (883) get 0883.HK suffix for yfinance beta lookup."""
+    hk = _make_position(symbol="883", asset_category="STK",
+                        position=1000, mark=10, delta=0.0, currency="HKD")
+    account = _make_account(nlv=100000)
+    with patch("src.portfolio_risk.MarketDataProvider") as MockMDP:
+        MockMDP.return_value.get_fundamentals.return_value = {"beta": 0.8}
+        MockMDP.return_value.get_earnings_date.return_value = (None, None)
+        analyzer = PortfolioRiskAnalyzer()
+        analyzer.analyze([hk], account)
+    calls = [str(c) for c in MockMDP.return_value.get_fundamentals.call_args_list]
+    assert any("0883.HK" in c for c in calls)
+
+
+def test_dim7_skips_long_put():
+    """Long put (position > 0) must NOT trigger dim7 assignment-risk alert."""
+    # ITM long put: mark_price < strike
+    long_put = _make_position(symbol="AAPL  260101P00200000",
+                              asset_category="OPT", put_call="P",
+                              strike=200.0, position=5, mark=15.0, delta=-0.8,
+                              expiry=_near_expiry_str())
+    account = _make_account(nlv=500000)
+    report = _analyze_no_mdp([long_put], account)
+    dim7 = [a for a in report.alerts if a.dimension == 7]
+    assert len(dim7) == 0, "Long put must not trigger dim7 assignment-risk alert"
+
+
+def test_stress_test_long_put_reduces_loss():
+    """Long put (buy protection) should REDUCE stress-test loss, not add to it."""
+    stk = _make_position(symbol="AAPL", asset_category="STK",
+                         position=100, mark=200.0, delta=0.0)
+    # Protective put: long 1 contract, delta=-0.5
+    long_put = _make_position(symbol="AAPL  260101P00200000",
+                              asset_category="OPT", put_call="P",
+                              underlying_symbol="AAPL",
+                              strike=200.0, position=1, mark=5.0, delta=-0.5,
+                              expiry=_far_expiry_str())
+    account = _make_account(nlv=500000)
+    with patch("src.portfolio_risk.MarketDataProvider") as MockMDP:
+        MockMDP.return_value.get_fundamentals.return_value = {"beta": 1.0}
+        MockMDP.return_value.get_earnings_date.return_value = (None, None)
+        analyzer = PortfolioRiskAnalyzer()
+        # Loss without hedge: 100 shares × $200 × 1.0 × 10% = $2,000
+        report_naked = analyzer.analyze([stk], account)
+        # Loss with long put hedge: should be less than naked
+        report_hedged = analyzer.analyze([stk, long_put], account)
+    stress_naked  = report_naked.summary_stats["stress_test"]["drop_10pct"]
+    stress_hedged = report_hedged.summary_stats["stress_test"]["drop_10pct"]
+    # Hedged portfolio should have a smaller (less negative) loss
+    assert stress_hedged > stress_naked, (
+        f"Hedged loss {stress_hedged} should be less negative than naked {stress_naked}"
+    )
+
+
+def test_dim5_concentration_long_put_reduces_notional():
+    """Long put hedge on same underlying reduces net concentration notional."""
+    # Short put: strike 200, 10 contracts (mult=100) → $200k notional
+    short_put = _make_position(symbol="AAPL  260101P00200000",
+                               asset_category="OPT", put_call="P",
+                               underlying_symbol="AAPL",
+                               strike=200.0, multiplier=100, position=-10,
+                               mark=3.0, delta=-0.3, expiry=_far_expiry_str())
+    # Long put: strike 180, 10 contracts → $180k "negative" notional (hedge)
+    long_put = _make_position(symbol="AAPL  260101P00180000",
+                              asset_category="OPT", put_call="P",
+                              underlying_symbol="AAPL",
+                              strike=180.0, multiplier=100, position=10,
+                              mark=1.5, delta=-0.2, expiry=_far_expiry_str())
+    account = _make_account(nlv=50000)
+    # Naked: $200k / $50k = 400% → red alert
+    # Spread: net = (200-180)×100×10 = $20k / $50k = 40% → still > 20% but much smaller
+    report_spread = _analyze_no_mdp([short_put, long_put], account)
+    report_naked  = _analyze_no_mdp([short_put], account)
+    dim5_spread = [a for a in report_spread.alerts if a.dimension == 5]
+    dim5_naked  = [a for a in report_naked.alerts  if a.dimension == 5]
+    assert dim5_naked,  "Naked short put must trigger concentration alert"
+    assert dim5_spread, "Spread still exceeds 20% so should still alert (but lower)"
+    # Parse the first dollar amount from the detail string
+    import re
+    def _parse_notional(detail: str) -> float:
+        m = re.search(r'\$([\d,]+)', detail)
+        return float(m.group(1).replace(",", "")) if m else 0.0
+    spread_notional = _parse_notional(dim5_spread[0].detail)
+    naked_notional  = _parse_notional(dim5_naked[0].detail)
+    assert spread_notional < naked_notional, (
+        f"Spread net notional ${spread_notional:,.0f} should be less than naked ${naked_notional:,.0f}"
+    )
+
+
+def test_generate_portfolio_summary_fallback():
+    """generate_portfolio_summary returns non-empty string when no LLM key."""
+    from src.portfolio_risk import generate_portfolio_summary, RiskReport, RiskAlert
+    report = RiskReport(
+        account_id="TEST", report_date="2026-03-11",
+        net_liquidation=100000, total_pnl=0, cushion=0.29,
+        alerts=[
+            RiskAlert(dimension=7, level="red", ticker="AAPL", detail="DTE=5"),
+            RiskAlert(dimension=4, level="red", ticker="ACCOUNT", detail="cushion 5%"),
+        ],
+    )
+    with patch("src.portfolio_risk._has_llm_key", return_value=False):
+        result = generate_portfolio_summary(report, {})
+    assert isinstance(result, str)
+    assert len(result) > 20
+    assert "红" in result or "预警" in result

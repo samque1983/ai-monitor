@@ -48,7 +48,8 @@ def test_get_llm_config_raises_when_unconfigured(monkeypatch):
 
     import importlib
     import agent.config as cfg
-    importlib.reload(cfg)
-
-    with pytest.raises(ValueError, match="LLM not configured"):
-        cfg.get_llm_config()
+    # Patch the source so reload() can't re-import and re-call the real load_dotenv
+    with patch("dotenv.load_dotenv"):
+        importlib.reload(cfg)
+        with pytest.raises(ValueError, match="LLM not configured"):
+            cfg.get_llm_config()

@@ -1,4 +1,5 @@
 """Generate dark-Apple HTML risk report from a RiskReport."""
+import re
 from html import escape as _e
 from src.portfolio_risk import RiskReport, RiskAlert
 
@@ -100,26 +101,47 @@ _LEVEL_BORDER = {"red": "rgba(255,69,58,0.22)",  "yellow": "rgba(255,179,64,0.20
 
 _OPT_LABELS = ["A", "B", "C", "D"]
 
+# Dims that require immediate action
+_URGENT_DIMS = {4, 6, 7, 9}
 
-def _options_rows(options: list, dim: int) -> str:
-    pros_cons = _DIM_OPTIONS_PROS_CONS.get(dim, [])
-    rows = ""
-    for i, opt in enumerate(options):
-        label  = _OPT_LABELS[i] if i < len(_OPT_LABELS) else str(i + 1)
-        pc     = pros_cons[i] if i < len(pros_cons) else ("", "")
+
+def _parse_recommended(text: str) -> str:
+    """Extract recommended option letter A-D from AI suggestion text."""
+    if not text:
+        return ""
+    m = re.search(r'[推建][荐议][选项]*[\s：:]*([A-D])', text)
+    if m:
+        return m.group(1)
+    m = re.search(r'选[择项]\s*([A-D])', text)
+    if m:
+        return m.group(1)
+    m = re.search(r'推荐\s*([A-D])\b', text)
+    if m:
+        return m.group(1)
+    return ""
+
+
+def _option_pills(options: list, recommended: str) -> str:
+    """Compact horizontal pill row for ABCD options."""
+    if not options:
+        return ""
+    pills = ""
+    for i, opt in enumerate(options[:4]):
+        label = _OPT_LABELS[i]
         action = opt[3:] if opt.startswith(f"{label}. ") else opt
-        pro_html = f'<span class="opt-pro">↑ {_e(pc[0])}</span>' if pc[0] else ""
-        con_html = f'<span class="opt-con">↓ {_e(pc[1])}</span>' if pc[1] else ""
-        sep = ' class="opt-row opt-row--sep"' if i > 0 else ' class="opt-row"'
-        rows += f"""
-<div{sep}>
-  <div class="opt-pill">{label}</div>
-  <div class="opt-body">
-    <div class="opt-action">{_e(action)}</div>
-    <div class="opt-procon">{pro_html}{con_html}</div>
-  </div>
-</div>"""
-    return rows
+        is_rec = label == recommended
+        rec_cls = " opt-pill-rec" if is_rec else ""
+        rec_mark = '<span class="rec-star">★</span>' if is_rec else ""
+        pills += f'<div class="opt-compact{rec_cls}" title="{_e(action)}">{label}{rec_mark}</div>'
+    # Full option list below pills
+    details = ""
+    for i, opt in enumerate(options[:4]):
+        label = _OPT_LABELS[i]
+        action = opt[3:] if opt.startswith(f"{label}. ") else opt
+        is_rec = label == recommended
+        rec_cls = " opt-detail-rec" if is_rec else ""
+        details += f'<div class="opt-detail{rec_cls}"><span class="opt-lbl">{label}</span> {_e(action)}</div>'
+    return f'<div class="opts-pills">{pills}</div><div class="opts-details">{details}</div>'
 
 
 def _alert_card(alert: RiskAlert) -> str:
@@ -127,18 +149,12 @@ def _alert_card(alert: RiskAlert) -> str:
     bg         = _LEVEL_BG.get(alert.level,     "rgba(255,179,64,0.09)")
     border_col = _LEVEL_BORDER.get(alert.level, "rgba(255,179,64,0.20)")
     dim_name   = _DIM_NAMES.get(alert.dimension, f"维度 {alert.dimension}")
-    plain      = _DIM_PLAIN.get(alert.dimension, "")
-    opts_html  = _options_rows(alert.options, alert.dimension) if alert.options else ""
-    ai_html    = ""
-    if alert.ai_suggestion:
-        ai_html = f"""
-<div class="ai-box">
-  <span class="ai-label">AI 建议</span>
-  {_e(alert.ai_suggestion)}
-</div>"""
-    plain_html = f'<p class="plain-desc">{_e(plain)}</p>' if plain else ""
-    opts_block = (f'<div class="options-section">'
-                  f'<div class="options-title">处理方法</div>{opts_html}</div>') if opts_html else ""
+    # Primary text: AI suggestion if available, else plain description
+    primary_text = alert.ai_suggestion or _DIM_PLAIN.get(alert.dimension, "")
+    recommended = _parse_recommended(alert.ai_suggestion) if alert.ai_suggestion else ""
+    pills_html = _option_pills(alert.options, recommended) if alert.options else ""
+    primary_html = f'<p class="ai-text">{_e(primary_text)}</p>' if primary_text else ""
+    opts_block = f'<div class="options-section">{pills_html}</div>' if pills_html else ""
     return f"""
 <div class="alert-card" style="border-color:{border_col}">
   <div class="card-head" style="background:{bg};border-bottom:1px solid {border_col}">
@@ -149,27 +165,75 @@ def _alert_card(alert: RiskAlert) -> str:
     <span class="card-ticker" style="color:{color};border-color:{border_col}">{_e(alert.ticker)}</span>
   </div>
   <div class="card-body">
-    {plain_html}
     <p class="tech-detail">{_e(alert.detail)}</p>
+    {primary_html}
     {opts_block}
-    {ai_html}
   </div>
+</div>"""
+
+
+def _section_divider(label: str, count: int, color: str = "") -> str:
+    color_style = f"color:{color};" if color else ""
+    return f"""
+<div class="section-header">
+  <span class="section-label" style="{color_style}">{_e(label)}</span>
+  <div class="section-rule"></div>
+  <span class="section-label">{count} 条</span>
+</div>"""
+
+
+def _top_action_strip(top_actions: list) -> str:
+    if not top_actions:
+        return ""
+    items = ""
+    for a in top_actions:
+        color = _LEVEL_COLOR.get(a.level, "#ffb340")
+        dim_name = _DIM_NAMES.get(a.dimension, f"维度{a.dimension}")
+        recommended = _parse_recommended(a.ai_suggestion) if a.ai_suggestion else ""
+        rec_html = f'<span class="action-rec">→ {_e(recommended)}</span>' if recommended else ""
+        items += f"""
+<div class="action-item">
+  <span class="action-dot" style="background:{color}"></span>
+  <div class="action-body">
+    <span class="action-dim">{_e(dim_name)}</span>
+    <span class="action-ticker">{_e(a.ticker)}</span>
+    {rec_html}
+  </div>
+</div>"""
+    return f"""
+<div class="top-actions">
+  <div class="top-actions-title">今日操作建议</div>
+  {items}
 </div>"""
 
 
 def generate_html_report(report: RiskReport) -> str:
     red_count    = sum(1 for a in report.alerts if a.level == "red")
     yellow_count = sum(1 for a in report.alerts if a.level == "yellow")
-    cards_html   = "\n".join(_alert_card(a) for a in report.alerts)
     pnl_color    = "#34c759" if report.total_pnl >= 0 else "#ff453a"
     cushion_val  = report.cushion * 100
     cushion_color  = "#ff453a" if cushion_val < 10 else ("#ffb340" if cushion_val < 25 else "#34c759")
     cushion_label  = "危险" if cushion_val < 10 else ("注意" if cushion_val < 25 else "安全")
-    cushion_bar_w  = min(cushion_val / 40 * 100, 100)
     stress   = report.summary_stats.get("stress_test", {})
     drop_10  = stress.get("drop_10pct", 0)
-    alert_section = cards_html if cards_html else '<p class="empty-state">暂无风险预警 ✓</p>'
     acct_name = _e(report.account_id) if report.account_id else "Portfolio"
+
+    # Portfolio summary text
+    summary_text = getattr(report, "portfolio_summary", "")
+    summary_html = (f'<div class="portfolio-summary">{_e(summary_text)}</div>'
+                    if summary_text else "")
+
+    # Three-tier alert grouping
+    urgent   = [a for a in report.alerts if a.level == "red" and a.dimension in _URGENT_DIMS]
+    week_rev = [a for a in report.alerts if a.level == "red" and a.dimension not in _URGENT_DIMS]
+    observe  = [a for a in report.alerts if a.level == "yellow"]
+
+    urgent_html   = "\n".join(_alert_card(a) for a in urgent)   or '<p class="empty-state">无</p>'
+    week_html     = "\n".join(_alert_card(a) for a in week_rev) or '<p class="empty-state">无</p>'
+    observe_html  = "\n".join(_alert_card(a) for a in observe)  or '<p class="empty-state">无</p>'
+
+    top_actions = getattr(report, "top_actions", [])
+    actions_strip = _top_action_strip(top_actions)
 
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
@@ -184,7 +248,7 @@ def generate_html_report(report: RiskReport) -> str:
 /* ── Reset ───────────────────────────────── */
 *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
 
-/* ── Tokens (8px grid, per spec) ─────────── */
+/* ── Tokens ───────────────────────────────── */
 :root {{
   --bg:        #080808;
   --surface:   #101010;
@@ -198,10 +262,10 @@ def generate_html_report(report: RiskReport) -> str:
   --amber:     #ffb340;
   --green:     #34c759;
   --blue:      #0a84ff;
-  --r4: 4px; --r8: 8px; --r12: 12px; --r16: 16px; --r24: 24px;
+  --r4: 4px; --r8: 8px; --r12: 12px;
 }}
 
-/* ── Base ────────────────────────────────── */
+/* ── Base ─────────────────────────────────── */
 body {{
   background: var(--bg);
   color: var(--text);
@@ -213,347 +277,218 @@ body {{
   padding: 32px 16px 64px;
 }}
 @media (min-width: 480px) {{ body {{ padding: 40px 24px 64px; }} }}
-
 .container {{ max-width: 720px; margin: 0 auto; }}
 
-/* ── Animations ──────────────────────────── */
+/* ── Animations ───────────────────────────── */
 @keyframes fadeUp {{
-  from {{ opacity: 0; transform: translateY(12px); }}
+  from {{ opacity: 0; transform: translateY(10px); }}
   to   {{ opacity: 1; transform: translateY(0); }}
 }}
-@keyframes barGrow {{
-  from {{ width: 0; }}
-}}
+.summary, .top-actions, .alert-card {{ animation: fadeUp 0.4s ease both; }}
+.alert-card:nth-child(1)  {{ animation-delay: 0.05s; }}
+.alert-card:nth-child(2)  {{ animation-delay: 0.10s; }}
+.alert-card:nth-child(3)  {{ animation-delay: 0.15s; }}
+.alert-card:nth-child(4)  {{ animation-delay: 0.20s; }}
+.alert-card:nth-child(5)  {{ animation-delay: 0.25s; }}
+.alert-card:nth-child(n+6){{ animation-delay: 0.30s; }}
 
-.summary     {{ animation: fadeUp 0.4s ease both; }}
-.alert-card  {{ animation: fadeUp 0.4s ease both; }}
-.alert-card:nth-child(1)  {{ animation-delay: 0.06s; }}
-.alert-card:nth-child(2)  {{ animation-delay: 0.12s; }}
-.alert-card:nth-child(3)  {{ animation-delay: 0.18s; }}
-.alert-card:nth-child(4)  {{ animation-delay: 0.24s; }}
-.alert-card:nth-child(5)  {{ animation-delay: 0.30s; }}
-.alert-card:nth-child(6)  {{ animation-delay: 0.36s; }}
-.alert-card:nth-child(n+7){{ animation-delay: 0.40s; }}
-
-/* ── Page header ─────────────────────────── */
+/* ── Page header ──────────────────────────── */
 .page-eyebrow {{
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  display: flex; justify-content: space-between; align-items: center;
   margin-bottom: 8px;
 }}
 .eyebrow-label {{
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--text-3);
+  font-size: 11px; font-weight: 600; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--text-3);
 }}
 .eyebrow-date {{
-  font-family: "DM Mono", monospace;
-  font-size: 11px;
-  color: var(--text-3);
+  font-family: "DM Mono", monospace; font-size: 11px; color: var(--text-3);
 }}
-
 .page-title {{
   font-family: "Instrument Serif", Georgia, serif;
   font-style: italic;
   font-size: clamp(28px, 7vw, 40px);
-  font-weight: 400;
-  letter-spacing: -0.01em;
-  color: var(--text);
-  line-height: 1.1;
-  margin-bottom: 16px;
+  font-weight: 400; letter-spacing: -0.01em;
+  color: var(--text); line-height: 1.1; margin-bottom: 16px;
 }}
-
 .badges {{
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 32px;
+  display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px;
 }}
 .badge {{
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.01em;
-  border: 1px solid;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 12px; border-radius: 20px;
+  font-size: 12px; font-weight: 500; letter-spacing: 0.01em; border: 1px solid;
 }}
 .badge-red    {{ color: var(--red);   background: rgba(255,69,58,0.10);  border-color: rgba(255,69,58,0.22); }}
 .badge-yellow {{ color: var(--amber); background: rgba(255,179,64,0.10); border-color: rgba(255,179,64,0.22); }}
 .badge-dot {{ width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }}
 
-/* ── Summary card ────────────────────────── */
+/* ── Summary card ─────────────────────────── */
 .summary {{
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r12);
-  overflow: hidden;
-  margin-bottom: 32px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r12); overflow: hidden; margin-bottom: 20px;
 }}
-
 .summary-hero {{
   padding: 20px 20px 0;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0 20px;
-  padding-bottom: 20px;
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 0 20px; padding-bottom: 20px;
   border-bottom: 1px solid var(--border-2);
 }}
 @media (min-width: 480px) {{
   .summary-hero {{ grid-template-columns: 1.4fr 1fr 1fr; padding: 24px 24px 20px; gap: 0; }}
   .summary-hero .stat + .stat {{ border-left: 1px solid var(--border-2); padding-left: 20px; }}
 }}
-
 .summary-foot {{
-  padding: 20px;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px 0;
+  padding: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px 0;
 }}
 @media (min-width: 480px) {{
-  .summary-foot {{
-    padding: 20px 24px 24px;
-    gap: 0;
-  }}
+  .summary-foot {{ padding: 20px 24px; gap: 0; }}
   .summary-foot .stat + .stat {{ border-left: 1px solid var(--border-2); padding-left: 20px; }}
 }}
+.portfolio-summary {{
+  padding: 16px 20px;
+  font-size: 13px; color: var(--text-2); line-height: 1.7;
+  border-top: 1px solid var(--border-2);
+}}
+@media (min-width: 480px) {{ .portfolio-summary {{ padding: 16px 24px; }} }}
 
 .stat-label {{
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-3);
-  margin-bottom: 6px;
+  font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--text-3); margin-bottom: 6px;
 }}
 .stat-value {{
-  font-family: "DM Mono", monospace;
-  font-size: 22px;
-  font-weight: 500;
-  letter-spacing: -0.02em;
-  color: var(--text);
-  line-height: 1;
-  margin-bottom: 4px;
+  font-family: "DM Mono", monospace; font-size: 22px; font-weight: 500;
+  letter-spacing: -0.02em; color: var(--text); line-height: 1; margin-bottom: 4px;
 }}
-.stat-value--hero {{
-  font-size: clamp(22px, 5vw, 30px);
-}}
-.stat-note {{
-  font-size: 11px;
-  color: var(--text-2);
-  line-height: 1.55;
-  margin-top: 6px;
-}}
+.stat-value--hero {{ font-size: clamp(22px, 5vw, 30px); }}
+.stat-note {{ font-size: 11px; color: var(--text-2); line-height: 1.55; margin-top: 6px; }}
 
 /* Cushion segments */
-.cushion-track {{
-  display: flex;
-  gap: 3px;
-  margin-top: 10px;
-  margin-bottom: 4px;
-}}
+.cushion-track {{ display: flex; gap: 3px; margin-top: 10px; margin-bottom: 4px; }}
 .cushion-seg {{
-  height: 3px;
-  border-radius: 2px;
-  flex: 1;
-  background: var(--border);
-  transition: background 0.6s ease;
+  height: 3px; border-radius: 2px; flex: 1;
+  background: var(--border); transition: background 0.6s ease;
 }}
-.cushion-label {{
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-3);
-  margin-top: 2px;
-}}
+.cushion-label {{ font-size: 11px; font-weight: 600; color: var(--text-3); margin-top: 2px; }}
 
-/* ── Section divider ─────────────────────── */
-.section-header {{
-  display: flex;
-  align-items: center;
-  gap: 12px;
+/* ── Today's actions strip ────────────────── */
+.top-actions {{
+  background: var(--surface);
+  border: 1px solid rgba(255,69,58,0.20);
+  border-radius: var(--r12);
+  padding: 16px;
+  margin-bottom: 24px;
+}}
+.top-actions-title {{
+  font-size: 10px; font-weight: 600; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--red);
   margin-bottom: 12px;
 }}
-.section-label {{
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--text-3);
-  white-space: nowrap;
+.action-item {{
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 7px 0; border-top: 1px solid var(--border-2);
 }}
-.section-rule {{
-  flex: 1;
-  height: 1px;
-  background: var(--border-2);
+.action-item:first-of-type {{ border-top: none; }}
+.action-dot {{
+  width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; margin-top: 5px;
+}}
+.action-body {{ display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }}
+.action-dim {{ font-size: 13px; font-weight: 500; color: var(--text); }}
+.action-ticker {{
+  font-family: "DM Mono", monospace; font-size: 11px;
+  color: var(--text-3); letter-spacing: 0.04em;
+}}
+.action-rec {{
+  font-size: 12px; font-weight: 600; color: var(--amber);
 }}
 
-/* ── Alert card ──────────────────────────── */
+/* ── Section divider ──────────────────────── */
+.section-header {{
+  display: flex; align-items: center; gap: 12px; margin-bottom: 10px;
+}}
+.section-label {{
+  font-size: 10px; font-weight: 600; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--text-3); white-space: nowrap;
+}}
+.section-rule {{ flex: 1; height: 1px; background: var(--border-2); }}
+.section-group {{ margin-bottom: 28px; }}
+
+/* ── Alert card ───────────────────────────── */
 .alert-card {{
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r12);
-  overflow: hidden;
-  margin-bottom: 10px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r12); overflow: hidden; margin-bottom: 8px;
   transition: border-color 0.2s;
 }}
 .alert-card:hover {{ border-color: rgba(255,255,255,0.14); }}
-
 .card-head {{
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 16px;
-  gap: 12px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px; gap: 12px;
 }}
-.card-left {{
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}}
-.level-dot {{
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}}
+.card-left {{ display: flex; align-items: center; gap: 8px; min-width: 0; }}
+.level-dot {{ width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }}
 .card-dim-name {{
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 13px; font-weight: 600; letter-spacing: -0.01em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }}
 .card-ticker {{
-  font-family: "DM Mono", monospace;
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  padding: 3px 8px;
-  border-radius: var(--r4);
-  border: 1px solid;
-  background: rgba(0,0,0,0.3);
-  white-space: nowrap;
-  flex-shrink: 0;
+  font-family: "DM Mono", monospace; font-size: 11px; font-weight: 500;
+  letter-spacing: 0.06em; padding: 3px 8px; border-radius: var(--r4);
+  border: 1px solid; background: rgba(0,0,0,0.3); white-space: nowrap; flex-shrink: 0;
 }}
-
-.card-body {{ padding: 0 16px 16px; }}
-
-.plain-desc {{
-  font-size: 14px;
-  color: var(--text-2);
-  line-height: 1.65;
-  padding: 12px 0 10px;
-  border-bottom: 1px solid var(--border-2);
-  margin-bottom: 10px;
-}}
-
+.card-body {{ padding: 0 16px 14px; }}
 .tech-detail {{
-  font-family: "DM Mono", monospace;
-  font-size: 11px;
-  color: var(--text-3);
-  background: var(--surface-2);
-  display: inline-block;
-  padding: 4px 8px;
-  border-radius: var(--r4);
+  font-family: "DM Mono", monospace; font-size: 11px; color: var(--text-3);
+  background: var(--surface-2); display: inline-block;
+  padding: 3px 8px; border-radius: var(--r4); margin-bottom: 10px;
+  letter-spacing: 0.01em; max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}}
+.ai-text {{
+  font-size: 13px; color: var(--text-2); line-height: 1.7;
   margin-bottom: 12px;
-  letter-spacing: 0.01em;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }}
 
-/* ── Options ─────────────────────────────── */
+/* ── Compact ABCD pills ───────────────────── */
 .options-section {{ padding-top: 2px; }}
-.options-title {{
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-3);
-  margin-bottom: 8px;
+.opts-pills {{
+  display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px;
 }}
-
-.opt-row {{
-  display: flex;
-  align-items: flex-start;
-  padding: 8px 0;
-  gap: 10px;
+.opt-compact {{
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 50%;
+  background: var(--surface-2); border: 1px solid var(--border);
+  color: var(--text-3); font-size: 11px; font-weight: 600;
+  font-family: "DM Mono", monospace; cursor: default;
+  transition: all 0.15s;
+  position: relative;
 }}
-.opt-row--sep {{ border-top: 1px solid var(--border-2); }}
-
-.opt-pill {{
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  color: var(--text-3);
-  font-size: 10px;
-  font-weight: 600;
-  font-family: "DM Mono", monospace;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  margin-top: 2px;
+.opt-compact-rec {{
+  background: rgba(255,179,64,0.15);
+  border-color: rgba(255,179,64,0.40);
+  color: var(--amber);
+  width: 30px; height: 30px;
+  font-size: 12px;
 }}
-.opt-body {{ flex: 1; min-width: 0; }}
-.opt-action {{
-  font-size: 13px;
-  color: var(--text);
-  line-height: 1.5;
-  margin-bottom: 4px;
+.rec-star {{
+  position: absolute; top: -4px; right: -4px;
+  font-size: 8px; color: var(--amber); line-height: 1;
 }}
-.opt-procon {{
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
+.opts-details {{
+  display: flex; flex-direction: column; gap: 4px;
 }}
-.opt-pro {{
-  font-size: 11px;
-  color: var(--green);
-  line-height: 1.5;
+.opt-detail {{
+  font-size: 12px; color: var(--text-3); line-height: 1.5;
+  display: flex; gap: 6px;
 }}
-.opt-con {{
-  font-size: 11px;
-  color: var(--text-2);
-  line-height: 1.5;
+.opt-detail-rec {{ color: var(--text-2); font-weight: 500; }}
+.opt-lbl {{
+  font-family: "DM Mono", monospace; font-weight: 600;
+  color: var(--amber); flex-shrink: 0;
 }}
-
-/* ── AI box ──────────────────────────────── */
-.ai-box {{
-  margin-top: 12px;
-  background: rgba(10,132,255,0.06);
-  border: 1px solid rgba(10,132,255,0.16);
-  border-radius: var(--r8);
-  padding: 10px 12px;
-  font-size: 13px;
-  color: var(--text-2);
-  line-height: 1.65;
-}}
-.ai-label {{
-  display: block;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--blue);
-  margin-bottom: 5px;
-}}
+.opt-detail:not(.opt-detail-rec) .opt-lbl {{ color: var(--text-3); }}
 
 .empty-state {{
-  text-align: center;
-  color: var(--text-3);
-  font-size: 14px;
-  padding: 48px 0;
+  text-align: center; color: var(--text-3); font-size: 13px; padding: 24px 0;
 }}
 </style>
 </head>
@@ -570,6 +505,7 @@ body {{
   <span class="badge badge-yellow"><span class="badge-dot"></span>{yellow_count} 黄色提示</span>
 </div>
 
+<!-- Summary card -->
 <div class="summary">
   <div class="summary-hero">
     <div class="stat">
@@ -599,28 +535,41 @@ body {{
       <div class="stat-note">假设 SPY 跌10%<br>按各仓位市值 × Beta 估算</div>
     </div>
   </div>
+  {summary_html}
 </div>
 
-<div class="section-header">
-  <span class="section-label">风险预警</span>
-  <div class="section-rule"></div>
-  <span class="section-label">{red_count + yellow_count} 条</span>
+<!-- Today's top actions -->
+{actions_strip}
+
+<!-- Tier 1: 立即处理 -->
+<div class="section-group">
+{_section_divider("立即处理", len(urgent), "#ff453a")}
+{urgent_html}
 </div>
-{alert_section}
+
+<!-- Tier 2: 本周评估 -->
+<div class="section-group">
+{_section_divider("本周评估", len(week_rev), "#ff453a")}
+{week_html}
+</div>
+
+<!-- Tier 3: 持续观察 -->
+<div class="section-group">
+{_section_divider("持续观察", len(observe), "#ffb340")}
+{observe_html}
+</div>
 
 </div>
 <script>
 (function() {{
-  // Cushion track — 10 segments, fill coloured ones
+  // Cushion track — 10 segments
   var val = {cushion_val:.2f};
   var color = "{cushion_color}";
   var track = document.getElementById("ctrack");
-  var total = 10;
-  var filled = Math.round(Math.min(val / 40, 1) * total);
-  for (var i = 0; i < total; i++) {{
+  for (var i = 0; i < 10; i++) {{
     var seg = document.createElement("div");
     seg.className = "cushion-seg";
-    if (i < filled) {{
+    if (i < Math.round(Math.min(val / 40, 1) * 10)) {{
       seg.style.background = color;
       seg.style.opacity = 0.8 - i * 0.04;
     }}

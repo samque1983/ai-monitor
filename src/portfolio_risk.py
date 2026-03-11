@@ -63,6 +63,8 @@ class RiskReport:
     cushion: float
     alerts: List[RiskAlert] = field(default_factory=list)
     summary_stats: dict = field(default_factory=dict)
+    portfolio_summary: str = ""
+    top_actions: List[RiskAlert] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -92,6 +94,23 @@ def load_account_configs() -> List[AccountConfig]:
             flex_query_id=query_id,
         ))
     return configs
+
+
+# ---------------------------------------------------------------------------
+# Symbol normalizer
+# ---------------------------------------------------------------------------
+
+def _normalize_ticker(symbol: str) -> str:
+    """Normalize ticker for yfinance lookup.
+
+    - Bare numeric codes (883, 3968) → zero-padded 4-digit + .HK (0883.HK, 3968.HK)
+    - Spaces in ticker (BRK B) → dash (BRK-B)
+    """
+    if symbol.isdigit():
+        return symbol.zfill(4) + ".HK"
+    if " " in symbol:
+        return symbol.replace(" ", "-")
+    return symbol
 
 
 # ---------------------------------------------------------------------------
@@ -161,6 +180,8 @@ class PortfolioRiskAnalyzer:
         }
         total_dollar_delta = 0.0
         for p in positions:
+            if p.symbol in CASH_LIKE_TICKERS:
+                continue  # cash equivalents have no equity directional risk
             fx = _get_fx_rate(getattr(p, "currency", "USD"))
             if p.asset_category == "STK":
                 total_dollar_delta += p.position * p.mark_price * fx
@@ -254,19 +275,27 @@ class PortfolioRiskAnalyzer:
         nlv = account.net_liquidation
         if nlv <= 0:
             return []
-        notional_by_symbol: dict = {}
+        # Group by underlying ticker so that long/short option legs net against each other
+        notional_by_underlying: dict = {}
         for p in positions:
             if p.symbol in CASH_LIKE_TICKERS:
-                continue  # cash equivalents don't add concentration risk
+                continue
             fx = _get_fx_rate(getattr(p, "currency", "USD"))
+            # Use underlying ticker as key so spread legs are grouped together
+            key = (p.underlying_symbol or p.symbol) if p.asset_category == "OPT" else p.symbol
             if p.asset_category == "STK":
-                notional = abs(p.position) * p.mark_price * p.multiplier * fx
+                # Long stock adds concentration; short stock (unusual) reduces it
+                notional = p.position * p.mark_price * p.multiplier * fx
             else:
-                # Options: use strike-based notional (actual max exposure at assignment)
-                notional = p.strike * p.multiplier * abs(p.position) * fx
-            notional_by_symbol[p.symbol] = notional_by_symbol.get(p.symbol, 0) + notional
+                # Signed: short option (position<0) → negative * negative strike = positive (adds risk)
+                # Long option (position>0) → positive * negative = negative... use explicit sign:
+                #   short = adds risk (+), long = reduces risk (-)
+                notional = -p.position * p.strike * p.multiplier * fx
+            notional_by_underlying[key] = notional_by_underlying.get(key, 0.0) + notional
         alerts = []
-        for symbol, notional in notional_by_symbol.items():
+        for symbol, notional in notional_by_underlying.items():
+            if notional <= 0:
+                continue  # net short or fully hedged — no concentration on long side
             ratio = notional / nlv
             if ratio > 0.20:
                 alerts.append(RiskAlert(
@@ -292,7 +321,7 @@ class PortfolioRiskAnalyzer:
             try:
                 underlying = p.underlying_symbol or p.symbol
                 mdp = MarketDataProvider()
-                earnings_date, days_to = mdp.get_earnings_date(underlying)
+                earnings_date, days_to = mdp.get_earnings_date(_normalize_ticker(underlying))
             except Exception:
                 continue
             if earnings_date is None or days_to is None:
@@ -327,6 +356,8 @@ class PortfolioRiskAnalyzer:
         for p in positions:
             if p.asset_category != "OPT":
                 continue
+            if p.position >= 0:
+                continue  # Long options: no assignment risk (holder, not writer)
             dte = self._dte(p.expiry)
             if dte is None:
                 continue
@@ -445,31 +476,36 @@ class PortfolioRiskAnalyzer:
                 beta = 0.0
             else:
                 try:
-                    fund = mdp.get_fundamentals(underlying)
+                    fund = mdp.get_fundamentals(_normalize_ticker(underlying))
                     beta = float(fund.get("beta") or 1.0)
                 except Exception:
                     beta = 1.0
             fx = _get_fx_rate(getattr(p, "currency", "USD"))
             if p.asset_category == "STK":
-                # Flex does not report delta for stocks; use 1.0 by convention
-                dollar_delta = 1.0 * p.multiplier * abs(p.position) * p.mark_price * fx
+                # Flex does not report delta for stocks; use 1.0 by convention.
+                # Long stock → positive exposure (loses when market falls).
+                dollar_delta = p.position * p.multiplier * p.mark_price * fx
             else:
-                # For options, use the underlying stock price (not tiny option premium)
+                # For options, use the underlying stock price (not tiny option premium).
+                # Use signed delta×position so that:
+                #   short put  (position<0, delta<0): product>0 → adds to downside loss ✓
+                #   long put   (position>0, delta<0): product<0 → REDUCES downside loss ✓
                 u_sym = p.underlying_symbol or p.symbol
                 u_price_usd = underlying_prices_usd.get(u_sym, p.strike * fx)
-                dollar_delta = abs(p.delta) * p.multiplier * abs(p.position) * u_price_usd
+                dollar_delta = p.delta * p.position * p.multiplier * u_price_usd
             total_loss_10 += dollar_delta * beta * 0.10
             total_loss_20 += dollar_delta * beta * 0.20
             if p.asset_category == "OPT" and p.put_call == "P" and p.position < 0:
                 max_assignment_loss += p.strike * p.multiplier * abs(p.position) * fx
+        # total_loss_10 > 0 means net loss; < 0 means net gain (well-hedged)
         stress = {
-            "drop_10pct": -abs(total_loss_10),
-            "drop_20pct": -abs(total_loss_20),
+            "drop_10pct": -total_loss_10,    # negative = portfolio loses value
+            "drop_20pct": -total_loss_20,
             "max_assignment_loss": -max_assignment_loss,
         }
         alerts = []
         if nlv > 0:
-            ratio_10 = abs(total_loss_10) / nlv
+            ratio_10 = total_loss_10 / nlv   # only positive when net loss
             if ratio_10 > 0.20:
                 level = "red"
             elif ratio_10 > 0.10:
@@ -481,7 +517,7 @@ class PortfolioRiskAnalyzer:
                     dimension=10,
                     level=level,
                     ticker="PORTFOLIO",
-                    detail=f"大盘跌10%预估亏损 ${abs(total_loss_10):,.0f} ({ratio_10*100:.1f}% NLV)",
+                    detail=f"大盘跌10%预估亏损 ${total_loss_10:,.0f} ({ratio_10*100:.1f}% NLV)",
                     options=[
                         "A. 买入 SPY Put（大盘对冲），为整体组合加保险",
                         "B. 降低高 Beta 个股仓位，降低组合 Beta",
@@ -550,6 +586,48 @@ def generate_risk_suggestion(alert: RiskAlert, llm_config: dict) -> str:
             "你是专业期权风险管理顾问。用50-100字中文回复，只陈述条件和逻辑，末尾注明推荐选项。不作主观买卖判断。",
             prompt,
             max_tokens=200,
+        )
+    except Exception:
+        return fallback
+
+
+def generate_portfolio_summary(report: "RiskReport", llm_config: dict) -> str:
+    """Generate portfolio-level narrative (~100 chars). Falls back to rule text."""
+    from collections import Counter
+    red_count = sum(1 for a in report.alerts if a.level == "red")
+    yellow_count = sum(1 for a in report.alerts if a.level == "yellow")
+    dim_counts = Counter(a.dimension for a in report.alerts if a.level == "red")
+    top_dims = dim_counts.most_common(3)
+
+    _dim_short = {
+        1: "方向性敞口", 2: "时间价值", 3: "Vega 敞口", 4: "保证金",
+        5: "集中度", 6: "财报风险", 7: "到期风险", 8: "安全垫",
+        9: "Gamma 风险", 10: "压力测试",
+    }
+    dim_strs = "、".join(_dim_short.get(d, f"维度{d}") for d, _ in top_dims)
+    fallback = (
+        f"当前组合存在 {red_count} 项红色预警、{yellow_count} 项黄色提示。"
+        + (f"主要风险集中在{dim_strs}，建议优先处理红色预警项目。" if top_dims else "")
+    )
+    if not _has_llm_key():
+        return fallback
+    try:
+        api_key = llm_config.get("api_key", "")
+        model = llm_config.get("model", "claude-haiku-4-5-20251001")
+        client = make_llm_client_from_env(model=model, api_key=api_key)
+        top_alerts = sorted(report.alerts, key=lambda x: (0 if x.level == "red" else 1, x.dimension))[:12]
+        alerts_text = "\n".join(f"{a.level}: {a.detail}" for a in top_alerts)
+        prompt = (
+            f"账户净资产 ${report.net_liquidation:,.0f}，保证金缓冲 {report.cushion*100:.1f}%，"
+            f"共 {red_count} 红色预警、{yellow_count} 黄色提示。\n"
+            f"主要预警：\n{alerts_text}\n\n"
+            f"请用80-120字中文总结：当前组合最核心的2-3个风险点，以及最优先的1-2项操作建议。"
+            f"语言简练，数字精确，不要重复罗列所有预警。"
+        )
+        return client.simple_chat(
+            "你是专业期权组合风险管理顾问。用80-120字中文回复，简明扼要，末尾给出今日最优先操作建议。",
+            prompt,
+            max_tokens=300,
         )
     except Exception:
         return fallback
