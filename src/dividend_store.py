@@ -324,6 +324,15 @@ class DividendStore:
             return None
         return text
 
+    def clear_analysis_cache(self):
+        """Delete all entries from analysis_cache (forces LLM regeneration on next scan)."""
+        cursor = self.conn.cursor()
+        cursor.execute("DELETE FROM analysis_cache")
+        deleted = cursor.rowcount
+        self.conn.commit()
+        logger.info(f"Cleared analysis_cache: {deleted} entries deleted")
+        return deleted
+
     def save_analysis_text(self, ticker: str, text: str, ttl_days: int = 7):
         """Persist analysis text with TTL (default 7 days)."""
         expires = (date.today() + timedelta(days=ttl_days)).isoformat()

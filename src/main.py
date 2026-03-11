@@ -295,7 +295,9 @@ def run_scan(config_path: str = "config.yaml"):
         try:
             # Weekly refresh: run pool scan if empty or last scan >= 7 days ago
             last_scan = dividend_store.get_last_scan_date()
-            force_weekly = bool(os.environ.get("FORCE_WEEKLY_RESCAN"))\n            if force_weekly:\n                dividend_store.clear_analysis_cache()
+            force_weekly = bool(os.environ.get("FORCE_WEEKLY_RESCAN"))
+            if force_weekly:
+                dividend_store.clear_analysis_cache()
             needs_weekly = force_weekly or (last_scan is None) or ((today - last_scan).days >= 7)
             if needs_weekly:
                 reason = "no previous scan" if last_scan is None else f"last scan {last_scan} ({(today - last_scan).days}d ago)"
