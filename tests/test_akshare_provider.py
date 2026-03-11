@@ -100,3 +100,61 @@ def test_price_data_api_error_returns_empty():
         mock_ak.stock_zh_a_hist.side_effect = Exception("network error")
         df = p.get_price_data("600519.SS")
     assert df.empty
+
+
+# ── fundamentals ─────────────────────────────────────────────────────────────
+
+# ak.stock_individual_info_em returns a 2-column DataFrame: item, value
+MOCK_CN_INFO = pd.DataFrame({
+    "item":  ["股票简称", "行业", "总市值", "流通市值"],
+    "value": ["贵州茅台",  "白酒", "2000亿", "1500亿"],
+})
+
+MOCK_HK_INFO = pd.DataFrame({
+    "item":  ["公司名称",       "行业"],
+    "value": ["腾讯控股有限公司", "互联网"],
+})
+
+# ak.stock_zh_a_lg_indicator returns DataFrame with columns 股息率, 市盈率 etc.
+MOCK_CN_INDICATOR = pd.DataFrame({
+    "股息率": [2.5],
+    "市盈率": [35.0],
+    "市净率": [12.0],
+})
+
+
+def test_cn_fundamentals():
+    p = AkshareProvider(enabled=True)
+    with patch("src.providers.akshare.ak") as mock_ak:
+        mock_ak.stock_individual_info_em.return_value = MOCK_CN_INFO.copy()
+        mock_ak.stock_zh_a_lg_indicator.return_value = MOCK_CN_INDICATOR.copy()
+        result = p.get_fundamentals("600519.SS")
+    assert result is not None
+    assert result["company_name"] == "贵州茅台"
+    assert result["industry"] == "白酒"
+    assert result["dividend_yield"] == pytest.approx(2.5)
+
+
+def test_hk_fundamentals():
+    p = AkshareProvider(enabled=True)
+    with patch("src.providers.akshare.ak") as mock_ak:
+        mock_ak.stock_hk_company_profile_em.return_value = MOCK_HK_INFO.copy()
+        result = p.get_fundamentals("0700.HK")
+    assert result is not None
+    assert result["company_name"] == "腾讯控股有限公司"
+    assert result["industry"] == "互联网"
+
+
+def test_fundamentals_api_error_returns_none():
+    p = AkshareProvider(enabled=True)
+    with patch("src.providers.akshare.ak") as mock_ak:
+        mock_ak.stock_individual_info_em.side_effect = Exception("timeout")
+        result = p.get_fundamentals("600519.SS")
+    assert result is None
+
+
+def test_us_fundamentals_returns_none():
+    """AKShare does not provide US fundamentals — return None to trigger yfinance."""
+    p = AkshareProvider(enabled=True)
+    result = p.get_fundamentals("AAPL")
+    assert result is None
