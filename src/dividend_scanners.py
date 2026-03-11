@@ -333,6 +333,9 @@ def scan_dividend_buy_signal(
 
     results = []
 
+    # Fetch SGOV yield as fallback for pool records that pre-date the sgov_yield column
+    _fallback_sgov: Optional[float] = None
+
     for record in pool:
         ticker = record["ticker"]
         # Extract enrichment fields from pool record
@@ -472,6 +475,12 @@ def scan_dividend_buy_signal(
                 _option_illiquid = bool(option_details and option_details.get("sell_put_illiquid"))
                 _option_apy = option_details.get("apy") if option_details and not _option_illiquid else None
                 _option_available = option_details is not None and record.get("market", "US") == "US"
+                if _option_apy is not None and ticker_data.sgov_yield is None and record.get("market", "US") == "US":
+                    # Pool record pre-dates sgov_yield column — fetch once as fallback
+                    if _fallback_sgov is None:
+                        _fallback_sgov = get_sgov_yield()
+                        logger.info(f"Daily scan: fetched fallback SGOV yield {_fallback_sgov:.2f}%")
+                    ticker_data.sgov_yield = _fallback_sgov
                 if _option_apy is not None and ticker_data.sgov_yield is not None:
                     ticker_data.sgov_adjusted_apy = round(_option_apy + ticker_data.sgov_yield, 2)
                 _rec_strategy, _rec_reason = _get_recommended_strategy(
