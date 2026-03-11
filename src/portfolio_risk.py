@@ -261,8 +261,9 @@ class PortfolioRiskAnalyzer:
             if p.asset_category != "OPT":
                 continue
             try:
+                underlying = p.underlying_symbol or p.symbol
                 mdp = MarketDataProvider()
-                earnings_date, days_to = mdp.get_earnings_date(p.symbol)
+                earnings_date, days_to = mdp.get_earnings_date(underlying)
             except Exception:
                 continue
             if earnings_date is None or days_to is None:
@@ -405,7 +406,8 @@ class PortfolioRiskAnalyzer:
         max_assignment_loss = 0.0
         for p in positions:
             try:
-                fund = mdp.get_fundamentals(p.symbol)
+                underlying = p.underlying_symbol or p.symbol
+                fund = mdp.get_fundamentals(underlying)
                 beta = float(fund.get("beta") or 1.0)
             except Exception:
                 beta = 1.0
