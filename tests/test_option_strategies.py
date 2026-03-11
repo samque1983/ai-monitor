@@ -147,3 +147,68 @@ def test_metrics_max_loss_spread():
     # max_loss = (10 - 1.5) * 100 * 5 = 4250
     assert g.max_loss == pytest.approx(4250.0)
     assert g.max_profit == pytest.approx(750.0)
+
+
+def test_pmcc_recognition():
+    """Short near-term call + long LEAPS call (DTE > 365) → PMCC, intent=income."""
+    from datetime import date, timedelta
+    near_exp = (date.today() + timedelta(days=60)).strftime("%Y%m%d")
+    far_exp  = (date.today() + timedelta(days=400)).strftime("%Y%m%d")
+    short_c = _opt("AAPL  C250", "C", 250, -1, expiry=near_exp, delta=0.3)
+    long_c  = _opt("AAPL  C140", "C", 140,  1, expiry=far_exp,  delta=0.8)
+    groups = OptionStrategyRecognizer().recognize([short_c, long_c])
+    assert len(groups) == 1
+    assert groups[0].strategy_type == "PMCC"
+    assert groups[0].intent == "income"
+
+
+def test_leaps_call_recognition():
+    """Standalone long call with DTE > 365 → LEAPS Call."""
+    from datetime import date, timedelta
+    far_exp = (date.today() + timedelta(days=400)).strftime("%Y%m%d")
+    p = _opt("AAPL  C140", "C", 140, 1, expiry=far_exp, delta=0.8)
+    groups = OptionStrategyRecognizer().recognize([p])
+    assert len(groups) == 1
+    assert groups[0].strategy_type == "LEAPS Call"
+    assert groups[0].intent == "speculation"
+
+
+def test_leaps_put_recognition():
+    """Standalone long put with DTE > 365 → LEAPS Put."""
+    from datetime import date, timedelta
+    far_exp = (date.today() + timedelta(days=400)).strftime("%Y%m%d")
+    p = _opt("AAPL  P200", "P", 200, 1, expiry=far_exp, delta=-0.7)
+    groups = OptionStrategyRecognizer().recognize([p])
+    assert len(groups) == 1
+    assert groups[0].strategy_type == "LEAPS Put"
+    assert groups[0].intent == "hedge"
+
+
+def test_leaps_not_consumed_as_modifier():
+    """LEAPS long put paired with short put → Diagonal Spread (visible), not hidden modifier."""
+    from datetime import date, timedelta
+    near_exp = (date.today() + timedelta(days=60)).strftime("%Y%m%d")
+    far_exp  = (date.today() + timedelta(days=400)).strftime("%Y%m%d")
+    naked_put = _opt("AAPL  P180", "P", 180, -5, expiry=near_exp)
+    leaps_put = _opt("AAPL  P140", "P", 140,  2, expiry=far_exp)
+    groups = OptionStrategyRecognizer().recognize([naked_put, leaps_put])
+    # Short near + long LEAPS put → Diagonal Spread (paired, both visible)
+    assert len(groups) == 1
+    assert groups[0].strategy_type == "Diagonal Spread"
+
+
+def test_leaps_standalone_not_modifier():
+    """Standalone LEAPS put (can't be paired) stays as its own strategy, not a modifier."""
+    from datetime import date, timedelta
+    near_exp = (date.today() + timedelta(days=60)).strftime("%Y%m%d")
+    far_exp  = (date.today() + timedelta(days=400)).strftime("%Y%m%d")
+    # Same-expiry bull put spread + unrelated LEAPS put on different expiry
+    sp  = _opt("AAPL  P180", "P", 180, -5, expiry=near_exp)
+    lp  = _opt("AAPL  P170", "P", 170,  5, expiry=near_exp)
+    leaps_put = _opt("AAPL  P140", "P", 140, 2, expiry=far_exp)
+    groups = OptionStrategyRecognizer().recognize([sp, lp, leaps_put])
+    # Bull Put Spread + LEAPS Put (not consumed as modifier)
+    assert len(groups) == 2
+    types = {g.strategy_type for g in groups}
+    assert "Bull Put Spread" in types
+    assert "LEAPS Put" in types

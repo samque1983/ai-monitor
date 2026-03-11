@@ -32,14 +32,18 @@ _INTENT_MAP = {
     "Naked Call": "income", "Covered Call": "income",
     "Bull Put Spread": "income", "Bear Call Spread": "income",
     "Iron Condor": "income", "Iron Butterfly": "income",
+    "PMCC": "income",
     "Protective Put": "hedge", "Collar": "mixed",
     "Bull Call Spread": "directional", "Bear Put Spread": "directional",
     "Long Stock": "directional", "Short Stock": "directional",
     "Calendar Spread": "mixed", "Diagonal Spread": "mixed",
     "Straddle": "speculation", "Strangle": "speculation",
     "Long Put": "speculation", "Long Call": "speculation",
+    "LEAPS Call": "speculation", "LEAPS Put": "hedge",
     "Unclassified": "unknown",
 }
+
+_LEAPS_DTE = 365
 
 
 class OptionStrategyRecognizer:
@@ -110,19 +114,30 @@ class OptionStrategyRecognizer:
         return strategies
 
     def _make_single_opt(self, p: PositionRecord, underlying: str) -> StrategyGroup:
+        dte = self._calc_dte(p.expiry)
+        is_leaps = dte is not None and dte > _LEAPS_DTE
         if p.put_call == "P" and p.position < 0:
             stype = "Naked Put"
         elif p.put_call == "C" and p.position < 0:
             stype = "Naked Call"
         elif p.put_call == "P" and p.position > 0:
-            stype = "Long Put"
+            stype = "LEAPS Put" if is_leaps else "Long Put"
         else:
-            stype = "Long Call"
+            stype = "LEAPS Call" if is_leaps else "Long Call"
         return StrategyGroup(
             underlying=underlying, strategy_type=stype,
             intent=_INTENT_MAP[stype], legs=[p],
             expiry=p.expiry, currency=p.currency,
         )
+
+    def _calc_dte(self, expiry: str) -> Optional[int]:
+        if not expiry or len(expiry) != 8:
+            return None
+        try:
+            exp = _date(int(expiry[:4]), int(expiry[4:6]), int(expiry[6:]))
+            return max(0, (exp - _date.today()).days)
+        except ValueError:
+            return None
 
     def _match_expiry_group(self, opts: List[PositionRecord],
                              stocks: List[PositionRecord],
@@ -229,8 +244,14 @@ class OptionStrategyRecognizer:
                         continue
                     if far.expiry <= near.expiry:
                         continue
-                    stype = ("Calendar Spread" if near.strike == far.strike
-                             else "Diagonal Spread")
+                    far_dte = self._calc_dte(far.expiry) or 0
+                    if near.strike == far.strike:
+                        stype = "Calendar Spread"
+                    elif (near.position < 0 and far.position > 0
+                          and far_dte > _LEAPS_DTE and near.put_call == "C"):
+                        stype = "PMCC"
+                    else:
+                        stype = "Diagonal Spread"
                     sg = StrategyGroup(
                         underlying=underlying, strategy_type=stype,
                         intent=_INTENT_MAP[stype],
@@ -249,7 +270,9 @@ class OptionStrategyRecognizer:
         """Second pass: attach unmatched long puts/calls as protective modifiers."""
         single_longs = [sg for sg in strategies
                         if sg.strategy_type in ("Long Put", "Long Call")
-                        and len(sg.legs) == 1]
+                        and len(sg.legs) == 1
+                        and not (sg.legs[0].expiry and self._calc_dte(sg.legs[0].expiry) is not None
+                                 and self._calc_dte(sg.legs[0].expiry) > _LEAPS_DTE)]
         non_single = [sg for sg in strategies if sg not in single_longs]
         used = set()
         for mod_sg in single_longs:

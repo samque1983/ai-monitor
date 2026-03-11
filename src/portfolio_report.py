@@ -130,13 +130,23 @@ def _strategy_card(sg) -> str:
     legs_str = " | ".join(legs_summary)
     dte_str = f"DTE {sg.dte}" if sg.dte else ""
 
-    greek_html = f"""
+    greeks_available = any(abs(v) > 1e-9 for v in
+                           [sg.net_delta, sg.net_theta, sg.net_vega, sg.net_gamma])
+    if greeks_available:
+        greek_html = f"""
 <div class="greek-row">
   <div class="greek-item"><span class="greek-label">Δ 每1%</span><span class="greek-value">{_fmt_dollar(sg.net_delta * 0.01 * 100)}</span></div>
   <div class="greek-item"><span class="greek-label">Θ 每天</span><span class="greek-value">{_fmt_dollar(sg.net_theta)}</span></div>
   <div class="greek-item"><span class="greek-label">V 每1%IV</span><span class="greek-value">{_fmt_dollar(sg.net_vega * 0.01)}</span></div>
   <div class="greek-item"><span class="greek-label">最大盈利</span><span class="greek-value">{"无上限" if sg.max_profit is None else _fmt_dollar(sg.max_profit)}</span></div>
   <div class="greek-item"><span class="greek-label">最大亏损</span><span class="greek-value">{"无限制" if sg.max_loss is None else _fmt_dollar(-sg.max_loss)}</span></div>
+</div>"""
+    else:
+        greek_html = f"""
+<div class="greek-row">
+  <div class="greek-item"><span class="greek-label">最大盈利</span><span class="greek-value">{"无上限" if sg.max_profit is None else _fmt_dollar(sg.max_profit)}</span></div>
+  <div class="greek-item"><span class="greek-label">最大亏损</span><span class="greek-value">{"无限制" if sg.max_loss is None else _fmt_dollar(-sg.max_loss)}</span></div>
+  <span style="font-size:11px;color:#636366;">Greeks 未启用 — 在 Flex Query → Open Positions 中勾选 Delta/Theta/Vega/Gamma</span>
 </div>"""
 
     return f"""
