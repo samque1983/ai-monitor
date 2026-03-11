@@ -294,7 +294,8 @@ class StrategyRiskEngine:
                 beta = float(fund.get("beta") or 1.0)
             except Exception:
                 beta = 1.0
-            for p in sg.legs + (sg.modifiers or []):
+            stock_legs = [sg.stock_leg] if sg.stock_leg else []
+            for p in stock_legs + sg.legs + (sg.modifiers or []):
                 fx = get_fx_rate(p.currency)
                 if p.asset_category == "STK":
                     dollar_delta = p.position * p.mark_price * fx

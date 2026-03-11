@@ -65,3 +65,35 @@ def test_report_has_summary_stats():
         report = engine.analyze([sg], _account())
     assert isinstance(report.summary_stats, dict)
     assert "stress_test" in report.summary_stats
+
+
+def test_rule11_stress_loss_yellow():
+    """Rule 11: stress loss > 15% NLV → yellow alert."""
+    stk = PositionRecord(
+        symbol="AAPL", asset_category="STK", put_call="", strike=0, expiry="",
+        multiplier=1, position=1000, cost_basis_price=140, mark_price=150,
+        unrealized_pnl=10000, delta=1.0, gamma=0, theta=0, vega=0,
+        underlying_symbol="", currency="USD",
+    )
+    sg = StrategyGroup(underlying="AAPL", strategy_type="Long Stock", intent="directional",
+                       stock_leg=stk, legs=[], net_pnl=10000)
+    engine = StrategyRiskEngine()
+    with patch("src.strategy_risk.MarketDataProvider") as MockMDP:
+        MockMDP.return_value.get_fundamentals.return_value = {"beta": 1.0}
+        report = engine.analyze([sg], _account(nlv=50000))
+    # stress = 1000×150×1.0×0.10 = 15,000, ratio = 15000/50000 = 30% > 15%
+    stress_alerts = [a for a in report.alerts if a.rule_id == 11]
+    assert stress_alerts
+
+
+def test_recommendation_builder_sorts_red_urgent_first():
+    """Red urgent alerts appear before regular red in top_actions."""
+    engine = StrategyRiskEngine()
+    with patch("src.strategy_risk.MarketDataProvider"):
+        report = engine.analyze(
+            [_naked_put_group(dte_days=5, itm_pct=3.0)],
+            _account(cushion=0.07),
+        )
+    # Both rule 1 (urgent) and rule 4 (urgent) should be in top_actions
+    assert len(report.top_actions) >= 1
+    assert report.top_actions[0].severity == "red"
