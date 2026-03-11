@@ -290,17 +290,18 @@ class DividendStore:
         n = len(historical_yields)
         hist_max = max(historical_yields)
 
-        # p10/p90 require at least 30 data points
+        # Sort once; reuse for both p10/p90 and Winsorized percentile
+        sorted_all = sorted(historical_yields)
+
         p10: Optional[float] = None
         p90: Optional[float] = None
         if n >= 30:
-            sorted_yields = sorted(historical_yields)
-            p10 = sorted_yields[int(n * 0.10)]
-            p90 = sorted_yields[int(n * 0.90)]
+            p10 = sorted_all[int(n * 0.10)]
+            p90 = sorted_all[int(n * 0.90)]
 
         # Winsorized percentile: exclude top 5% to dampen crisis spikes
         cutoff_idx = max(1, int(n * 0.95))
-        trimmed = sorted(historical_yields)[:cutoff_idx]
+        trimmed = sorted_all[:cutoff_idx]
         count_below_or_equal = sum(1 for y in trimmed if y <= current_yield)
         percentile = (count_below_or_equal / len(trimmed)) * 100
 
