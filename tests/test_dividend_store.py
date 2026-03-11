@@ -250,3 +250,35 @@ def test_analysis_text_cache_expired(tmp_path):
     conn.close()
     assert store.get_analysis_text("KO") is None
     store.close()
+
+
+def test_save_and_load_sgov_yield(tmp_path):
+    from src.dividend_store import DividendStore
+    from src.data_engine import TickerData
+    store = DividendStore(str(tmp_path / "test.db"))
+    td = TickerData(
+        ticker="AAPL", name="Apple", market="US",
+        last_price=0.0, ma200=None, ma50w=None, rsi14=None,
+        iv_rank=None, iv_momentum=None, prev_close=0.0,
+        earnings_date=None, days_to_earnings=None,
+        dividend_quality_score=80.0,
+        sgov_yield=4.8,
+    )
+    store.save_pool([td], "2026-03-11")
+    records = store.get_pool_records()
+    assert records[0]["sgov_yield"] == 4.8
+
+
+def test_sgov_yield_defaults_none(tmp_path):
+    from src.dividend_store import DividendStore
+    from src.data_engine import TickerData
+    store = DividendStore(str(tmp_path / "test.db"))
+    td = TickerData(
+        ticker="VZ", name="Verizon", market="US",
+        last_price=0.0, ma200=None, ma50w=None, rsi14=None,
+        iv_rank=None, iv_momentum=None, prev_close=0.0,
+        earnings_date=None, days_to_earnings=None,
+    )
+    store.save_pool([td], "2026-03-11")
+    records = store.get_pool_records()
+    assert records[0]["sgov_yield"] is None
