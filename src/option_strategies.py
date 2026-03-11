@@ -170,10 +170,13 @@ class OptionStrategyRecognizer:
             stk = stocks[0]
             return _sg("Protective Put", [stk, long_puts[0]], stk)
 
-        # Bull Put Spread: SP (high) + LP (low)
-        if len(short_puts) == 1 and len(long_puts) == 1 and not calls:
-            sp, lp = short_puts[0], long_puts[0]
-            if sp.strike > lp.strike:
+        # Bull Put Spread: SP (high) + LP (low) — greedy: match SP with highest LP below it
+        if len(short_puts) == 1 and long_puts and not calls:
+            sp = short_puts[0]
+            # Pick the long put with highest strike still below SP
+            candidates = [p for p in long_puts if p.strike < sp.strike]
+            if candidates:
+                lp = max(candidates, key=lambda x: x.strike)
                 return _sg("Bull Put Spread", [sp, lp])
 
         # Bear Call Spread: SC (low) + LC (high)

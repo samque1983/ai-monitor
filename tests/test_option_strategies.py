@@ -104,3 +104,46 @@ def test_strangle():
     groups = OptionStrategyRecognizer().recognize([call, put])
     assert len(groups) == 1
     assert groups[0].strategy_type == "Strangle"
+
+
+def test_calendar_spread():
+    near = _opt("AAPL  261201P00180000", "P", 180, -3, expiry="20261201")
+    far = _opt("AAPL  270319P00180000", "P", 180, 3, expiry="20270319")
+    groups = OptionStrategyRecognizer().recognize([near, far])
+    assert len(groups) == 1
+    assert groups[0].strategy_type == "Calendar Spread"
+
+
+def test_protective_modifier_attached():
+    """Bull Put Spread + extra lower long put → modifier attached, not separate strategy."""
+    sp = _opt("AAPL  261201P00180000", "P", 180, -5)
+    lp = _opt("AAPL  261201P00170000", "P", 170, 5)
+    tail = _opt("AAPL  261201P00150000", "P", 150, 2)  # tail hedge
+    groups = OptionStrategyRecognizer().recognize([sp, lp, tail])
+    assert len(groups) == 1
+    assert groups[0].strategy_type == "Bull Put Spread"
+    assert len(groups[0].modifiers) == 1
+    assert groups[0].modifiers[0].strike == 150
+
+
+def test_metrics_net_credit():
+    """net_credit > 0 for income strategy (received more than paid)."""
+    sp = _opt("AAPL  261201P00180000", "P", 180, -5, cost_basis=3.0, multiplier=100)
+    lp = _opt("AAPL  261201P00170000", "P", 170, 5, cost_basis=1.5, multiplier=100)
+    groups = OptionStrategyRecognizer().recognize([sp, lp])
+    g = groups[0]
+    # net_credit = 5*3.0*100 - 5*1.5*100 = 1500 - 750 = 750
+    assert g.net_credit == 750.0
+
+
+def test_metrics_max_loss_spread():
+    """Bull Put Spread max_loss = (spread_width - net_credit_per_contract) × contracts."""
+    sp = _opt("AAPL  261201P00180000", "P", 180, -5, cost_basis=3.0, multiplier=100)
+    lp = _opt("AAPL  261201P00170000", "P", 170, 5, cost_basis=1.5, multiplier=100)
+    groups = OptionStrategyRecognizer().recognize([sp, lp])
+    g = groups[0]
+    # spread_width=10, net_credit=750, contracts=5
+    # credit_per_contract = 750 / 5 / 100 = 1.5
+    # max_loss = (10 - 1.5) * 100 * 5 = 4250
+    assert g.max_loss == pytest.approx(4250.0)
+    assert g.max_profit == pytest.approx(750.0)
