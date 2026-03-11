@@ -38,7 +38,7 @@ body {
   padding-bottom: max(64px, env(safe-area-inset-bottom, 64px));
 }
 @media (min-width: 480px) { body { padding: 40px 24px 72px; } }
-.container { max-width: 680px; margin: 0 auto; }
+.container { max-width: 760px; margin: 0 auto; }
 
 /* ── Animations ── */
 @keyframes fadeUp {
@@ -62,9 +62,7 @@ body {
   font-size: 11px; font-weight: 600; letter-spacing: 0.1em;
   text-transform: uppercase; color: var(--text-3);
 }
-.eyebrow-meta {
-  font-family: "DM Mono", monospace; font-size: 11px; color: var(--text-3);
-}
+.eyebrow-meta { font-family: "DM Mono", monospace; font-size: 11px; color: var(--text-3); }
 .page-title {
   font-family: "Instrument Serif", Georgia, serif;
   font-style: italic;
@@ -109,13 +107,13 @@ body {
 }
 .card:hover { border-color: rgba(255,255,255,0.15); }
 
-/* Left accent strip — instant signal-type recognition */
+/* Left accent strip */
 .card--green { box-shadow: inset 3px 0 0 var(--green); }
 .card--red   { box-shadow: inset 3px 0 0 var(--red);   }
 .card--blue  { box-shadow: inset 3px 0 0 var(--blue);  }
 .card--amber { box-shadow: inset 3px 0 0 var(--amber); }
 
-/* ── Card head: [ticker + badge]  ···  [key metric] ── */
+/* ── Card head ── */
 .card-head {
   display: flex; align-items: center; justify-content: space-between;
   padding: 12px 16px; gap: 12px;
@@ -128,7 +126,8 @@ body {
 }
 .type-badge {
   font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 20px;
-  text-transform: uppercase; letter-spacing: 0.05em; border: 1px solid; white-space: nowrap; flex-shrink: 0;
+  text-transform: uppercase; letter-spacing: 0.05em; border: 1px solid;
+  white-space: nowrap; flex-shrink: 0;
 }
 .badge-opportunity { color: var(--green); background: rgba(52,199,89,0.10);  border-color: rgba(52,199,89,0.24); }
 .badge-risk        { color: var(--red);   background: rgba(255,69,58,0.10);  border-color: rgba(255,69,58,0.24); }
@@ -136,7 +135,7 @@ body {
 .badge-dividend    { color: var(--amber); background: rgba(255,179,64,0.10); border-color: rgba(255,179,64,0.24); }
 .badge-warn        { color: var(--amber); background: rgba(255,179,64,0.09); border-color: rgba(255,179,64,0.20); }
 
-/* Key metric — right side of header */
+/* Key metric — header right */
 .card-kpi {
   font-family: "DM Mono", monospace; font-size: 22px; font-weight: 500;
   letter-spacing: -0.02em; flex-shrink: 0; line-height: 1; text-align: right;
@@ -182,38 +181,51 @@ body {
 /* ── Dividend card groups ── */
 .dc-group { border-bottom: 1px solid var(--border-2); padding-bottom: 8px; margin-bottom: 2px; }
 .dc-group:last-child { border-bottom: none; }
+
+/* Group title — now text-2 with extending rule */
 .dc-group-title {
-  display: flex; align-items: center; gap: 5px;
-  font-size: 11px; font-weight: 600; color: var(--text-3);
-  padding: 10px 0 5px; letter-spacing: 0.04em;
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 600; color: var(--text-2);
+  padding: 10px 0 7px; letter-spacing: 0.04em;
 }
 .dc-group-title::before {
   content: ''; width: 3px; height: 3px; border-radius: 50%;
   background: currentColor; flex-shrink: 0;
 }
+.dc-group-title::after {
+  content: ''; flex: 1; height: 1px; background: var(--border-2);
+}
 
-/* Analysis collapse */
+/* Analysis collapse — improved arrow visibility */
 .analysis-toggle {
   display: flex; align-items: center; justify-content: space-between;
-  cursor: pointer; padding: 4px 0; user-select: none;
+  cursor: pointer; padding: 5px 8px; margin: 0 -8px;
+  border-radius: var(--r8); user-select: none;
   -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s;
 }
+.analysis-toggle:hover { background: var(--surface-2); }
+
 .biz-label {
   font-size: 12px; font-weight: 600; color: var(--blue);
   background: rgba(10,132,255,0.08); border: 1px solid rgba(10,132,255,0.18);
-  padding: 1px 7px; border-radius: 20px; display: inline-block; margin-right: 4px;
+  padding: 1px 8px; border-radius: 20px; display: inline-block; margin-right: 6px;
 }
 .biz-hint { font-size: 12px; color: var(--text-3); }
+
+/* Arrow: larger, brighter, rotates on open */
 .toggle-arrow {
-  font-size: 10px; color: var(--text-3);
-  transition: transform 0.2s; flex-shrink: 0; margin-left: 8px;
+  font-size: 18px; font-weight: 300; color: var(--text-2);
+  transition: transform 0.22s ease; flex-shrink: 0; margin-left: 10px;
+  line-height: 1; display: inline-block;
 }
+
 .analysis-body {
-  font-size: 13px; color: var(--text-2); line-height: 1.7;
+  font-size: 13px; color: var(--text); line-height: 1.7;
   white-space: pre-line; overflow: hidden;
   max-height: 0; transition: max-height 0.28s ease, padding 0.2s ease;
 }
-.analysis-body.open { max-height: 600px; padding-top: 6px; }
+.analysis-body.open { max-height: 600px; padding-top: 8px; }
 
 /* Quality breakdown */
 .stab-info-btn {
@@ -235,9 +247,37 @@ body {
   font-family: "DM Mono", monospace; font-size: 15px; font-weight: 500;
   color: var(--amber); padding: 4px 0;
 }
-.floor-warn    { font-size: 12px; color: var(--amber); padding: 4px 0; }
-.freshness-warn{ font-size: 12px; color: var(--amber); padding: 4px 0; }
-.freshness-old { font-size: 12px; color: var(--text-3); padding: 4px 0; }
+.floor-warn     { font-size: 12px; color: var(--amber); padding: 4px 0; }
+.freshness-warn { font-size: 12px; color: var(--amber); padding: 4px 0; }
+.freshness-old  { font-size: 12px; color: var(--text-3); padding: 4px 0; }
+
+/* ── Watch / 关注 section ── */
+.watch-section { padding: 4px 0 6px; }
+.watch-btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 16px; border-radius: 20px;
+  border: 1px solid var(--border); background: var(--surface-2);
+  cursor: pointer; font-family: "DM Sans", sans-serif;
+  font-size: 13px; color: var(--text-2);
+  transition: all 0.15s; -webkit-tap-highlight-color: transparent;
+  margin-bottom: 10px; outline: none;
+}
+.watch-btn:hover { border-color: rgba(255,255,255,0.18); color: var(--text); }
+.watch-btn.watched {
+  border-color: rgba(52,199,89,0.32); color: var(--green);
+  background: rgba(52,199,89,0.08);
+}
+.watch-star { font-size: 15px; line-height: 1; }
+.watch-items { padding: 0 2px; }
+.watch-item {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; color: var(--text-3); padding: 4px 0;
+  line-height: 1.4;
+}
+.watch-dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--green); flex-shrink: 0; opacity: 0.65;
+}
 
 /* ── Empty / Loading ── */
 .empty-state { text-align: center; color: var(--text-3); font-size: 14px; padding: 72px 0; }
@@ -465,12 +505,12 @@ function cardIvHigh(s) {
 
 // ── Card: MA200 ───────────────────────────────────────────────────────────
 function cardMa200(s, bullish) {
-  const p          = s.payload;
-  const sign       = p.pct >= 0 ? '+' : '';
-  const accentCls  = bullish ? 'card--green' : 'card--red';
-  const badgeCls   = bullish ? 'badge-opportunity' : 'badge-risk';
-  const label      = bullish ? '突破 MA200 ↑' : '跌破 MA200 ↓';
-  const kpiCls     = bullish ? 'kpi-green' : 'kpi-red';
+  const p         = s.payload;
+  const sign      = p.pct >= 0 ? '+' : '';
+  const accentCls = bullish ? 'card--green' : 'card--red';
+  const badgeCls  = bullish ? 'badge-opportunity' : 'badge-risk';
+  const label     = bullish ? '突破 MA200 ↑' : '跌破 MA200 ↓';
+  const kpiCls    = bullish ? 'kpi-green' : 'kpi-red';
   return `<div class="card ${accentCls}">
     <div class="card-head">
       <div class="card-head-left">
@@ -609,7 +649,15 @@ function toggleAnalysis(el) {
   const body  = el.nextElementSibling;
   if (!body) return;
   const open = body.classList.toggle('open');
-  if (arrow) arrow.style.transform = open ? 'rotate(180deg)' : '';
+  if (arrow) arrow.style.transform = open ? 'rotate(90deg)' : 'rotate(0deg)';
+}
+
+function toggleWatch(btn) {
+  const watched = btn.classList.toggle('watched');
+  const star    = btn.querySelector('.watch-star');
+  const label   = btn.querySelector('.watch-label');
+  if (watched) { star.textContent = '★'; label.textContent = '已关注'; }
+  else         { star.textContent = '☆'; label.textContent = '关注此标的'; }
 }
 
 // ── Card: Dividend ────────────────────────────────────────────────────────
@@ -618,7 +666,7 @@ function cardDividend(s) {
   const moatScore = p.quality_breakdown?.moat ?? null;
   const biz       = bizTypeLabel(moatScore);
 
-  // Header: yield percentile chip
+  // Header chips
   const pctChip = (() => {
     if (p.yield_percentile == null) return '';
     if (p.yield_percentile === 50) return '<span class="pct-chip pct-acc">积累中</span>';
@@ -626,19 +674,19 @@ function cardDividend(s) {
     return `<span class="pct-chip ${cls}">历史${p.yield_percentile}%</span>`;
   })();
 
-  // Analysis section — collapsible
+  // Analysis — collapsible with prominent arrow
   const analysisSection = (() => {
     const bizBlock = biz
       ? `<span class="biz-label">${biz.tag}</span><span class="biz-hint">${biz.hint}</span>`
       : '';
     if (!p.analysis_text) {
       return bizBlock
-        ? `<div style="padding:4px 0">${bizBlock}</div>`
-        : `<div style="font-size:12px;color:var(--text-3);padding:4px 0">业务分析暂缺</div>`;
+        ? `<div style="padding:5px 0">${bizBlock}</div>`
+        : `<div style="font-size:12px;color:var(--text-3);padding:5px 0">业务分析暂缺</div>`;
     }
     return `<div class="analysis-toggle" onclick="toggleAnalysis(this)">
       <span>${bizBlock}</span>
-      <span class="toggle-arrow">▼</span>
+      <span class="toggle-arrow">›</span>
     </div>
     <div class="analysis-body">${esc(p.analysis_text)}</div>`;
   })();
@@ -662,14 +710,14 @@ function cardDividend(s) {
   // Payout risk row
   const payoutRiskRow = (() => {
     if (p.payout_ratio == null) return '';
-    const pr       = p.payout_ratio;
-    const pt       = p.payout_type || 'GAAP';
-    const riskLbl  = pr > 100 ? '极高' : pr > 80 ? '偏高' : pr > 60 ? '中等' : '低';
-    const riskStyl = pr > 100 ? 'color:var(--red)' : pr > 80 ? 'color:var(--amber)' : pr > 60 ? 'color:var(--amber)' : 'color:var(--green)';
-    const tooltip  = pt === 'FCF' ? '能源/公用/REIT 使用自由现金流派息率' : '轻资产行业使用 GAAP 净利润';
+    const pr      = p.payout_ratio;
+    const pt      = p.payout_type || 'GAAP';
+    const riskLbl = pr > 100 ? '极高' : pr > 80 ? '偏高' : pr > 60 ? '中等' : '低';
+    const riskSty = pr > 100 ? 'color:var(--red)' : pr > 80 ? 'color:var(--amber)' : pr > 60 ? 'color:var(--amber)' : 'color:var(--green)';
+    const tooltip = pt === 'FCF' ? '能源/公用/REIT 使用自由现金流派息率' : '轻资产行业使用 GAAP 净利润';
     return `<div class="card-row">
       <span class="row-label">派息切割风险</span>
-      <span class="row-value" style="${riskStyl}">${riskLbl} · ${pt} ${pr}%
+      <span class="row-value" style="${riskSty}">${riskLbl} · ${pt} ${pr}%
         <span class="stab-info-btn" onclick="toggleDetail(this)">ℹ</span>
         <div style="display:none;font-size:11px;color:var(--text-3);margin-top:4px;font-family:'DM Sans',sans-serif">${tooltip}</div>
       </span>
@@ -679,16 +727,16 @@ function cardDividend(s) {
   // Quality row
   const qualityRow = (() => {
     if (p.quality_score == null) return '';
-    const qs       = p.quality_score;
-    const qLbl     = qs >= 80 ? '优' : qs >= 65 ? '良' : '差';
-    const qStyl    = qs >= 80 ? 'color:var(--green)' : qs >= 65 ? 'color:var(--amber)' : 'color:var(--red)';
+    const qs      = p.quality_score;
+    const qLbl    = qs >= 80 ? '优' : qs >= 65 ? '良' : '差';
+    const qSty    = qs >= 80 ? 'color:var(--green)' : qs >= 65 ? 'color:var(--amber)' : 'color:var(--red)';
     const stabHtml = p.quality_breakdown
       ? `<span class="stab-info-btn" onclick="toggleDetail(this)">ℹ</span>
          <div class="stability-detail" style="display:none">${qualityBreakdownHtml(p.quality_breakdown)}</div>`
       : '';
     return `<div class="card-row">
       <span class="row-label">综合质量</span>
-      <span class="row-value" style="${qStyl}">${qs}/100 · ${qLbl}${stabHtml}</span>
+      <span class="row-value" style="${qSty}">${qs}/100 · ${qLbl}${stabHtml}</span>
     </div>`;
   })();
 
@@ -707,7 +755,7 @@ function cardDividend(s) {
       ${warning}`;
   })();
 
-  // Action + floor merged group
+  // Action + floor merged
   const actionGroup = (() => {
     if (!p.option_strike) {
       return `${row('建议买入', `$${p.last_price}  ·  ${p.current_yield}%`)}${floorRows}`;
@@ -737,7 +785,8 @@ function cardDividend(s) {
     return '';
   })();
 
-  const earningsStr = p.earnings_date ? `${p.earnings_date} (${p.days_to_earnings}天)` : 'N/A';
+  const earningsStr = p.earnings_date
+    ? `${p.earnings_date} (${p.days_to_earnings}天)` : 'N/A';
 
   return `<div class="card card--amber">
     <div class="card-head" style="background:rgba(255,179,64,0.04)">
@@ -771,6 +820,21 @@ function cardDividend(s) {
         <div class="dc-group-title">关键事件</div>
         ${row('下次财报', earningsStr)}
         ${freshness}
+      </div>
+
+      <div class="dc-group">
+        <div class="dc-group-title">关注监控</div>
+        <div class="watch-section">
+          <button class="watch-btn" onclick="toggleWatch(this)">
+            <span class="watch-star">☆</span>
+            <span class="watch-label">关注此标的</span>
+          </button>
+          <div class="watch-items">
+            <div class="watch-item"><span class="watch-dot"></span>派息率 &gt;100% 立即预警</div>
+            <div class="watch-item"><span class="watch-dot"></span>财报前 7 天提醒</div>
+            <div class="watch-item"><span class="watch-dot"></span>股息率回落至历史中位数时提示</div>
+          </div>
+        </div>
       </div>
 
     </div>
