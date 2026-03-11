@@ -751,3 +751,4 @@ def bootstrap_yield_history(
 
     logger.info(f"Yield history bootstrap complete: {total_saved} points saved for {len(tickers)} tickers")
     return total_saved
+
