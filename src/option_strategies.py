@@ -1,6 +1,7 @@
 """Option strategy recognition — groups raw Flex positions into named strategies."""
 from dataclasses import dataclass, field
-from typing import List, Optional
+from datetime import date as _date
+from typing import List, Optional, Tuple
 from src.flex_client import PositionRecord
 
 
@@ -24,3 +25,335 @@ class StrategyGroup:
     net_pnl: float = 0.0
     net_credit: float = 0.0   # >0 = received premium, <0 = paid premium
     currency: str = "USD"
+
+
+_INTENT_MAP = {
+    "Naked Put": "income", "Cash-Secured Put": "income",
+    "Naked Call": "income", "Covered Call": "income",
+    "Bull Put Spread": "income", "Bear Call Spread": "income",
+    "Iron Condor": "income", "Iron Butterfly": "income",
+    "Protective Put": "hedge", "Collar": "mixed",
+    "Bull Call Spread": "directional", "Bear Put Spread": "directional",
+    "Long Stock": "directional", "Short Stock": "directional",
+    "Calendar Spread": "mixed", "Diagonal Spread": "mixed",
+    "Straddle": "speculation", "Strangle": "speculation",
+    "Long Put": "speculation", "Long Call": "speculation",
+    "Unclassified": "unknown",
+}
+
+
+class OptionStrategyRecognizer:
+
+    def recognize(self, positions: List[PositionRecord]) -> List[StrategyGroup]:
+        by_underlying = self._group_by_underlying(positions)
+        result = []
+        for underlying, pos_list in by_underlying.items():
+            result.extend(self._recognize_underlying(underlying, pos_list))
+        return result
+
+    def _group_by_underlying(self, positions: List[PositionRecord]) -> dict:
+        groups: dict = {}
+        for p in positions:
+            key = (p.underlying_symbol if (p.asset_category == "OPT" and p.underlying_symbol)
+                   else p.symbol)
+            groups.setdefault(key, []).append(p)
+        return groups
+
+    def _recognize_underlying(self, underlying: str,
+                               positions: List[PositionRecord]) -> List[StrategyGroup]:
+        stocks = [p for p in positions if p.asset_category == "STK"]
+        opts = [p for p in positions if p.asset_category == "OPT"]
+        strategies = []
+
+        # Group opts by expiry and match within each expiry
+        by_expiry: dict = {}
+        for p in opts:
+            by_expiry.setdefault(p.expiry, []).append(p)
+
+        claimed_opts = set()
+        for expiry, exp_opts in sorted(by_expiry.items()):
+            sg, used = self._match_expiry_group(exp_opts, stocks, underlying)
+            if sg:
+                strategies.append(sg)
+                claimed_opts.update(id(p) for p in used)
+                if sg.stock_leg:
+                    stocks = [s for s in stocks if s is not sg.stock_leg]
+
+        remaining_opts = [p for p in opts if id(p) not in claimed_opts]
+
+        # Cross-expiry: Calendar / Diagonal
+        cal, remaining_opts = self._match_calendar(remaining_opts, underlying)
+        strategies.extend(cal)
+
+        # Single remaining opts
+        for p in remaining_opts:
+            strategies.append(self._make_single_opt(p, underlying))
+
+        # Unclaimed stocks
+        for s in stocks:
+            sg = StrategyGroup(
+                underlying=underlying,
+                strategy_type="Long Stock" if s.position > 0 else "Short Stock",
+                intent="directional",
+                stock_leg=s,
+                currency=s.currency,
+                net_delta=s.position,
+                net_pnl=s.unrealized_pnl,
+            )
+            strategies.append(sg)
+
+        # Second pass: attach protective modifiers
+        strategies = self._attach_modifiers(strategies, underlying)
+        # Compute metrics for all
+        for sg in strategies:
+            self._compute_metrics(sg)
+        return strategies
+
+    def _make_single_opt(self, p: PositionRecord, underlying: str) -> StrategyGroup:
+        if p.put_call == "P" and p.position < 0:
+            stype = "Naked Put"
+        elif p.put_call == "C" and p.position < 0:
+            stype = "Naked Call"
+        elif p.put_call == "P" and p.position > 0:
+            stype = "Long Put"
+        else:
+            stype = "Long Call"
+        return StrategyGroup(
+            underlying=underlying, strategy_type=stype,
+            intent=_INTENT_MAP[stype], legs=[p],
+            expiry=p.expiry, currency=p.currency,
+        )
+
+    def _match_expiry_group(self, opts: List[PositionRecord],
+                             stocks: List[PositionRecord],
+                             underlying: str) -> Tuple[Optional[StrategyGroup], list]:
+        """Try to match opts + stocks into one strategy. Returns (StrategyGroup|None, used_legs)."""
+        puts = sorted([p for p in opts if p.put_call == "P"], key=lambda x: x.strike)
+        calls = sorted([p for p in opts if p.put_call == "C"], key=lambda x: x.strike)
+        short_puts = [p for p in puts if p.position < 0]
+        long_puts = [p for p in puts if p.position > 0]
+        short_calls = [p for p in calls if p.position < 0]
+        long_calls = [p for p in calls if p.position > 0]
+        expiry = opts[0].expiry if opts else ""
+        currency = opts[0].currency if opts else (stocks[0].currency if stocks else "USD")
+
+        def _sg(stype, legs, stk=None):
+            return StrategyGroup(
+                underlying=underlying, strategy_type=stype,
+                intent=_INTENT_MAP.get(stype, "unknown"),
+                legs=[p for p in legs if p is not stk],
+                stock_leg=stk, expiry=expiry, currency=currency,
+            ), legs
+
+        # Iron Condor: 1 SC + 1 LC + 1 SP + 1 LP
+        if (len(short_calls) == 1 and len(long_calls) == 1
+                and len(short_puts) == 1 and len(long_puts) == 1):
+            sc, lc = short_calls[0], long_calls[0]
+            sp, lp = short_puts[0], long_puts[0]
+            if lc.strike > sc.strike and sp.strike > lp.strike:
+                if sc.strike == sp.strike:
+                    return _sg("Iron Butterfly", [sc, lc, sp, lp])
+                return _sg("Iron Condor", [sc, lc, sp, lp])
+
+        # Collar: STK + SC + LP
+        if stocks and len(short_calls) == 1 and len(long_puts) == 1 and not long_calls and not short_puts:
+            stk = stocks[0]
+            return _sg("Collar", [stk, short_calls[0], long_puts[0]], stk)
+
+        # Covered Call: STK + SC
+        if stocks and len(short_calls) == 1 and not puts and not long_calls:
+            stk = stocks[0]
+            return _sg("Covered Call", [stk, short_calls[0]], stk)
+
+        # Protective Put: STK + LP
+        if stocks and len(long_puts) == 1 and not calls and not short_puts:
+            stk = stocks[0]
+            return _sg("Protective Put", [stk, long_puts[0]], stk)
+
+        # Bull Put Spread: SP (high) + LP (low)
+        if len(short_puts) == 1 and len(long_puts) == 1 and not calls:
+            sp, lp = short_puts[0], long_puts[0]
+            if sp.strike > lp.strike:
+                return _sg("Bull Put Spread", [sp, lp])
+
+        # Bear Call Spread: SC (low) + LC (high)
+        if len(short_calls) == 1 and len(long_calls) == 1 and not puts:
+            sc, lc = short_calls[0], long_calls[0]
+            if sc.strike < lc.strike:
+                return _sg("Bear Call Spread", [sc, lc])
+
+        # Bull Call Spread: LC (low) + SC (high)
+        if len(long_calls) == 1 and len(short_calls) == 1 and not puts:
+            lc, sc = long_calls[0], short_calls[0]
+            if lc.strike < sc.strike:
+                return _sg("Bull Call Spread", [lc, sc])
+
+        # Bear Put Spread: LP (high) + SP (low)
+        if len(long_puts) == 1 and len(short_puts) == 1 and not calls:
+            lp, sp = long_puts[0], short_puts[0]
+            if lp.strike > sp.strike:
+                return _sg("Bear Put Spread", [lp, sp])
+
+        # Straddle: Call + Put same strike
+        all_calls = calls
+        all_puts = puts
+        if len(all_calls) == 1 and len(all_puts) == 1 and not stocks:
+            c, p = all_calls[0], all_puts[0]
+            if c.strike == p.strike and (c.position * p.position > 0):
+                return _sg("Straddle", [c, p])
+
+        # Strangle: Call + Put different strike
+        if len(all_calls) == 1 and len(all_puts) == 1 and not stocks:
+            c, p = all_calls[0], all_puts[0]
+            if c.position * p.position > 0:
+                return _sg("Strangle", [c, p])
+
+        return None, []
+
+    def _match_calendar(self, remaining_opts: List[PositionRecord],
+                         underlying: str) -> Tuple[List[StrategyGroup], List[PositionRecord]]:
+        """Match Calendar/Diagonal from cross-expiry options. Returns (strategies, leftover)."""
+        strategies = []
+        used = set()
+        puts = sorted([p for p in remaining_opts if p.put_call == "P"], key=lambda x: x.expiry)
+        calls = sorted([p for p in remaining_opts if p.put_call == "C"], key=lambda x: x.expiry)
+        for opts_group in [puts, calls]:
+            for i, near in enumerate(opts_group):
+                if id(near) in used:
+                    continue
+                for far in opts_group[i + 1:]:
+                    if id(far) in used:
+                        continue
+                    if far.expiry <= near.expiry:
+                        continue
+                    stype = ("Calendar Spread" if near.strike == far.strike
+                             else "Diagonal Spread")
+                    sg = StrategyGroup(
+                        underlying=underlying, strategy_type=stype,
+                        intent=_INTENT_MAP[stype],
+                        legs=[near, far], expiry=far.expiry,
+                        currency=near.currency,
+                    )
+                    strategies.append(sg)
+                    used.add(id(near))
+                    used.add(id(far))
+                    break
+        leftover = [p for p in remaining_opts if id(p) not in used]
+        return strategies, leftover
+
+    def _attach_modifiers(self, strategies: List[StrategyGroup],
+                           underlying: str) -> List[StrategyGroup]:
+        """Second pass: attach unmatched long puts/calls as protective modifiers."""
+        single_longs = [sg for sg in strategies
+                        if sg.strategy_type in ("Long Put", "Long Call")
+                        and len(sg.legs) == 1]
+        non_single = [sg for sg in strategies if sg not in single_longs]
+        used = set()
+        for mod_sg in single_longs:
+            mod = mod_sg.legs[0]
+            target = next(
+                (sg for sg in non_single
+                 if sg.underlying == underlying
+                 and sg.strategy_type not in ("Long Stock", "Short Stock")
+                 and id(sg) not in used),
+                None
+            )
+            if target:
+                target.modifiers.append(mod)
+                used.add(id(mod_sg))
+        result = non_single + [sg for sg in single_longs if id(sg) not in used]
+        return result
+
+    def _compute_metrics(self, sg: StrategyGroup) -> None:
+        """Compute net Greeks, max_profit/loss, breakevens, DTE, net_pnl, net_credit."""
+        all_opts = sg.legs + sg.modifiers
+        if sg.stock_leg:
+            all_opts_only = [p for p in all_opts if p.asset_category == "OPT"]
+            sg.net_delta = sg.stock_leg.position + sum(
+                p.delta * p.position * p.multiplier for p in all_opts_only)
+        else:
+            sg.net_delta = sum(p.delta * p.position * p.multiplier for p in all_opts
+                               if p.asset_category == "OPT")
+        sg.net_theta = sum(p.theta * p.position * p.multiplier for p in all_opts
+                           if p.asset_category == "OPT")
+        sg.net_vega = sum(p.vega * p.position * p.multiplier for p in all_opts
+                          if p.asset_category == "OPT")
+        sg.net_gamma = sum(p.gamma * p.position * p.multiplier for p in all_opts
+                           if p.asset_category == "OPT")
+
+        opt_legs = [p for p in sg.legs if p.asset_category == "OPT"]
+        sg.net_credit = sum(-p.position * p.cost_basis_price * p.multiplier
+                            for p in opt_legs)
+        sg.net_pnl = sum(p.unrealized_pnl for p in sg.legs)
+        if sg.stock_leg:
+            sg.net_pnl += sg.stock_leg.unrealized_pnl
+
+        # DTE
+        if sg.expiry and len(sg.expiry) == 8:
+            try:
+                exp = _date(int(sg.expiry[:4]), int(sg.expiry[4:6]), int(sg.expiry[6:]))
+                sg.dte = max(0, (exp - _date.today()).days)
+            except ValueError:
+                sg.dte = 0
+
+        self._compute_payoff(sg, opt_legs)
+
+    def _compute_payoff(self, sg: StrategyGroup, opt_legs: List[PositionRecord]) -> None:
+        """Compute max_profit, max_loss, breakevens per strategy type."""
+        stype = sg.strategy_type
+        contracts = abs(opt_legs[0].position) if opt_legs else 1
+        mult = opt_legs[0].multiplier if opt_legs else 100
+        credit_per_contract = sg.net_credit / contracts / mult if contracts > 0 else 0
+
+        if stype in ("Bull Put Spread", "Bear Call Spread"):
+            strikes = sorted(p.strike for p in opt_legs)
+            width = strikes[1] - strikes[0]
+            sg.max_profit = sg.net_credit
+            sg.max_loss = (width - credit_per_contract) * mult * contracts
+            short_p = next(p for p in opt_legs if p.position < 0)
+            sg.breakevens = [short_p.strike - credit_per_contract]
+
+        elif stype in ("Bull Call Spread", "Bear Put Spread"):
+            strikes = sorted(p.strike for p in opt_legs)
+            width = strikes[1] - strikes[0]
+            sg.max_loss = abs(sg.net_credit)
+            sg.max_profit = (width - abs(credit_per_contract)) * mult * contracts
+            long_p = next(p for p in opt_legs if p.position > 0)
+            sg.breakevens = [long_p.strike + abs(credit_per_contract)]
+
+        elif stype in ("Iron Condor", "Iron Butterfly"):
+            short_puts = [p for p in opt_legs if p.put_call == "P" and p.position < 0]
+            short_calls = [p for p in opt_legs if p.put_call == "C" and p.position < 0]
+            if short_puts and short_calls:
+                sp_strike = short_puts[0].strike
+                sc_strike = short_calls[0].strike
+                sg.max_profit = sg.net_credit
+                put_strikes = sorted(p.strike for p in opt_legs if p.put_call == "P")
+                call_strikes = sorted(p.strike for p in opt_legs if p.put_call == "C")
+                put_width = put_strikes[1] - put_strikes[0]
+                call_width = call_strikes[1] - call_strikes[0]
+                max_width = max(put_width, call_width)
+                sg.max_loss = (max_width - credit_per_contract) * mult * contracts
+                sg.breakevens = [sp_strike - credit_per_contract,
+                                 sc_strike + credit_per_contract]
+
+        elif stype == "Naked Put":
+            sp = opt_legs[0]
+            sg.max_profit = sg.net_credit
+            sg.max_loss = None
+            sg.breakevens = [sp.strike - credit_per_contract]
+
+        elif stype == "Naked Call":
+            sc = opt_legs[0]
+            sg.max_profit = sg.net_credit
+            sg.max_loss = None
+            sg.breakevens = [sc.strike + credit_per_contract]
+
+        elif stype == "Covered Call":
+            sc = next((p for p in opt_legs if p.put_call == "C"), None)
+            stk = sg.stock_leg
+            if sc and stk:
+                sg.max_profit = ((sc.strike - stk.cost_basis_price) * stk.position
+                                 + sg.net_credit)
+                sg.max_loss = None
+                sg.breakevens = [stk.cost_basis_price - credit_per_contract]
