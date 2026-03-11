@@ -282,6 +282,28 @@ body {
 /* ── Empty / Loading ── */
 .empty-state { text-align: center; color: var(--text-3); font-size: 14px; padding: 72px 0; }
 .loading { text-align: center; padding: 72px 0; color: var(--text-3); font-family: "DM Mono", monospace; font-size: 13px; }
+
+/* ── Strategy Tabs ──────────────────────────────── */
+.strategy-tabs { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+.strategy-tab {
+  padding: 5px 14px; border-radius: 20px; font-size: 12px; font-weight: 500;
+  border: 1px solid var(--border); background: var(--surface-2);
+  color: var(--text-2); cursor: pointer; transition: all 0.15s; user-select: none;
+  position: relative;
+}
+.strategy-tab.active { background: rgba(10,132,255,0.15); border-color: rgba(10,132,255,0.4); color: var(--blue); font-weight: 600; }
+.strategy-tab.active-green { background: rgba(52,199,89,0.12); border-color: rgba(52,199,89,0.35); color: var(--green); font-weight: 600; }
+.strategy-tab.disabled { opacity: 0.38; cursor: default; pointer-events: none; }
+.strategy-panel { display: none; }
+.strategy-panel.visible { display: block; }
+.strategy-row { display: flex; justify-content: space-between; align-items: baseline; padding: 5px 0; border-bottom: 1px solid var(--border-2); }
+.strategy-row:last-child { border-bottom: none; }
+.strategy-row-label { font-size: 12px; color: var(--text-2); }
+.strategy-row-value { font-family: 'DM Mono', monospace; font-size: 13px; color: var(--text); }
+.strategy-row-value.highlight { color: var(--amber); font-size: 15px; font-weight: 500; }
+.strategy-ai-reason { font-size: 12px; color: var(--text-2); line-height: 1.6; padding: 8px 0 10px; border-bottom: 1px solid var(--border-2); margin-bottom: 8px; }
+.strategy-ai-label { font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); margin-bottom: 2px; }
+.tab-tooltip { position: absolute; background: var(--surface-2); border: 1px solid var(--border); padding: 4px 10px; border-radius: 6px; font-size: 11px; white-space: nowrap; top: 28px; left: 0; z-index: 20; color: var(--text-2); pointer-events: none; }
 </style>
 </head>
 <body>
@@ -660,6 +682,72 @@ function toggleWatch(btn) {
   else         { star.textContent = '☆'; label.textContent = '关注此标的'; }
 }
 
+function switchStrategyTab(ticker, strategy, tabEl) {
+  document.querySelectorAll('#stabs-' + ticker + ' .strategy-tab').forEach(function(t) {
+    t.classList.remove('active', 'active-green');
+  });
+  tabEl.classList.add(strategy === 'spot' ? 'active-green' : 'active');
+  ['spot', 'sell_put'].forEach(function(s) {
+    var p = document.getElementById('spanel-' + ticker + '-' + s);
+    if (p) p.classList.toggle('visible', s === strategy);
+  });
+}
+
+function showTabTooltip(msg, el) {
+  var existing = el.querySelector('.tab-tooltip');
+  if (existing) { existing.remove(); return; }
+  var tip = document.createElement('span');
+  tip.className = 'tab-tooltip';
+  tip.textContent = msg;
+  el.appendChild(tip);
+  setTimeout(function() { if (tip.parentNode) tip.remove(); }, 2500);
+}
+
+function buildStrategySection(s) {
+  var td = s.ticker_data || {};
+  var opt = s.option_details || {};
+  var ticker = td.ticker || '';
+  var isUS = (td.market || 'US') === 'US';
+  var illiquid = !!opt.sell_put_illiquid;
+  var hasOption = isUS && opt.apy != null && !illiquid;
+  var sgov = td.sgov_yield;
+  var sgovApy = td.sgov_adjusted_apy;
+  var rec = td.recommended_strategy || (hasOption ? 'sell_put' : 'spot');
+  var recReason = td.recommended_reason || '';
+
+  var tabSellPutClass = !isUS ? 'disabled' : (illiquid ? '' : (hasOption ? '' : 'disabled'));
+  var tabSellPutClick = !isUS
+    ? 'showTabTooltip("港股/A股暂无期权市场", this)'
+    : (illiquid
+        ? 'showTabTooltip("流动性不足，价差 ' + ((opt.spread_pct || 0) * 100).toFixed(1) + '%", this)'
+        : (hasOption ? 'switchStrategyTab("' + ticker + '","sell_put",this)' : ''));
+
+  var spotActive = rec === 'spot' ? 'active-green' : '';
+  var spActive = (rec === 'sell_put' && hasOption) ? 'active' : '';
+
+  // Spot panel
+  var spotPanel = '<div class="strategy-row"><span class="strategy-row-label">当前股息率</span><span class="strategy-row-value highlight">' + (s.current_yield || 0).toFixed(2) + '%</span></div>'
+    + '<div class="strategy-row"><span class="strategy-row-label">历史分位</span><span class="strategy-row-value">' + Math.round(s.yield_percentile || 0) + '%</span></div>';
+
+  // Sell Put panel
+  var spPanel = '';
+  if (hasOption) {
+    spPanel = '<div class="strategy-row"><span class="strategy-row-label">行权价</span><span class="strategy-row-value">$' + (opt.strike || 0).toFixed(2) + ' · ' + (opt.dte || 0) + ' DTE</span></div>'
+      + '<div class="strategy-row"><span class="strategy-row-label">权利金</span><span class="strategy-row-value">$' + (opt.bid || 0).toFixed(2) + ' → ' + (opt.apy || 0).toFixed(1) + '% 年化</span></div>'
+      + (sgov != null ? '<div class="strategy-row"><span class="strategy-row-label">SGOV 叠加</span><span class="strategy-row-value">+' + sgov.toFixed(1) + '% <span style="color:var(--text-3);font-size:11px">现金短期国债收益</span></span></div>' : '')
+      + '<div class="strategy-row"><span class="strategy-row-label">综合年化</span><span class="strategy-row-value highlight">' + (sgovApy != null ? sgovApy.toFixed(1) : (opt.apy || 0).toFixed(1)) + '% <span style="color:var(--text-3);font-size:11px">' + (sgovApy != null ? '(Sell Put + SGOV)' : '(Sell Put)') + '</span></span></div>';
+  }
+
+  return '<div class="strategy-tabs" id="stabs-' + ticker + '">'
+    + '<span class="strategy-tab ' + spotActive + '" onclick="switchStrategyTab(\'' + ticker + '\',\'spot\',this)">现货</span>'
+    + '<span class="strategy-tab ' + tabSellPutClass + ' ' + spActive + '" onclick="' + tabSellPutClick + '">Sell Put</span>'
+    + '<span class="strategy-tab disabled" onclick="showTabTooltip(\'功能开发中\',this)">Spread ·</span>'
+    + '</div>'
+    + (recReason ? '<div class="strategy-ai-reason"><div class="strategy-ai-label">AI 推荐</div>' + recReason + '</div>' : '')
+    + '<div class="strategy-panel ' + (rec === 'spot' ? 'visible' : '') + '" id="spanel-' + ticker + '-spot">' + spotPanel + '</div>'
+    + '<div class="strategy-panel ' + (rec === 'sell_put' && hasOption ? 'visible' : '') + '" id="spanel-' + ticker + '-sell_put">' + spPanel + '</div>';
+}
+
 // ── Card: Dividend ────────────────────────────────────────────────────────
 function cardDividend(s) {
   const p         = s.payload;
@@ -755,26 +843,8 @@ function cardDividend(s) {
       ${warning}`;
   })();
 
-  // Action + floor merged
-  const actionGroup = (() => {
-    if (!p.option_strike) {
-      return `${row('建议买入', `$${p.last_price}  ·  ${p.current_yield}%`)}${floorRows}`;
-    }
-    if (p.option_illiquid) {
-      const msg = p.option_no_market ? '暂无期权报价' : `Sell Put 流动性差 (价差 ${p.option_spread_pct}%)`;
-      return `${row('建议买入', `$${p.last_price}  ·  ${p.current_yield}%`)}
-        <div style="font-size:12px;color:var(--amber);padding:3px 0">⚠ ${msg}</div>
-        ${floorRows}`;
-    }
-    const liqWarn = p.option_liquidity_warn
-      ? `<div style="font-size:12px;color:var(--amber);padding:3px 0">⚠ 流动性偏差 (价差${p.option_spread_pct}%)</div>` : '';
-    return `${row('建议买入', `$${p.last_price}  ·  ${p.current_yield}%`)}
-      ${row('Sell Put', `$${p.option_strike} Strike · ${p.option_dte} DTE`)}
-      ${liqWarn}
-      ${row('权利金', `$${p.option_mid ?? p.option_bid}  →  ${p.option_apy}% 年化`)}
-      <div class="dc-combined">综合年化: ${p.combined_apy}%</div>
-      ${floorRows}`;
-  })();
+  // Strategy section (tab picker)
+  const strategySection = buildStrategySection(s);
 
   // Freshness
   const freshness = (() => {
@@ -812,8 +882,13 @@ function cardDividend(s) {
       </div>
 
       <div class="dc-group">
-        <div class="dc-group-title">操作 · 最坏情景</div>
-        ${actionGroup}
+        <div class="dc-group-title">买入策略</div>
+        ${strategySection}
+      </div>
+
+      <div class="dc-group">
+        <div class="dc-group-title">最坏情景</div>
+        ${floorRows}
       </div>
 
       <div class="dc-group">
