@@ -788,8 +788,9 @@ function buildStrategySection(s) {
   var isUS = (p.market || 'US') === 'US';
   var illiquid = !!p.option_illiquid;
   var hasOption = isUS && p.option_apy != null && !illiquid;
-  var sgov = p.sgov_yield;
-  var sgovApy = p.sgov_adjusted_apy;
+  var sgov = p.sgov_yield != null ? p.sgov_yield : (hasOption ? 4.8 : null);
+  var sgovApy = p.sgov_adjusted_apy != null ? p.sgov_adjusted_apy : (hasOption && p.option_apy != null ? Math.round((p.option_apy + 4.8) * 10) / 10 : null);
+  var sgovIsEst = p.sgov_adjusted_apy == null && sgovApy != null;
   var rec = p.recommended_strategy || (hasOption ? 'sell_put' : 'spot');
   var recReason = p.recommended_reason
     || (rec === 'sell_put' ? 'Sell Put 综合年化显著高于现货股息率，优先考虑期权策略' : '现货持仓吃股息，策略稳健');
@@ -822,8 +823,8 @@ function buildStrategySection(s) {
     spPanel = (rec === 'sell_put' ? reasonHtml : '')
       + '<div class="strategy-row"><span class="strategy-row-label">行权价</span><span class="strategy-row-value highlight">$' + (p.option_strike || 0).toFixed(2) + ' · ' + (p.option_dte || 0) + ' DTE</span></div>'
       + '<div class="strategy-row"><span class="strategy-row-label">权利金</span><span class="strategy-row-value">$' + (p.option_bid || 0).toFixed(2) + ' → ' + (p.option_apy || 0).toFixed(1) + '% 年化</span></div>'
-      + (sgov != null ? '<div class="strategy-row"><span class="strategy-row-label">SGOV 叠加</span><span class="strategy-row-value">+' + sgov.toFixed(1) + '% <span style="color:var(--text-3);font-size:11px">现金短期国债收益</span></span></div>' : '')
-      + '<div class="strategy-row"><span class="strategy-row-label">综合年化</span><span class="strategy-row-value highlight">' + (sgovApy != null ? sgovApy.toFixed(1) : (p.option_apy || 0).toFixed(1)) + '% <span style="color:var(--text-3);font-size:11px">' + (sgovApy != null ? '(Sell Put + SGOV)' : '(Sell Put)') + '</span></span></div>';
+      + (sgov != null ? '<div class="strategy-row"><span class="strategy-row-label">SGOV 叠加</span><span class="strategy-row-value">+' + sgov.toFixed(1) + '% <span style="color:var(--text-3);font-size:11px">现金短期国债收益' + (sgovIsEst ? ' · 估算' : '') + '</span></span></div>' : '')
+      + '<div class="strategy-row"><span class="strategy-row-label">综合年化</span><span class="strategy-row-value highlight">' + (sgovApy != null ? sgovApy.toFixed(1) : (p.option_apy || 0).toFixed(1)) + '% <span style="color:var(--text-3);font-size:11px">' + (sgovApy != null ? ('(Sell Put + SGOV' + (sgovIsEst ? ' est.' : '') + ')') : '(Sell Put)') + '</span></span></div>';
   }
 
   var spTooltipAttr = tabSellPutTooltip ? ' data-tooltip="' + tabSellPutTooltip + '"' : '';
