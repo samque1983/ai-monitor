@@ -9,7 +9,10 @@ from typing import Dict, List, Tuple
 from src.config import load_config
 from src.data_loader import fetch_universe
 from src.market_data import MarketDataProvider
-from src.portfolio_risk import load_account_configs, PortfolioRiskAnalyzer, generate_risk_suggestion
+from src.risk_utils import load_account_configs, AccountConfig
+from src.option_strategies import OptionStrategyRecognizer
+from src.strategy_risk import (StrategyRiskEngine, generate_strategy_suggestion,
+                                generate_portfolio_summary)
 from src.portfolio_report import generate_html_report
 from src.risk_store import RiskStore
 from src.flex_client import FlexClient
@@ -474,12 +477,12 @@ def run_scan(config_path: str = "config.yaml"):
 
 
 def run_risk_report(account_config, config):
-    """Fetch Flex data, analyze risk, save HTML report."""
+    """Fetch Flex data, run strategy recognition + risk engine, save HTML report."""
     store = RiskStore()
     client = FlexClient(token=account_config.flex_token, query_id=account_config.flex_query_id)
     positions, account_summary = client.fetch()
 
-    # Manual overrides via env vars (Option D): ACCOUNT_{KEY}_NLV / _CUSHION / _MAINT_MARGIN
+    # Manual overrides via env vars: ACCOUNT_{KEY}_NLV / _CUSHION / _MAINT_MARGIN
     key = account_config.key
     if nlv := os.environ.get(f"ACCOUNT_{key}_NLV"):
         account_summary.net_liquidation = float(nlv)
@@ -488,14 +491,21 @@ def run_risk_report(account_config, config):
     if maint := os.environ.get(f"ACCOUNT_{key}_MAINT_MARGIN"):
         account_summary.maint_margin_req = float(maint)
 
-    analyzer = PortfolioRiskAnalyzer()
-    report = analyzer.analyze(positions, account_summary)
+    # Layer 1: recognize strategies
+    recognizer = OptionStrategyRecognizer()
+    strategies = recognizer.recognize(positions)
+
+    # Layer 2: risk analysis
+    engine = StrategyRiskEngine()
+    report = engine.analyze(strategies, account_summary)
     report.account_id = account_config.key
 
-    # Generate AI suggestions for all alerts (red first, then yellow)
+    # Layer 3: LLM suggestions
     llm_cfg = config.get("llm", {}) if config else {}
-    for alert in sorted(report.alerts, key=lambda a: 0 if a.level == "red" else 1):
-        alert.ai_suggestion = generate_risk_suggestion(alert, llm_cfg)
+    for alert in report.alerts:
+        if alert.severity == "red":
+            alert.ai_suggestion = generate_strategy_suggestion(alert, llm_cfg)
+    report.portfolio_summary = generate_portfolio_summary(report, llm_cfg)
 
     html = generate_html_report(report)
     store.save_report(report, html)
@@ -505,11 +515,10 @@ def run_risk_report(account_config, config):
     with open(html_path, "w", encoding="utf-8") as f:
         f.write(html)
     print(f"Report saved: {html_path}")
-    red = sum(1 for a in report.alerts if a.level == "red")
-    yellow = sum(1 for a in report.alerts if a.level == "yellow")
+    red = sum(1 for a in report.alerts if a.severity == "red")
+    yellow = sum(1 for a in report.alerts if a.severity == "yellow")
     print(f"[{account_config.name}] NLV=${report.net_liquidation:,.0f} "
-          f"cushion={report.cushion*100:.1f}% "
-          f"alerts: {red} red / {yellow} yellow")
+          f"cushion={report.cushion * 100:.1f}% alerts: {red} red / {yellow} yellow")
 
 
 def run_all_accounts(config):

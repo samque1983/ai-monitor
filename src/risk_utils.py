@@ -1,6 +1,8 @@
 """Shared utilities for risk modules."""
 import os
-from typing import Set
+import re
+from dataclasses import dataclass
+from typing import List, Set
 
 CASH_LIKE_TICKERS: Set[str] = {
     "SGOV", "BIL", "SHV", "SHY", "VGSH", "JPST", "ICSH",
@@ -34,3 +36,34 @@ def normalize_ticker(symbol: str) -> str:
     if " " in symbol:
         return symbol.replace(" ", "-")
     return symbol
+
+
+@dataclass
+class AccountConfig:
+    key: str           # env key prefix (e.g. "ALICE")
+    name: str
+    code: str
+    flex_token: str
+    flex_query_id: str
+
+
+def load_account_configs() -> List[AccountConfig]:
+    """Scan os.environ for ACCOUNT_*_FLEX_TOKEN pattern and return configs."""
+    configs = []
+    seen_keys: Set[str] = set()
+    for env_key, val in os.environ.items():
+        m = re.match(r"^ACCOUNT_([A-Z0-9_]+)_FLEX_TOKEN$", env_key)
+        if not m:
+            continue
+        key = m.group(1)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        query_id = os.environ.get(f"ACCOUNT_{key}_FLEX_QUERY_ID", "")
+        name = os.environ.get(f"ACCOUNT_{key}_NAME", key)
+        code = os.environ.get(f"ACCOUNT_{key}_CODE", "")
+        configs.append(AccountConfig(
+            key=key, name=name, code=code,
+            flex_token=val, flex_query_id=query_id,
+        ))
+    return configs

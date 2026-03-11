@@ -1,17 +1,20 @@
 import json
 import pytest
 from src.risk_store import RiskStore
-from src.portfolio_risk import RiskReport, RiskAlert
+from src.strategy_risk import StrategyRiskReport, StrategyRiskAlert
 
 
 def _make_report(account_id="alice", report_date="2026-03-10"):
-    return RiskReport(
+    return StrategyRiskReport(
         account_id=account_id,
         report_date=report_date,
         net_liquidation=120000,
         total_pnl=3200,
         cushion=0.35,
-        alerts=[RiskAlert(dimension=4, level="yellow", ticker="ACCOUNT", detail="cushion 35%")],
+        alerts=[StrategyRiskAlert(rule_id=4, severity="yellow", urgency=False,
+                                   strategy_ref=None, underlying="ACCOUNT",
+                                   title="保证金偏紧", technical="cushion 35%",
+                                   plain="保证金缓冲 35%。")],
         summary_stats={"stress_test": {"drop_10pct": -5000}},
     )
 
