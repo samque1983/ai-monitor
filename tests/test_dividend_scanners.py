@@ -924,3 +924,53 @@ def test_scan_dividend_sell_put_illiquid_flag_over_30pct(mock_provider, sample_t
     assert result is not None
     assert result["sell_put_illiquid"] is True
     assert result["spread_pct"] > 30
+
+
+# ---------------------------------------------------------------------------
+# Task 3 (Dividend Card UX v2): get_sgov_yield + sgov_yield wiring
+# ---------------------------------------------------------------------------
+
+def test_get_sgov_yield_returns_float(monkeypatch):
+    """get_sgov_yield() converts yfinance yield fraction to percent."""
+    from src.dividend_scanners import get_sgov_yield
+    import yfinance as yf
+
+    class FakeTicker:
+        info = {"yield": 0.0523}
+    monkeypatch.setattr(yf, "Ticker", lambda sym: FakeTicker())
+    result = get_sgov_yield()
+    assert result == 5.23
+
+
+def test_get_sgov_yield_fallback(monkeypatch):
+    """Returns 4.8 when yfinance raises."""
+    from src.dividend_scanners import get_sgov_yield
+    import yfinance as yf
+
+    class BadTicker:
+        @property
+        def info(self):
+            raise RuntimeError("network")
+    monkeypatch.setattr(yf, "Ticker", lambda sym: BadTicker())
+    result = get_sgov_yield()
+    assert result == 4.8
+
+
+def test_weekly_scan_sets_sgov_yield_us(monkeypatch):
+    """US tickers get sgov_yield set; HK tickers get None."""
+    from src.dividend_scanners import get_sgov_yield
+    import yfinance as yf
+
+    class FakeTicker:
+        info = {"yield": 0.048}
+    monkeypatch.setattr(yf, "Ticker", lambda sym: FakeTicker())
+    from src.data_loader import classify_market
+    sgov = get_sgov_yield()
+    assert sgov == 4.8
+    assert classify_market("AAPL") == "US"
+    assert classify_market("0005.HK") == "HK"
+    # US ticker gets sgov_yield, HK ticker gets None
+    us_sgov = sgov if classify_market("AAPL") == "US" else None
+    hk_sgov = sgov if classify_market("0005.HK") == "US" else None
+    assert us_sgov == 4.8
+    assert hk_sgov is None

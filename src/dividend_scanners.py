@@ -38,6 +38,16 @@ def _to_dt(d: dict) -> datetime:
     return datetime.combine(raw, datetime.min.time())
 
 
+def get_sgov_yield() -> float:
+    """Fetch current SGOV annualized yield. Returns 4.8 fallback on failure."""
+    try:
+        import yfinance as yf
+        info = yf.Ticker("SGOV").info
+        return round(float(info.get("yield", 0.048)) * 100, 2)
+    except Exception:
+        return 4.8
+
+
 @dataclass
 class DividendBuySignal:
     """股息买入信号数据类"""
@@ -100,6 +110,10 @@ def scan_dividend_pool_weekly(
     max_payout_ratio = scanner_config.get("max_payout_ratio", 100)
 
     results = []
+
+    # Fetch SGOV yield once for the whole scan (US cash collateral yield)
+    sgov_yield = get_sgov_yield()
+    logger.info(f"SGOV yield for this scan: {sgov_yield:.2f}%")
 
     for ticker in universe:
         try:
@@ -235,6 +249,7 @@ def scan_dividend_pool_weekly(
                 quality_breakdown=quality_score_result.quality_breakdown,
                 analysis_text=quality_score_result.analysis_text or "",
                 data_version_date=str(date.today()),
+                sgov_yield=sgov_yield if classify_market(ticker) == "US" else None,
             )
 
             results.append(ticker_data)
