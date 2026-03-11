@@ -476,11 +476,15 @@ def run_scan(config_path: str = "config.yaml"):
     logger.info(f"Scan completed in {elapsed:.1f}s")
 
 
-def run_risk_report(account_config, config):
+def run_risk_report(account_config, config, flex_file: str = ""):
     """Fetch Flex data, run strategy recognition + risk engine, save HTML report."""
     store = RiskStore()
     client = FlexClient(token=account_config.flex_token, query_id=account_config.flex_query_id)
-    positions, account_summary = client.fetch()
+    if flex_file:
+        print(f"Loading positions from file: {flex_file}")
+        positions, account_summary = client.fetch_from_file(flex_file)
+    else:
+        positions, account_summary = client.fetch()
 
     # Manual overrides via env vars: ACCOUNT_{KEY}_NLV / _CUSHION / _MAINT_MARGIN
     key = account_config.key
@@ -579,6 +583,8 @@ if __name__ == "__main__":
     parser.add_argument("--risk-history", action="store_true", help="Show risk history")
     parser.add_argument("--account", type=str, default="", help="Account key (e.g. ALICE)")
     parser.add_argument("--days", type=int, default=7, help="History days")
+    parser.add_argument("--flex-file", type=str, default="",
+                        help="Load positions from local Flex XML file instead of IBKR API")
     args = parser.parse_args()
 
     if args.risk_report:
@@ -589,7 +595,7 @@ if __name__ == "__main__":
             configs = load_account_configs()
             acct = next((c for c in configs if c.key == args.account.upper()), None)
             if acct:
-                run_risk_report(acct, cfg)
+                run_risk_report(acct, cfg, flex_file=args.flex_file)
             else:
                 print(f"Account '{args.account}' not found in env vars.")
         else:
