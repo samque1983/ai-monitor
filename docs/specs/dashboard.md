@@ -160,3 +160,20 @@ Numeric fields are rounded: `apy` to 1 dp, prices to 2 dp, ratios/ranks to 1 dp.
 - `tests/agent/test_dashboard.py` — HTTP endpoints: `GET /dashboard` returns 200, `GET /api/signals` returns correct shape, category and time_range params, empty state
 - `tests/agent/test_scan_push.py` — `POST /api/scan_results` dual-write: verifies signals are persisted alongside raw scan_results
 - `tests/test_integration.py` — `_build_agent_payload`: verifies all 10 signal types, earnings_risk branching, None handling
+
+## Routes (updated 2026-03-12)
+
+| Method | Path | Template | active_page |
+|--------|------|----------|-------------|
+| GET | /dashboard | dashboard.html | "dashboard" |
+| GET | /risk-report | risk_report.html | "risk" |
+| GET | /chat | chat.html | "chat" |
+| GET | /watchlist | watchlist.html | "watchlist" |
+| POST | /api/chat | — JSON | — |
+
+## Navigation Architecture
+
+Shared `agent/templates/_nav.html` partial included by all page templates.
+- **Mobile (< 1024px)**: Fixed bottom tab bar (60px + safe-area), 4 tabs with amber active indicator
+- **Desktop (≥ 1024px)**: Fixed left sidebar (230px), grouped nav items, live clock footer
+- Context variables: `active_page` (str), `signal_count` (int, optional)
