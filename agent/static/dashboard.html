@@ -993,9 +993,18 @@ document.addEventListener('click', function(e) {
 
 function parseAnalysisText(raw) {
   if (!raw) return null;
+  // Merge continuation lines (no ：= not a new section) onto previous section
+  var lines = raw.split('\n').map(function(l) { return l.trim(); }).filter(Boolean);
+  var merged = [];
+  lines.forEach(function(l) {
+    if (l.includes('：') || merged.length === 0) {
+      merged.push(l);
+    } else {
+      merged[merged.length - 1] += ' ' + l;
+    }
+  });
   var lineRe = /^(.+?)：(.+?)→\s*(.+)$/;
-  var lines = raw.split('\n').filter(function(l) { return l.trim(); });
-  var dims = lines.map(function(l) {
+  var dims = merged.map(function(l) {
     var m = l.match(lineRe);
     return m ? { label: m[1].trim(), body: m[2].trim(), price: m[3].trim() } : null;
   }).filter(Boolean);
@@ -1005,7 +1014,8 @@ function parseAnalysisText(raw) {
 function renderAnalysisText(raw) {
   var dims = parseAnalysisText(raw);
   if (!dims) {
-    return '<div class="dc-body">' + (raw || '') + '</div>';
+    // Fallback: render raw text with line breaks
+    return '<div style="font-size:13px;color:var(--text-2);line-height:1.7;white-space:pre-line">' + (raw || '') + '</div>';
   }
   return dims.map(function(d) {
     return '<div class="analysis-dim">'
