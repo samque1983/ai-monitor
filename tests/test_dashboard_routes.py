@@ -29,3 +29,31 @@ def test_nav_partial_active_variable():
     """_nav.html must use active_page variable for highlighting."""
     content = open("agent/templates/_nav.html").read()
     assert "active_page" in content
+
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+def get_client():
+    from agent.main import app
+    from fastapi.testclient import TestClient
+    return TestClient(app)
+
+def test_dashboard_returns_html_with_nav():
+    client = get_client()
+    resp = client.get("/dashboard")
+    assert resp.status_code == 200
+    assert "市场雷达" in resp.text
+    assert "/risk-report" in resp.text
+    assert "/chat" in resp.text
+
+def test_dashboard_active_class():
+    client = get_client()
+    resp = client.get("/dashboard")
+    assert 'active' in resp.text
+
+def test_risk_report_page_returns_html():
+    client = get_client()
+    resp = client.get("/risk-report")
+    assert resp.status_code == 200
+    assert "风险报告" in resp.text
+    assert "/dashboard" in resp.text

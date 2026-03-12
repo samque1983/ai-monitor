@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>仓位风险报告</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:opsz,wght@9..40,300..600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --bg: #080808; --surface: #101010; --surface-2: #181818;
+  --border: rgba(255,255,255,0.08); --border-2: rgba(255,255,255,0.06);
+  --text: #ececec;
+  --text-2: rgba(236,236,236,0.60); --text-3: rgba(236,236,236,0.42);
+  --red: #ff453a; --amber: #ffb340; --green: #34c759; --blue: #0a84ff;
+  --r4: 4px; --r8: 8px; --r12: 12px;
+}
+body {
+  font-family: "DM Sans", -apple-system, sans-serif;
+  background: var(--bg); color: var(--text);
+  line-height: 1.5; font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+.main-content {
+  padding: 32px 28px;
+  max-width: 960px;
+}
+.toolbar {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+.toolbar h1 { font-size: 20px; font-weight: 600; flex: 1; }
+.account-select, .date-select {
+  background: var(--surface-2); border: 1px solid var(--border);
+  color: var(--text); border-radius: 8px; padding: 6px 12px;
+  font-size: 13px; cursor: pointer; outline: none;
+}
+.empty-state {
+  text-align: center; padding: 80px 20px; color: var(--text-3);
+  font-size: 14px; line-height: 1.8;
+}
+#report-container { width: 100%; }
+</style>
+</head>
+<body>
+
+<div class="app-shell">
+{% include "_nav.html" %}
+<main class="main-content">
+
+  <div class="toolbar">
+    <h1>风险报告</h1>
+    <select class="account-select" id="accountSelect" onchange="loadReport()">
+      <option value="ALICE">ALICE</option>
+    </select>
+    <select class="date-select" id="dateSelect" onchange="loadReportByDate()">
+      <option value="">最新</option>
+    </select>
+  </div>
+
+  <div id="report-container">
+    <div class="empty-state" id="emptyState">
+      正在加载…
+    </div>
+  </div>
+
+</main>
+</div>
+
+<script>
+async function loadReport(date) {
+  const account = document.getElementById('accountSelect').value;
+  const dateParam = date ? `&date=${date}` : '';
+  const resp = await fetch(`/api/risk-report/latest?account=${account}${dateParam}`);
+  const data = await resp.json();
+
+  const sel = document.getElementById('dateSelect');
+  sel.innerHTML = '<option value="">最新</option>';
+  (data.dates || []).forEach(d => {
+    const opt = document.createElement('option');
+    opt.value = d;
+    opt.textContent = d;
+    if (d === (date || data.report?.report_date)) opt.selected = true;
+    sel.appendChild(opt);
+  });
+
+  const container = document.getElementById('report-container');
+  if (!data.report) {
+    container.innerHTML = `<div class="empty-state">
+      尚无报告。<br>请在本地运行：<br>
+      <code style="font-size:12px;color:#636366">python local/ibgateway_poller.py</code>
+    </div>`;
+    return;
+  }
+
+  let html = data.report.html_content;
+  const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  const styleMatch = html.match(/<style[^>]*>([\s\S]*?)<\/style>/ig);
+  let content = bodyMatch ? bodyMatch[1] : html;
+  let styles = styleMatch ? styleMatch.join('\n') : '';
+  container.innerHTML = styles + content;
+}
+
+function loadReportByDate() {
+  const date = document.getElementById('dateSelect').value;
+  loadReport(date || undefined);
+}
+
+loadReport();
+</script>
+</body>
+</html>

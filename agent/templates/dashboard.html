@@ -1,0 +1,1176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>量化扫描雷达</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:opsz,wght@9..40,300..600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ── Reset + Tokens ── */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --bg:        #111118;
+  --surface:   #1c1c2a;
+  --surface-2: #262636;
+  --border:    rgba(255,255,255,0.12);
+  --border-2:  rgba(255,255,255,0.09);
+  --text:      #f0f0f8;
+  --text-2:    rgba(210,210,230,0.88);
+  --text-3:    rgba(210,210,230,0.75);
+  --red:       #f84960;
+  --amber:     #f7a600;
+  --green:     #02c076;
+  --blue:      #2e86de;
+  --r4: 4px; --r8: 8px; --r12: 12px;
+}
+
+/* ── Base ── */
+body {
+  font-family: "DM Sans", -apple-system, "Helvetica Neue", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+/* ── Animations ── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.card { animation: fadeUp 0.32s ease both; }
+.card:nth-child(1) { animation-delay: 0.04s; }
+.card:nth-child(2) { animation-delay: 0.08s; }
+.card:nth-child(3) { animation-delay: 0.13s; }
+.card:nth-child(4) { animation-delay: 0.18s; }
+.card:nth-child(5) { animation-delay: 0.22s; }
+.card:nth-child(n+6){ animation-delay: 0.26s; }
+
+/* ── Page header ── */
+.page-eyebrow {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 6px;
+}
+.eyebrow-label {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--text-3);
+}
+.eyebrow-meta { font-family: "DM Mono", monospace; font-size: 11px; color: var(--text-3); }
+.page-title {
+  font-family: "Instrument Serif", Georgia, serif;
+  font-style: italic;
+  font-size: clamp(26px, 6.5vw, 38px);
+  font-weight: 400; letter-spacing: -0.01em;
+  color: var(--text); line-height: 1.1; margin-bottom: 20px;
+}
+
+/* ── Main content padding ── */
+.main-content {
+  padding: 28px 16px 64px;
+  padding-bottom: max(64px, env(safe-area-inset-bottom, 64px));
+}
+
+/* ── Mobile time row ── */
+.mobile-time-row {
+  display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 10px;
+}
+
+/* ── Shared button base ── */
+.range-btn, .cat-btn, .chip-btn {
+  padding: 7px 14px; border-radius: 20px; border: 1px solid var(--border);
+  background: var(--surface); font-size: 13px; font-family: "DM Sans", sans-serif;
+  color: var(--text-3); cursor: pointer;
+  -webkit-tap-highlight-color: transparent; outline: none;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.range-btn.active, .cat-btn.active, .chip-btn.active {
+  background: var(--surface-2); color: var(--text);
+  border-color: rgba(255,255,255,0.18);
+}
+.tab-count {
+  display: inline-block; background: var(--surface-2); color: var(--text-3);
+  border-radius: 10px; padding: 0 6px; font-size: 11px; margin-left: 4px;
+  font-family: "DM Mono", monospace;
+}
+.cat-btn.active .tab-count, .chip-btn.active .tab-count {
+  background: rgba(255,255,255,0.10); color: var(--text-2);
+}
+
+/* ── Mobile chip rows ── */
+.chip-row {
+  display: flex; flex-wrap: nowrap; gap: 6px;
+  overflow-x: auto; margin-bottom: 8px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.chip-row::-webkit-scrollbar { display: none; }
+
+/* ── Desktop overrides ── */
+@media (min-width: 1024px) {
+  /* Mobile-only elements hidden on desktop */
+  .mobile-time-row { display: none; }
+  #mobile-chips-container { display: none; }
+  .page-eyebrow { display: none; }
+
+  .main-content { padding: 40px 40px 72px; max-width: 960px; }
+}
+
+@media (min-width: 480px) and (max-width: 1023px) {
+  .main-content {
+    padding: 40px 24px 72px;
+    padding-bottom: max(72px, env(safe-area-inset-bottom, 72px));
+  }
+}
+
+/* ── Section divider ── */
+.section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.section-label {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--text-3); white-space: nowrap;
+}
+.section-rule { flex: 1; height: 1px; background: var(--border-2); }
+
+/* ── Card shell ── */
+.card-grid { display: flex; flex-direction: column; gap: 10px; }
+@media (min-width: 1024px) {
+  .card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+}
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r12); overflow: hidden;
+  transition: border-color 0.18s;
+}
+.card:hover { border-color: rgba(255,255,255,0.15); }
+
+/* Left accent strip */
+.card--green { box-shadow: inset 3px 0 0 var(--green); }
+.card--red   { box-shadow: inset 3px 0 0 var(--red);   }
+.card--blue  { box-shadow: inset 3px 0 0 var(--blue);  }
+.card--amber { box-shadow: inset 3px 0 0 var(--amber); }
+
+/* ── Card head ── */
+.card-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px; gap: 12px;
+  border-bottom: 1px solid var(--border-2);
+}
+.card-head-left { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+.card-ticker {
+  font-family: "DM Mono", monospace; font-size: 16px; font-weight: 600;
+  letter-spacing: 0.04em; color: var(--text); flex-shrink: 0;
+}
+.type-badge {
+  font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 20px;
+  text-transform: uppercase; letter-spacing: 0.05em; border: 1px solid;
+  white-space: nowrap; flex-shrink: 0;
+}
+.badge-opportunity { color: var(--green); background: rgba(52,199,89,0.10);  border-color: rgba(52,199,89,0.24); }
+.badge-risk        { color: var(--red);   background: rgba(255,69,58,0.10);  border-color: rgba(255,69,58,0.24); }
+.badge-leaps       { color: var(--blue);  background: rgba(10,132,255,0.10); border-color: rgba(10,132,255,0.24); }
+.badge-dividend    { color: var(--amber); background: rgba(255,179,64,0.10); border-color: rgba(255,179,64,0.24); }
+.badge-warn        { color: var(--amber); background: rgba(255,179,64,0.09); border-color: rgba(255,179,64,0.20); }
+
+/* Key metric — header right */
+.card-kpi {
+  font-family: "DM Mono", monospace; font-size: 22px; font-weight: 500;
+  letter-spacing: -0.02em; flex-shrink: 0; line-height: 1; text-align: right;
+}
+.card-kpi small {
+  display: block; font-size: 10px; font-weight: 400; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--text-3); margin-top: 2px;
+}
+.kpi-green { color: var(--green); }
+.kpi-red   { color: var(--red);   }
+.kpi-blue  { color: var(--blue);  }
+.kpi-amber { color: var(--amber); }
+
+/* ── Card body rows ── */
+.card-body { padding: 0 16px 10px; }
+.card-row {
+  display: flex; align-items: flex-start;
+  padding: 7px 0; min-height: 32px; gap: 12px;
+}
+.row-label { color: var(--text-2); font-size: 14px; font-weight: 500; width: 120px; flex-shrink: 0; padding-top: 1px; }
+.row-value {
+  font-family: "DM Mono", monospace; font-size: 15px; font-weight: 500;
+  color: var(--text); text-align: left; line-height: 1.4;
+}
+.card-warn { font-size: 12px; color: var(--red); padding: 6px 0; }
+.card-foot {
+  font-family: "DM Mono", monospace; font-size: 11px; color: var(--text-3);
+  padding: 7px 16px 9px; border-top: 1px solid var(--border-2);
+}
+
+/* ── Chips ── */
+.pct-chip {
+  font-family: "DM Mono", monospace; font-size: 11px; font-weight: 500;
+  padding: 2px 7px; border-radius: 20px; border: 1px solid; flex-shrink: 0;
+}
+.pct-high { color: var(--green); background: rgba(52,199,89,0.10);  border-color: rgba(52,199,89,0.22); }
+.pct-mid  { color: var(--amber); background: rgba(255,179,64,0.10); border-color: rgba(255,179,64,0.22); }
+.pct-low  { color: var(--red);   background: rgba(255,69,58,0.10);  border-color: rgba(255,69,58,0.22); }
+.pct-acc  { color: var(--text-3); background: var(--surface-2); border-color: var(--border); }
+
+/* ── Entry banner (入场时机 between card-head and card-body) ── */
+.entry-banner {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 16px; border-top: 1px solid var(--border-2);
+  background: rgba(255,255,255,0.02);
+  font-size: 12px;
+}
+.entry-banner-label { color: var(--text-2); flex-shrink: 0; }
+.entry-banner-bar   { font-family: "DM Mono", monospace; letter-spacing: 1px; font-size: 13px; }
+.entry-banner-pct   { font-family: "DM Mono", monospace; font-size: 13px; font-weight: 500; }
+.entry-banner-range { color: var(--text-3); opacity: 0.7; font-size: 11px; }
+
+/* ── Dividend card groups (inner sub-cards) ── */
+.card-body:has(.dc-group) {
+  padding: 10px 10px 12px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+
+.dc-group {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r8);
+  overflow: hidden;
+  padding: 0 10px 6px;
+}
+
+/* Group title */
+.dc-group-title {
+  font-size: 11px; font-weight: 500; color: var(--text-3);
+  padding: 7px 10px 4px;
+  border-bottom: 1px solid var(--border-2);
+  margin-bottom: 2px;
+}
+
+/* Analysis collapse */
+.analysis-toggle {
+  display: flex; align-items: center; gap: 8px;
+  cursor: pointer; padding: 5px 6px; margin: 0;
+  border-radius: var(--r8); user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s;
+}
+.analysis-toggle:hover { background: var(--surface-2); }
+
+.biz-label {
+  font-size: 12px; font-weight: 600; color: var(--blue);
+  background: rgba(10,132,255,0.08); border: 1px solid rgba(10,132,255,0.18);
+  padding: 1px 8px; border-radius: 20px; display: inline-block; margin-right: 6px;
+}
+.biz-hint { font-size: 12px; color: var(--text-3); }
+
+/* Arrow */
+.toggle-arrow {
+  font-size: 11px; color: var(--text-3);
+  padding: 1px 7px;
+  border: 1px solid var(--border); border-radius: var(--r4);
+  background: var(--surface-2);
+  display: inline-block; line-height: 1.6;
+  transition: transform 0.22s ease, color 0.15s, border-color 0.15s;
+}
+.analysis-toggle:hover .toggle-arrow { color: var(--text); border-color: rgba(255,255,255,0.22); }
+
+.analysis-body {
+  font-size: 13px; color: var(--text); line-height: 1.7;
+  white-space: pre-line; overflow: hidden;
+  max-height: 0; transition: max-height 0.28s ease, padding 0.2s ease;
+}
+.analysis-body.open { max-height: 600px; padding-top: 8px; }
+
+/* Quality breakdown */
+.stab-info-btn {
+  cursor: pointer; font-size: 11px; color: var(--text-3);
+  margin-left: 6px; padding: 1px 7px;
+  border: 1px solid var(--border); border-radius: var(--r4);
+  background: var(--surface-2);
+  display: inline-block; line-height: 1.6;
+  transition: color 0.15s, border-color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.stab-info-btn:hover { color: var(--text); border-color: rgba(255,255,255,0.22); }
+.stability-detail {
+  margin-top: 6px; padding: 10px; background: var(--surface-2);
+  border-radius: var(--r8); border: 1px solid var(--border);
+}
+.breakdown-row { display: flex; align-items: center; gap: 6px; margin: 5px 0; }
+.bd-label  { width: 72px; color: var(--text-3); flex-shrink: 0; font-size: 11px; }
+.bd-bar-wrap { flex: 1; background: var(--border); border-radius: 2px; height: 3px; }
+.bd-bar    { height: 3px; background: var(--blue); border-radius: 2px; }
+.bd-score  { width: 30px; text-align: right; color: var(--text-2); flex-shrink: 0; font-family: "DM Mono", monospace; font-size: 11px; }
+
+.dc-combined {
+  font-family: "DM Mono", monospace; font-size: 15px; font-weight: 500;
+  color: var(--amber); padding: 4px 0;
+}
+.floor-warn     { font-size: 12px; color: var(--amber); padding: 4px 0; }
+.freshness-warn { font-size: 12px; color: var(--amber); padding: 4px 0; }
+.freshness-old  { font-size: 12px; color: var(--text-3); padding: 4px 0; }
+
+/* ── Watch / 关注 section ── */
+.watch-section { padding: 4px 0 6px; }
+.watch-btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 16px; border-radius: 20px;
+  border: 1px solid var(--border); background: var(--surface-2);
+  cursor: pointer; font-family: "DM Sans", sans-serif;
+  font-size: 13px; color: var(--text-2);
+  transition: all 0.15s; -webkit-tap-highlight-color: transparent;
+  margin-bottom: 10px; outline: none;
+}
+.watch-btn:hover { border-color: rgba(255,255,255,0.18); color: var(--text); }
+.watch-btn.watched {
+  border-color: rgba(52,199,89,0.32); color: var(--green);
+  background: rgba(52,199,89,0.08);
+}
+.watch-star { font-size: 15px; line-height: 1; }
+.watch-items { padding: 0 2px; }
+.watch-item {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; color: var(--text-3); padding: 4px 0;
+  line-height: 1.4;
+}
+.watch-dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--green); flex-shrink: 0; opacity: 0.65;
+}
+
+/* ── Empty / Loading ── */
+.empty-state { text-align: center; color: var(--text-3); font-size: 14px; padding: 72px 0; }
+.loading { text-align: center; padding: 72px 0; color: var(--text-3); font-family: "DM Mono", monospace; font-size: 13px; }
+
+/* ── Strategy Tabs ──────────────────────────────── */
+.strategy-tabs { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+.strategy-tab {
+  padding: 5px 14px; border-radius: 20px; font-size: 12px; font-weight: 500;
+  border: 1px solid var(--border); background: var(--surface-2);
+  color: var(--text-2); cursor: pointer; transition: all 0.15s; user-select: none;
+  position: relative;
+}
+.strategy-tab.active { background: rgba(10,132,255,0.15); border-color: rgba(10,132,255,0.4); color: var(--blue); font-weight: 600; }
+.strategy-tab.active-green { background: rgba(52,199,89,0.12); border-color: rgba(52,199,89,0.35); color: var(--green); font-weight: 600; }
+.strategy-tab.disabled { opacity: 0.38; cursor: default; pointer-events: none; }
+.strategy-tab.disabled-reason { opacity: 0.45; cursor: pointer; }
+.strategy-panel { display: none; }
+.strategy-panel.visible { display: block; }
+.strategy-row { display: flex; align-items: baseline; padding: 6px 0; gap: 12px; }
+.strategy-row-label { font-size: 14px; font-weight: 500; color: var(--text-2); width: 120px; flex-shrink: 0; }
+.strategy-row-value { font-family: 'DM Mono', monospace; font-size: 15px; color: var(--text); }
+.strategy-row-value.highlight { color: var(--amber); font-size: 15px; font-weight: 500; }
+.strategy-ai-reason { font-size: 12px; color: var(--text-2); line-height: 1.6; padding: 8px 0 10px; border-bottom: 1px solid var(--border-2); margin-bottom: 8px; }
+.strategy-ai-label { font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); margin-bottom: 2px; }
+.tab-tooltip { position: absolute; background: var(--surface-2); border: 1px solid var(--border); padding: 4px 10px; border-radius: 6px; font-size: 11px; white-space: nowrap; top: 28px; left: 0; z-index: 20; color: var(--text-2); pointer-events: none; }
+
+/* ── Analysis dims ──────────────────────────────── */
+.analysis-dim { padding: 8px 0; border-bottom: 1px solid var(--border-2); }
+.analysis-dim:last-child { border-bottom: none; }
+.analysis-dim-label { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-2); margin-bottom: 3px; }
+.analysis-dim-body { font-size: 13px; color: var(--text-2); line-height: 1.6; }
+.analysis-dim-price { font-family: 'DM Mono', monospace; font-size: 15px; color: var(--amber); font-weight: 500; margin-top: 3px; }
+</style>
+</head>
+<body>
+<div class="app-shell">
+{% include "_nav.html" %}
+<main class="main-content">
+
+    <div class="page-eyebrow">
+      <span class="eyebrow-label">Quant Radar</span>
+      <span class="eyebrow-meta" id="last-updated">正在加载...</span>
+    </div>
+    <h1 class="page-title">量化扫描雷达</h1>
+
+    <!-- Mobile: time range (hidden on desktop) -->
+    <div class="mobile-time-row" id="mobile-time-row">
+      <button class="range-btn active" data-range="24h">24小时</button>
+      <button class="range-btn" data-range="7d">最近一周</button>
+      <button class="range-btn" data-range="30d">最近一月</button>
+    </div>
+
+    <!-- Mobile: filter chips (hidden on desktop) -->
+    <div id="mobile-chips-container"></div>
+
+    <div id="section-header-row" class="section-header" style="display:none">
+      <span class="section-label" id="section-label-text">信号</span>
+      <div class="section-rule"></div>
+      <span class="section-label" id="section-count-text"></span>
+    </div>
+
+    <div id="cards-container">
+      <div class="loading">加载中...</div>
+    </div>
+
+</main>
+</div>
+
+<script>
+'use strict';
+
+let currentRange   = '24h';
+let allSignals     = [];
+
+// ── Filter config (add new dimensions here only) ──────────────────────────
+const FILTER_CONFIG = [
+  {
+    id: 'type',
+    label: '信号类型',
+    options: [
+      { value: 'all',         label: '全部' },
+      { value: 'opportunity', label: '机会提醒' },
+      { value: 'risk',        label: '市场风控' },
+    ],
+    match: (s, v) => v === 'all' || s.category === v,
+  },
+  {
+    id: 'market',
+    label: '市场',
+    options: [
+      { value: 'all', label: '全部' },
+      { value: 'US',  label: '美股' },
+      { value: 'HK',  label: '港股' },
+      { value: 'CN',  label: 'A股'  },
+    ],
+    match: (s, v) => v === 'all' || (s.payload?.market || 'US') === v,
+  },
+];
+
+// Active filter values keyed by FILTER_CONFIG id
+const currentFilters = Object.fromEntries(
+  FILTER_CONFIG.map(f => [f.id, 'all'])
+);
+
+// ── Mobile chip rows render ───────────────────────────────────────────────
+function buildMobileChips() {
+  return FILTER_CONFIG.map(f => {
+    const chips = f.options.map(opt => {
+      const active = currentFilters[f.id] === opt.value ? ' active' : '';
+      return `<button class="chip-btn${active}"
+        data-filter-id="${f.id}" data-filter-value="${opt.value}">
+        ${opt.label}
+      </button>`;
+    }).join('');
+    return `<div class="chip-row">${chips}</div>`;
+  }).join('');
+}
+
+function renderFilterUI() {
+  const mobileEl = document.getElementById('mobile-chips-container');
+  if (mobileEl) mobileEl.innerHTML = buildMobileChips();
+  // Sync last-updated
+  const mainMeta = document.getElementById('last-updated');
+  if (mainMeta) mainMeta.textContent = mainMeta.textContent;
+}
+
+// ── Fetch ─────────────────────────────────────────────────────────────────
+async function load() {
+  document.getElementById('cards-container').innerHTML = '<div class="loading">加载中...</div>';
+  try {
+    const resp = await fetch(`/api/signals?time_range=${currentRange}`);
+    const data = await resp.json();
+    allSignals = data.signals || [];
+    document.getElementById('last-updated').textContent =
+      `${rangeLabel(currentRange)} · ${data.count} 条`;
+    renderFilterUI();
+    render();
+  } catch (e) {
+    document.getElementById('cards-container').innerHTML =
+      '<div class="empty-state">⚠ 加载失败，请稍后重试</div>';
+  }
+}
+
+function rangeLabel(r) {
+  return { '24h': '最近24小时', '7d': '最近一周', '30d': '最近一月' }[r] || r;
+}
+
+// ── Render ────────────────────────────────────────────────────────────────
+function render() {
+  const filtered = allSignals.filter(s =>
+    FILTER_CONFIG.every(f => f.match(s, currentFilters[f.id]))
+  );
+
+  const hdr = document.getElementById('section-header-row');
+  if (!filtered.length) {
+    hdr.style.display = 'none';
+    document.getElementById('cards-container').innerHTML =
+      '<div class="empty-state">该时间段内暂无信号</div>';
+    return;
+  }
+
+  hdr.style.display = 'flex';
+  const typeFilter = currentFilters['type'];
+  document.getElementById('section-label-text').textContent =
+    typeFilter === 'opportunity' ? '机会提醒' : typeFilter === 'risk' ? '市场风控' : '所有信号';
+  document.getElementById('section-count-text').textContent = filtered.length + ' 条';
+
+  document.getElementById('cards-container').innerHTML =
+    `<div class="card-grid">${filtered.map(renderCard).join('')}</div>`;
+  initWatchStates();
+}
+
+function fmtTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleString('zh-CN', {
+    month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'
+  });
+}
+
+function renderCard(s) {
+  switch (s.signal_type) {
+    case 'sell_put':              return cardSellPut(s);
+    case 'sell_put_earnings_risk':return cardSellPutRisk(s);
+    case 'iv_low':                return cardIvLow(s);
+    case 'iv_high':               return cardIvHigh(s);
+    case 'ma200_bullish':         return cardMa200(s, true);
+    case 'ma200_bearish':         return cardMa200(s, false);
+    case 'leaps':                 return cardLeaps(s);
+    case 'earnings_gap':          return cardEarningsGap(s);
+    case 'iv_momentum':           return cardIvMomentum(s);
+    case 'dividend':              return cardDividend(s);
+    default:                      return cardGeneric(s);
+  }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function row(label, value, valueStyle) {
+  return `<div class="card-row">
+    <span class="row-label">${label}</span>
+    <span class="row-value"${valueStyle ? ` style="${valueStyle}"` : ''}>${value}</span>
+  </div>`;
+}
+
+function earningsRow(p) {
+  return p.days_to_earnings != null
+    ? row('财报', `${p.earnings_date}&nbsp;(${p.days_to_earnings}天)`)
+    : '';
+}
+
+function esc(s) {
+  return s == null ? '' : String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ── Card: Sell Put ────────────────────────────────────────────────────────
+function cardSellPut(s) {
+  const p = s.payload;
+  const liqRow = p.liquidity_warn
+    ? row('流动性', `⚠ 偏差 (价差${p.spread_pct}%)`, 'color:var(--amber)') : '';
+  const bidAsk = (p.mid != null && p.bid != null && p.ask != null)
+    ? `<div style="font-size:11px;color:var(--text-3);padding:5px 0">按中间价 (bid $${p.bid} / ask $${p.ask})</div>` : '';
+  return `<div class="card card--green">
+    <div class="card-head">
+      <div class="card-head-left">
+        <span class="card-ticker">${s.ticker}</span>
+        <span class="type-badge badge-opportunity">Sell Put</span>
+      </div>
+      <div class="card-kpi kpi-green">${p.apy}%<small>APY</small></div>
+    </div>
+    <div class="card-body">
+      ${row('行权价', `$${p.strike}`)}
+      ${row('到期天数', `${p.dte} 天`)}
+      ${row('权利金', `$${p.mid ?? p.bid}`)}
+      ${liqRow}${earningsRow(p)}${bidAsk}
+    </div>
+    <div class="card-foot">${fmtTime(s.scanned_at)}</div>
+  </div>`;
+}
+
+// ── Card: Sell Put Risk ───────────────────────────────────────────────────
+function cardSellPutRisk(s) {
+  const p = s.payload;
+  return `<div class="card card--red">
+    <div class="card-head">
+      <div class="card-head-left">
+        <span class="card-ticker">${s.ticker}</span>
+        <span class="type-badge badge-risk">财报风险</span>
+      </div>
+      <div class="card-kpi kpi-red">${p.apy}%<small>APY</small></div>
+    </div>
+    <div class="card-body">
+      ${row('行权价', `$${p.strike}`)}
+      ${earningsRow(p)}
+      <div class="card-warn">财报日在 DTE 窗口内，跳空风险高</div>
+    </div>
+    <div class="card-foot">${fmtTime(s.scanned_at)}</div>
+  </div>`;
+}
+
+// ── Card: IV Low ──────────────────────────────────────────────────────────
+function cardIvLow(s) {
+  const p = s.payload;
+  return `<div class="card card--blue">
+    <div class="card-head">
+      <div class="card-head-left">
+        <span class="card-ticker">${s.ticker}</span>
+        <span class="type-badge badge-opportunity">IV 低位</span>
+      </div>
+      <div class="card-kpi kpi-blue">${p.iv_rank}%<small>IVR</small></div>
+    </div>
+    <div class="card-body">
+      ${row('适合策略', '买入期权 / LEAPS')}
+      ${earningsRow(p)}
+    </div>
+    <div class="card-foot">${fmtTime(s.scanned_at)}</div>
+  </div>`;
+}
+
+// ── Card: IV High ─────────────────────────────────────────────────────────
+function cardIvHigh(s) {
+  const p = s.payload;
+  return `<div class="card card--red">
+    <div class="card-head">
+      <div class="card-head-left">
+        <span class="card-ticker">${s.ticker}</span>
+        <span class="type-badge badge-risk">IV 高位</span>
+      </div>
+      <div class="card-kpi kpi-red">${p.iv_rank}%<small>IVR</small></div>
+    </div>
+    <div class="card-body">
+      ${earningsRow(p)}
+      <div class="card-warn">IV 处于历史高位，期权虚值溢价高</div>
+    </div>
+    <div class="card-foot">${fmtTime(s.scanned_at)}</div>
+  </div>`;
+}
+
+// ── Card: MA200 ───────────────────────────────────────────────────────────
+function cardMa200(s, bullish) {
+  const p         = s.payload;
+  const sign      = p.pct >= 0 ? '+' : '';
+  const accentCls = bullish ? 'card--green' : 'card--red';
+  const badgeCls  = bullish ? 'badge-opportunity' : 'badge-risk';
+  const label     = bullish ? '突破 MA200 ↑' : '跌破 MA200 ↓';
+  const kpiCls    = bullish ? 'kpi-green' : 'kpi-red';
+  return `<div class="card ${accentCls}">
+    <div class="card-head">
+      <div class="card-head-left">
+        <span class="card-ticker">${s.ticker}</span>
+        <span class="type-badge ${badgeCls}">${label}</span>
+      </div>
+      <div class="card-kpi ${kpiCls}">${sign}${p.pct}%<small>偏离</small></div>
+    </div>
+    <div class="card-body">
+      ${row('现价', `$${p.last_price}`)}
+      ${row('MA200', `$${p.ma200}`)}
+      ${earningsRow(p)}
+    </div>
+    <div class="card-foot">${fmtTime(s.scanned_at)}</div>
+  </div>`;
+}
+
+// ── Card: LEAPS ───────────────────────────────────────────────────────────
+function cardLeaps(s) {
+  const p = s.payload;
+  const ma50wRow = p.ma50w != null
+    ? row('MA50w', `$${p.ma50w} (${p.ma50w_pct > 0 ? '+' : ''}${p.ma50w_pct}%)`) : '';
+  return `<div class="card card--blue">
+    <div class="card-head">
+      <div class="card-head-left">
+        <span class="card-ticker">${s.ticker}</span>
+        <span class="type-badge badge-leaps">LEAPS 共振</span>
+      </div>
+      <div class="card-kpi kpi-blue">${p.iv_rank}%<small>IVR</small></div>
+    </div>
+    <div class="card-body">
+      ${row('现价', `$${p.last_price}`)}
+      ${row('MA200', `$${p.ma200}`)}
+      ${ma50wRow}
+      ${row('RSI14', p.rsi14)}
+      ${earningsRow(p)}
+    </div>
+    <div class="card-foot">${fmtTime(s.scanned_at)}</div>
+  </div>`;
+}
+
+// ── Card: Earnings Gap ────────────────────────────────────────────────────
+function cardEarningsGap(s) {
+  const p         = s.payload;
+  const riskBadge = p.high_iv_risk
+    ? `<span class="type-badge badge-warn" style="margin-left:4px">高IV</span>` : '';
+  const ivRow     = p.iv_rank != null ? row('IV Rank', `${p.iv_rank}%`) : '';
+  const sampleRow = p.sample_count != null ? row('样本数', p.sample_count) : '';
+  return `<div class="card card--red">
+    <div class="card-head">
+      <div class="card-head-left">
+        <span class="card-ticker">${s.ticker}</span>
+        <span class="type-badge badge-risk">财报 Gap</span>
+        ${riskBadge}
+      </div>
+      <div class="card-kpi kpi-red">${p.days_to_earnings ?? '—'}<small>天</small></div>
+    </div>
+    <div class="card-body">
+      ${row('历史平均 Gap', `±${p.avg_gap}%`)}
+      ${row('上涨概率', `${p.up_ratio}%`)}
+      ${row('最大跳空', `${p.max_gap > 0 ? '+' : ''}${p.max_gap}%`)}
+      ${ivRow}${sampleRow}
+    </div>
+    <div class="card-foot">${fmtTime(s.scanned_at)}</div>
+  </div>`;
+}
+
+// ── Card: IV Momentum ─────────────────────────────────────────────────────
+function cardIvMomentum(s) {
+  const p = s.payload;
+  return `<div class="card card--amber">
+    <div class="card-head">
+      <div class="card-head-left">
+        <span class="card-ticker">${s.ticker}</span>
+        <span class="type-badge badge-risk">IV 异动</span>
+      </div>
+      <div class="card-kpi kpi-amber">+${p.iv_momentum}%<small>5日</small></div>
+    </div>
+    <div class="card-body">
+      ${row('IV Rank', `${p.iv_rank}%`)}
+      ${earningsRow(p)}
+    </div>
+    <div class="card-foot">${fmtTime(s.scanned_at)}</div>
+  </div>`;
+}
+
+// ── Card: Generic ─────────────────────────────────────────────────────────
+function cardGeneric(s) {
+  return `<div class="card">
+    <div class="card-head">
+      <div class="card-head-left">
+        <span class="card-ticker">${s.ticker}</span>
+        <span class="type-badge badge-opportunity">${s.signal_type}</span>
+      </div>
+    </div>
+    <div class="card-foot">${fmtTime(s.scanned_at)}</div>
+  </div>`;
+}
+
+// ── Dividend helpers ──────────────────────────────────────────────────────
+function bizTypeLabel(moat) {
+  if (moat == null) return null;
+  if (moat >= 16) return { tag: '优质护城河', hint: '防御型资产，现金流稳定' };
+  if (moat >= 10) return { tag: '稳健型业务', hint: '适度护城河，底价有参考意义' };
+  if (moat >= 6)  return { tag: '成长/周期型', hint: '成长因素主导估值，底价仅参考' };
+  return           { tag: '弱护城河',   hint: '竞争压力大，股息可持续性需关注' };
+}
+
+function qualityBreakdownHtml(breakdown) {
+  if (!breakdown) return '';
+  const dims = [
+    ['连续性',   breakdown.continuity],
+    ['派息安全', breakdown.payout_safety],
+    ['盈利稳定', breakdown.earnings_stability],
+    ['护城河',   breakdown.moat],
+    ['负债水平', breakdown.debt_level],
+  ];
+  return `<div style="font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-3);margin-bottom:8px">评分明细（各项满分20分）</div>` +
+    dims.map(([label, val]) => {
+      const v = val ?? 0;
+      return `<div class="breakdown-row">
+        <span class="bd-label">${label}</span>
+        <div class="bd-bar-wrap"><div class="bd-bar" style="width:${v / 20 * 100}%"></div></div>
+        <span class="bd-score">${v}/20</span>
+      </div>`;
+    }).join('');
+}
+
+function toggleDetail(btn) {
+  const el = btn.nextElementSibling;
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function toggleAnalysis(el) {
+  const arrow = el.querySelector('.toggle-arrow');
+  const body  = el.nextElementSibling;
+  if (!body) return;
+  const open = body.classList.toggle('open');
+  if (arrow) arrow.style.transform = open ? 'rotate(0deg)' : 'rotate(-90deg)';
+}
+
+var WATCH_KEY = 'watched_opportunities';
+
+function getWatched() {
+  try { return JSON.parse(localStorage.getItem(WATCH_KEY) || '{}'); }
+  catch(e) { return {}; }
+}
+
+function toggleWatch(btn, ticker) {
+  var watched = getWatched();
+  var isWatched = !watched[ticker];
+  if (isWatched) watched[ticker] = Date.now();
+  else delete watched[ticker];
+  localStorage.setItem(WATCH_KEY, JSON.stringify(watched));
+  btn.classList.toggle('watched', isWatched);
+  var star = btn.querySelector('.watch-star');
+  var label = btn.querySelector('.watch-label');
+  if (star) star.textContent = isWatched ? '★' : '☆';
+  if (label) label.textContent = isWatched ? '已关注' : '关注此机会';
+}
+
+function initWatchStates() {
+  var watched = getWatched();
+  document.querySelectorAll('[data-watch-ticker]').forEach(function(btn) {
+    var ticker = btn.dataset.watchTicker;
+    if (watched[ticker]) {
+      btn.classList.add('watched');
+      var star = btn.querySelector('.watch-star');
+      var label = btn.querySelector('.watch-label');
+      if (star) star.textContent = '★';
+      if (label) label.textContent = '已关注';
+    }
+  });
+}
+
+function switchStrategyTab(ticker, strategy, tabEl) {
+  // Update tab highlights
+  var tabsContainer = tabEl.closest('.strategy-tabs');
+  if (tabsContainer) {
+    tabsContainer.querySelectorAll('.strategy-tab').forEach(function(t) {
+      t.classList.remove('active', 'active-green');
+    });
+  }
+  tabEl.classList.add(strategy === 'spot' ? 'active-green' : 'active');
+  // Toggle panels via DOM traversal — avoids getElementById duplicate-ID bugs
+  var group = tabEl.closest('.dc-group');
+  if (group) {
+    group.querySelectorAll('.strategy-panel').forEach(function(panel) {
+      panel.classList.toggle('visible', panel.dataset.strategy === strategy);
+    });
+  }
+}
+
+function showTabTooltip(msg, el) {
+  var existing = el.querySelector('.tab-tooltip');
+  if (existing) { existing.remove(); return; }
+  var tip = document.createElement('span');
+  tip.className = 'tab-tooltip';
+  tip.textContent = msg;
+  el.appendChild(tip);
+  setTimeout(function() { if (tip.parentNode) tip.remove(); }, 2500);
+}
+
+// Strategy tab click — event delegation avoids inline-onclick issues in innerHTML
+document.addEventListener('click', function(e) {
+  var tab = e.target.closest('.strategy-tab');
+  if (!tab) return;
+  var ticker = tab.dataset.ticker;
+  var strategy = tab.dataset.strategy;
+  var tooltip = tab.dataset.tooltip;
+  if (tooltip) { showTabTooltip(tooltip, tab); return; }
+  if (ticker && strategy) switchStrategyTab(ticker, strategy, tab);
+});
+
+function parseAnalysisText(raw) {
+  if (!raw) return null;
+  // Merge continuation lines (no ：= not a new section) onto previous section
+  var lines = raw.split('\n').map(function(l) { return l.trim(); }).filter(Boolean);
+  var merged = [];
+  lines.forEach(function(l) {
+    if (l.includes('：') || merged.length === 0) {
+      merged.push(l);
+    } else {
+      merged[merged.length - 1] += ' ' + l;
+    }
+  });
+  var lineRe = /^(.+?)：(.+?)→\s*(.+)$/;
+  var dims = merged.map(function(l) {
+    var m = l.match(lineRe);
+    return m ? { label: m[1].trim(), body: m[2].trim(), price: m[3].trim() } : null;
+  }).filter(Boolean);
+  return dims.length >= 2 ? dims : null;
+}
+
+function renderAnalysisText(raw) {
+  var dims = parseAnalysisText(raw);
+  if (!dims) {
+    // Fallback: render raw text with line breaks
+    return '<div style="font-size:13px;color:var(--text-2);line-height:1.7;white-space:pre-line">' + (raw || '') + '</div>';
+  }
+  return dims.map(function(d) {
+    return '<div class="analysis-dim">'
+      + '<div class="analysis-dim-label">' + d.label + '</div>'
+      + '<div class="analysis-dim-body">' + d.body + '</div>'
+      + '<div class="analysis-dim-price">→ ' + d.price + '</div>'
+      + '</div>';
+  }).join('');
+}
+
+function buildPercentileBar(pct) {
+  var filled = Math.round(pct / 10);
+  var bar = '';
+  for (var i = 0; i < 10; i++) bar += (i < filled ? '▰' : '░');
+  return bar;
+}
+
+function buildStrategySection(s) {
+  var p = s.payload || {};
+  var ticker = s.ticker || '';
+  var isUS = (p.market || 'US') === 'US';
+  var illiquid = !!p.option_illiquid;
+  var hasOption = isUS && p.option_apy != null && !illiquid;
+  var sgov = p.sgov_yield != null ? p.sgov_yield : (hasOption ? 3.75 : null);
+  var sgovApy = p.sgov_adjusted_apy != null ? p.sgov_adjusted_apy : (hasOption && p.option_apy != null ? Math.round((p.option_apy + 3.75) * 10) / 10 : null);
+  var sgovIsEst = p.sgov_adjusted_apy == null && sgovApy != null;
+  var rec = p.recommended_strategy || (hasOption ? 'sell_put' : 'spot');
+  var recReason = p.recommended_reason
+    || (rec === 'sell_put' ? 'Sell Put 综合年化显著高于现货股息率，优先考虑期权策略' : '现货持仓吃股息，策略稳健');
+
+  var tabSellPutClass = !isUS ? 'disabled-reason' : (illiquid ? 'disabled-reason' : (hasOption ? '' : 'disabled'));
+  var tabSellPutTooltip = !isUS
+    ? '港股/A股暂无期权市场'
+    : (illiquid ? '流动性不足，价差 ' + ((p.option_spread_pct || 0) * 100).toFixed(1) + '%' : '');
+
+  var spotActive = rec === 'spot' ? 'active-green' : '';
+  var spActive = (rec === 'sell_put' && hasOption) ? 'active' : '';
+
+  // AI reason block (rendered inside the recommended panel)
+  var reasonHtml = recReason ? '<div class="strategy-ai-reason"><div class="strategy-ai-label">AI 推荐</div>' + recReason + '</div>' : '';
+
+  // Spot panel — show estimated entry price + dividend info
+  var fwdDiv = p.forward_dividend_rate;
+  var curYield = p.current_yield || 0;
+  // Estimated current price: forward_dividend / yield (mathematical identity)
+  var estPrice = (fwdDiv != null && curYield > 0) ? (fwdDiv / (curYield / 100)) : null;
+  var spotPanel = (rec === 'spot' ? reasonHtml : '')
+    + (estPrice != null ? '<div class="strategy-row"><span class="strategy-row-label">参考买入价</span><span class="strategy-row-value highlight">$' + estPrice.toFixed(2) + '</span></div>' : '')
+    + (fwdDiv != null ? '<div class="strategy-row"><span class="strategy-row-label">年化股息</span><span class="strategy-row-value">$' + fwdDiv.toFixed(2) + '/股</span></div>' : '')
+    + '<div class="strategy-row"><span class="strategy-row-label">当前股息率</span><span class="strategy-row-value highlight">' + curYield.toFixed(2) + '%</span></div>'
+
+  // Sell Put panel
+  var spPanel = '';
+  if (hasOption) {
+    spPanel = (rec === 'sell_put' ? reasonHtml : '')
+      + '<div class="strategy-row"><span class="strategy-row-label">行权价</span><span class="strategy-row-value highlight">$' + (p.option_strike || 0).toFixed(2) + ' · ' + (p.option_dte || 0) + ' DTE</span></div>'
+      + '<div class="strategy-row"><span class="strategy-row-label">权利金</span><span class="strategy-row-value">$' + (p.option_bid || 0).toFixed(2) + ' → ' + (p.option_apy || 0).toFixed(1) + '% 年化</span></div>'
+      + (sgov != null ? '<div class="strategy-row"><span class="strategy-row-label">SGOV 叠加</span><span class="strategy-row-value">+' + sgov.toFixed(1) + '% <span style="color:var(--text-3);font-size:11px">现金短期国债收益' + (sgovIsEst ? ' · 估算' : '') + '</span></span></div>' : '')
+      + '<div class="strategy-row"><span class="strategy-row-label">综合年化</span><span class="strategy-row-value highlight">' + (sgovApy != null ? sgovApy.toFixed(1) : (p.option_apy || 0).toFixed(1)) + '% <span style="color:var(--text-3);font-size:11px">' + (sgovApy != null ? ('(Sell Put + SGOV' + (sgovIsEst ? ' est.' : '') + ')') : '(Sell Put)') + '</span></span></div>';
+  }
+
+  var spTooltipAttr = tabSellPutTooltip ? ' data-tooltip="' + tabSellPutTooltip + '"' : '';
+  var spStrategyAttr = (hasOption && !tabSellPutTooltip) ? ' data-ticker="' + ticker + '" data-strategy="sell_put"' : '';
+
+  return '<div class="strategy-tabs" id="stabs-' + ticker + '">'
+    + '<span class="strategy-tab ' + spotActive + '" data-ticker="' + ticker + '" data-strategy="spot">现货</span>'
+    + '<span class="strategy-tab ' + tabSellPutClass + ' ' + spActive + '"' + spTooltipAttr + spStrategyAttr + '>Sell Put</span>'
+    + '<span class="strategy-tab disabled" data-tooltip="功能开发中">Spread ·</span>'
+    + '</div>'
+    + '<div class="strategy-panel ' + (rec === 'spot' ? 'visible' : '') + '" data-strategy="spot">' + spotPanel + '</div>'
+    + '<div class="strategy-panel ' + (rec === 'sell_put' && hasOption ? 'visible' : '') + '" data-strategy="sell_put">' + spPanel + '</div>';
+}
+
+// ── Card: Dividend ────────────────────────────────────────────────────────
+function cardDividend(s) {
+  const p         = s.payload;
+  const moatScore = p.quality_breakdown?.moat ?? null;
+  const biz       = bizTypeLabel(moatScore);
+
+
+  // Analysis — collapsible with prominent arrow
+  const analysisSection = (() => {
+    const bizBlock = biz
+      ? `<span class="biz-label">${biz.tag}</span><span class="biz-hint">${biz.hint}</span>`
+      : '';
+    if (!p.analysis_text) {
+      return bizBlock
+        ? `<div style="padding:5px 0">${bizBlock}</div>`
+        : `<div style="font-size:12px;color:var(--text-3);padding:5px 0">业务分析暂缺</div>`;
+    }
+    return `<div class="analysis-toggle" onclick="toggleAnalysis(this)">
+      <span>${bizBlock}</span>
+      <span class="toggle-arrow">▾</span>
+    </div>
+    <div class="analysis-body open">${renderAnalysisText(p.analysis_text)}</div>`;
+  })();
+
+  // Risk flags
+  const riskFlags = (() => {
+    const flags = [];
+    if (p.payout_ratio != null && p.payout_ratio > 100)
+      flags.push('派息率 >100%，可持续性存疑');
+    else if (p.payout_ratio != null && p.payout_ratio > 80)
+      flags.push('派息率偏高，注意可持续性');
+    if (moatScore != null && moatScore < 6)
+      flags.push('护城河弱，股息或面临削减');
+    if (p.quality_score != null && p.quality_score < 65)
+      flags.push('综合质量偏低，建议谨慎');
+    return flags.map(f =>
+      `<div style="font-size:12px;color:var(--amber);padding:3px 0">⚠ ${f}</div>`
+    ).join('');
+  })();
+
+  // Payout risk row
+  const payoutRiskRow = (() => {
+    if (p.payout_ratio == null) return '';
+    const pr       = p.payout_ratio;
+    const pt       = p.payout_type || 'GAAP';
+    const riskLbl  = pr > 100 ? '极高' : pr > 80 ? '偏高' : pr > 60 ? '中等' : '低';
+    const riskSty  = pr > 100 ? 'color:var(--red)' : pr > 80 ? 'color:var(--amber)' : pr > 60 ? 'color:var(--amber)' : 'color:var(--green)';
+    const rationale = p.health_rationale;
+    const tooltip   = rationale
+      ? rationale
+      : pt === 'FCF' ? '能源/公用/REIT 使用自由现金流派息率'
+      : pt === 'LLM' ? 'LLM综合评估：GAAP指标受负净资产或摊销影响，已校正'
+      : '轻资产行业使用 GAAP 净利润派息率';
+    return `<div class="card-row">
+      <span class="row-label">派息切割风险</span>
+      <span class="row-value" style="${riskSty}">${riskLbl} · ${pt} ${pr.toFixed(1)}%<span class="stab-info-btn" onclick="toggleDetail(this)">?</span><div style="display:none;font-size:11px;color:var(--text-3);margin-top:4px;font-family:'DM Sans',sans-serif;line-height:1.5">${tooltip}</div></span>
+    </div>`;
+  })();
+
+  // Quality row
+  const qualityRow = (() => {
+    if (p.quality_score == null) return '';
+    const qs      = p.quality_score;
+    const qLbl    = qs >= 80 ? '优' : qs >= 65 ? '良' : '差';
+    const qSty    = qs >= 80 ? 'color:var(--green)' : qs >= 65 ? 'color:var(--amber)' : 'color:var(--red)';
+    const stabHtml = p.quality_breakdown
+      ? `<span class="stab-info-btn" onclick="toggleDetail(this)">▾</span>
+         <div class="stability-detail">${qualityBreakdownHtml(p.quality_breakdown)}</div>`
+      : '';
+    return `<div class="card-row">
+      <span class="row-label">综合质量</span>
+      <span class="row-value" style="${qSty}">${qs}/100 · ${qLbl}${stabHtml}</span>
+    </div>`;
+  })();
+
+  // Floor price
+  const floorRows = (() => {
+    if (p.floor_price == null)
+      return '<div style="font-size:12px;color:var(--text-3);padding:4px 0">极值底价数据暂缺</div>';
+    return `
+      ${row('历史最高股息率', `${p.max_yield_5y?.toFixed(1) ?? 'N/A'}% (5年)`)}
+      ${row('Forward 股息', `$${p.forward_dividend_rate?.toFixed(2) ?? 'N/A'}/股`)}
+      ${row('极值底价', `$${p.floor_price.toFixed(2)} (−${p.floor_downside_pct?.toFixed(1) ?? '?'}%)`)}`;
+  })();
+
+  // Strategy section (tab picker)
+  const strategySection = buildStrategySection(s);
+
+  // Freshness
+  const freshness = (() => {
+    if (p.needs_reeval)
+      return '<div class="freshness-warn">⚠ 财报后数据，建议重新评估</div>';
+    if (p.data_age_days != null && p.data_age_days > 14)
+      return `<div class="freshness-old">数据较旧 (${p.data_age_days}天前)</div>`;
+    return '';
+  })();
+
+  const earningsStr = p.earnings_date
+    ? `${p.earnings_date} (${p.days_to_earnings}天)` : 'N/A';
+
+  // Entry banner: 入场时机 progress bar between card-head and card-body
+  const entryBanner = (() => {
+    const pct     = Math.round(p.yield_percentile || 0);
+    const p10     = p.yield_p10 != null ? p.yield_p10 : null;
+    const p90     = p.yield_p90 != null ? p.yield_p90 : null;
+    const histMax = p.yield_hist_max != null ? p.yield_hist_max : null;
+    if (p10 == null || p90 == null) {
+      return `<div class="entry-banner">
+        <span class="entry-banner-label">股息率百分位</span>
+        <span class="entry-banner-pct">${pct}%</span>
+      </div>`;
+    }
+    const color = pct >= 70 ? 'var(--green)' : (pct < 30 ? 'var(--orange)' : 'inherit');
+    const bar   = buildPercentileBar(pct);
+    const range = p10.toFixed(1) + '–' + p90.toFixed(1) + '%';
+    const tip   = histMax != null
+      ? `历史最高 ${histMax.toFixed(1)}%（含黑天鹅期，已剔除极值计算分位）`
+      : '';
+    return `<div class="entry-banner">
+      <span class="entry-banner-label">股息率百分位</span>
+      <span class="entry-banner-bar" style="color:${color}">${bar}</span>
+      <span class="entry-banner-pct" style="color:${color}">${pct}%</span>
+      <span class="entry-banner-range">(正常区间 ${range})</span>
+      ${tip ? `<span style="opacity:0.55;cursor:pointer;margin-left:4px;position:relative" onclick="showTabTooltip('${tip}', this)">ℹ</span>` : ''}
+    </div>`;
+  })();
+
+  return `<div class="card card--amber">
+    <div class="card-head" style="background:rgba(255,179,64,0.04)">
+      <div class="card-head-left">
+        <span class="card-ticker">${s.ticker}</span>
+        <span class="type-badge badge-dividend">股息</span>
+
+      </div>
+      <div class="card-kpi kpi-amber">${p.current_yield}%<small>股息率</small></div>
+    </div>
+    ${entryBanner}
+    <div class="card-body">
+
+      <div class="dc-group">
+        <div class="dc-group-title">基本面</div>
+        ${analysisSection}
+      </div>
+
+      <div class="dc-group">
+        <div class="dc-group-title">风险</div>
+        ${payoutRiskRow}
+        ${qualityRow}
+        ${riskFlags}
+      </div>
+
+      <div class="dc-group">
+        <div class="dc-group-title">买入策略</div>
+        ${strategySection}
+      </div>
+
+      <div class="dc-group">
+        <div class="dc-group-title">最坏情景</div>
+        ${floorRows}
+      </div>
+
+      <div class="dc-group">
+        <div class="dc-group-title">关键事件</div>
+        ${row('下次财报', earningsStr)}
+        ${freshness}
+      </div>
+
+      <div class="dc-group">
+        <div class="dc-group-title">关注机会</div>
+        <div class="watch-section">
+          <button class="watch-btn" data-watch-ticker="${s.ticker}" onclick="toggleWatch(this, '${s.ticker}')">
+            <span class="watch-star">☆</span>
+            <span class="watch-label">关注此机会</span>
+          </button>
+          <div class="watch-items">
+            <div class="watch-item"><span class="watch-dot"></span>派息率 &gt;100% 立即预警</div>
+            <div class="watch-item"><span class="watch-dot"></span>财报前 7 天提醒</div>
+            <div class="watch-item"><span class="watch-dot"></span>股息率回落至历史中位数时提示</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+    <div class="card-foot">${fmtTime(s.scanned_at)}</div>
+  </div>`;
+}
+
+// ── Event Bindings ────────────────────────────────────────────────────────
+// Unified event delegation for range + filter buttons
+document.addEventListener('click', e => {
+  // Time range (mobile range-btn)
+  const rangeBtn = e.target.closest('[data-range]');
+  if (rangeBtn) {
+    currentRange = rangeBtn.dataset.range;
+    document.querySelectorAll('[data-range]').forEach(b => {
+      b.classList.toggle('active', b.dataset.range === currentRange);
+    });
+    load();
+    return;
+  }
+
+  // Filter buttons (mobile chips)
+  const filterBtn = e.target.closest('[data-filter-id]');
+  if (filterBtn) {
+    currentFilters[filterBtn.dataset.filterId] = filterBtn.dataset.filterValue;
+    renderFilterUI();
+    render();
+    return;
+  }
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', load);
+</script>
+</body>
+</html>
