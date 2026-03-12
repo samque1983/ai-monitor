@@ -120,7 +120,7 @@ class StrategyRiskEngine:
 
             # Rule 1: DTE ≤ 7 AND short put ITM > 2%
             if dte <= 7 and leg.put_call == "P":
-                itm_pct = (leg.strike - leg.mark_price) / leg.mark_price * 100
+                itm_pct = (leg.strike - leg.mark_price) / leg.mark_price * 100 if leg.mark_price else 0.0
                 if itm_pct > 2.0:
                     alerts.append(StrategyRiskAlert(
                         rule_id=1, severity="red", urgency=True,
@@ -136,9 +136,9 @@ class StrategyRiskEngine:
             if (dte <= 14 and not sg.modifiers
                     and sg.strategy_type in ("Naked Put", "Naked Call")):
                 if leg.put_call == "P":
-                    itm_pct = (leg.strike - leg.mark_price) / leg.mark_price * 100
+                    itm_pct = (leg.strike - leg.mark_price) / leg.mark_price * 100 if leg.mark_price else 0.0
                 else:
-                    itm_pct = (leg.mark_price - leg.strike) / leg.strike * 100
+                    itm_pct = (leg.mark_price - leg.strike) / leg.strike * 100 if leg.strike else 0.0
                 if itm_pct > 0:
                     alerts.append(StrategyRiskAlert(
                         rule_id=6, severity="red", urgency=True,
