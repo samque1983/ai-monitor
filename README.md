@@ -132,6 +132,14 @@ npx clawhub@latest install trading-navigator
 
 ---
 
+## UI 设计系统
+
+前端卡片、徽章、排版、动画规范提取为独立 Claude Code skill：
+
+**[ai-monitor-ui](https://github.com/samque1983/ai-monitor-ui)** — 深色金融终端设计系统
+
+---
+
 ## 测试
 
 ```bash
