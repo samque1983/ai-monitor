@@ -18,6 +18,11 @@ async def dashboard():
     return FileResponse(os.path.join(_STATIC_DIR, "dashboard.html"))
 
 
+@router.get("/risk-report", response_class=FileResponse)
+async def risk_report_page():
+    return FileResponse(os.path.join(_STATIC_DIR, "risk-report.html"))
+
+
 @router.get("/api/risk-report/latest")
 async def get_risk_report(
     account: str = "ALICE",
