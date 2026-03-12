@@ -12,3 +12,20 @@ def test_templates_dir_exists():
 def test_jinja2_importable():
     """jinja2 must be installed."""
     import jinja2  # noqa: F401
+
+
+def test_nav_partial_exists():
+    import os
+    assert os.path.isfile("agent/templates/_nav.html")
+
+def test_nav_partial_has_all_pages():
+    content = open("agent/templates/_nav.html").read()
+    assert "/dashboard" in content
+    assert "/risk-report" in content
+    assert "/chat" in content
+    assert "/watchlist" in content
+
+def test_nav_partial_active_variable():
+    """_nav.html must use active_page variable for highlighting."""
+    content = open("agent/templates/_nav.html").read()
+    assert "active_page" in content
