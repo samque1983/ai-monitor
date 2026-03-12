@@ -195,14 +195,6 @@ body {
   .sidebar-time-btn:hover { background: var(--surface-2); color: var(--text-2); }
   .sidebar-time-btn.active { color: var(--text); background: var(--surface-2); }
 
-  /* 2-column card grid on desktop */
-  .card-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 14px;
-    align-items: start;
-  }
-
   /* Mobile-only elements hidden on desktop */
   .mobile-time-row { display: none; }
   #mobile-chips-container { display: none; }
@@ -228,6 +220,9 @@ body {
 
 /* ── Card shell ── */
 .card-grid { display: flex; flex-direction: column; gap: 10px; }
+@media (min-width: 1024px) {
+  .card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+}
 .card {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--r12); overflow: hidden;
