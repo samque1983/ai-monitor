@@ -335,7 +335,7 @@ body {
 
 /* Analysis collapse */
 .analysis-toggle {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; gap: 8px;
   cursor: pointer; padding: 5px 6px; margin: 0;
   border-radius: var(--r8); user-select: none;
   -webkit-tap-highlight-color: transparent;
@@ -353,12 +353,11 @@ body {
 /* Arrow */
 .toggle-arrow {
   font-size: 11px; color: var(--text-3);
-  margin-left: 6px; padding: 1px 7px;
+  padding: 1px 7px;
   border: 1px solid var(--border); border-radius: var(--r4);
   background: var(--surface-2);
   display: inline-block; line-height: 1.6;
   transition: transform 0.22s ease, color 0.15s, border-color 0.15s;
-  flex-shrink: 0;
 }
 .analysis-toggle:hover .toggle-arrow { color: var(--text); border-color: rgba(255,255,255,0.22); }
 
