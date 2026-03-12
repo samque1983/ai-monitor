@@ -41,6 +41,10 @@ body {
   from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+@keyframes brandPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(0.7); }
+}
 .card { animation: fadeUp 0.32s ease both; }
 .card:nth-child(1) { animation-delay: 0.04s; }
 .card:nth-child(2) { animation-delay: 0.08s; }
@@ -175,10 +179,6 @@ body {
     width: 6px; height: 6px; border-radius: 50%;
     background: var(--amber); flex-shrink: 0;
     animation: brandPulse 2.4s ease-in-out infinite;
-  }
-  @keyframes brandPulse {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50%       { opacity: 0.4; transform: scale(0.7); }
   }
   .brand-title {
     font-family: "Instrument Serif", Georgia, serif;
