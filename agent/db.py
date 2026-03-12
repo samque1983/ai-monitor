@@ -40,6 +40,15 @@ CREATE TABLE IF NOT EXISTS signals (
     payload     TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_signals_scanned_at ON signals(scanned_at);
+
+CREATE TABLE IF NOT EXISTS risk_reports (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id   TEXT NOT NULL,
+    report_date  TEXT NOT NULL,
+    html_content TEXT NOT NULL,
+    created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(account_id, report_date)
+);
 """
 
 class AgentDB:
@@ -163,6 +172,41 @@ class AgentDB:
             d["payload"] = json.loads(d["payload"])
             result.append(d)
         return result
+
+    def save_risk_report(self, account_id: str, report_date: str, html_content: str) -> None:
+        """Save or overwrite a risk report for a given account and date."""
+        self.conn.execute(
+            "INSERT OR REPLACE INTO risk_reports (account_id, report_date, html_content) "
+            "VALUES (?, ?, ?)",
+            (account_id, report_date, html_content),
+        )
+        self.conn.commit()
+
+    def get_latest_risk_report(self, account_id: str) -> Optional[Dict]:
+        """Return the most recent risk report for an account, or None."""
+        row = self.conn.execute(
+            "SELECT account_id, report_date, html_content, created_at "
+            "FROM risk_reports WHERE account_id=? ORDER BY report_date DESC LIMIT 1",
+            (account_id,),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def get_risk_report_by_date(self, account_id: str, report_date: str) -> Optional[Dict]:
+        """Return a specific date's risk report, or None."""
+        row = self.conn.execute(
+            "SELECT account_id, report_date, html_content, created_at "
+            "FROM risk_reports WHERE account_id=? AND report_date=?",
+            (account_id, report_date),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def get_risk_report_dates(self, account_id: str) -> List[str]:
+        """Return all available report dates for an account, newest first."""
+        rows = self.conn.execute(
+            "SELECT report_date FROM risk_reports WHERE account_id=? ORDER BY report_date DESC",
+            (account_id,),
+        ).fetchall()
+        return [r["report_date"] for r in rows]
 
     def close(self):
         self.conn.close()
