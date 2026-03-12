@@ -1,581 +1,275 @@
-"""Generate dark-Apple HTML risk report from a RiskReport."""
+"""Generate strategy-aware HTML risk report from StrategyRiskReport."""
 import re
 from html import escape as _e
-from src.portfolio_risk import RiskReport, RiskAlert
 
-_DIM_NAMES = {
-    1: "方向性敞口（Dollar Delta）",
-    2: "时间价值衰减（Theta）",
-    3: "IV 敏感度（Vega）",
-    4: "保证金安全边际",
-    5: "集中度风险",
-    6: "财报日在仓风险",
-    7: "期权到期风险（DTE + Moneyness）",
-    8: "Sell Put 安全垫",
-    9: "Gamma 临近到期警告",
-    10: "压力测试（大盘 -10%/-20%）",
+try:
+    from src.strategy_risk import StrategyRiskReport, StrategyRiskAlert
+    from src.option_strategies import StrategyGroup
+    _HAS_STRATEGY_RISK = True
+except ImportError:
+    _HAS_STRATEGY_RISK = False
+
+_LEVEL_COLOR = {"red": "#ff453a", "yellow": "#ffb340", "watch": "#636366"}
+_LEVEL_BG = {"red": "rgba(255,69,58,0.10)", "yellow": "rgba(255,179,64,0.09)",
+             "watch": "rgba(99,99,102,0.10)"}
+_LEVEL_BORDER = {"red": "rgba(255,69,58,0.22)", "yellow": "rgba(255,179,64,0.20)",
+                 "watch": "rgba(99,99,102,0.18)"}
+
+_INTENT_COLOR = {
+    "income": "#30d158", "hedge": "#0a84ff",
+    "directional": "#ff9f0a", "speculation": "#bf5af2", "mixed": "#64d2ff",
+    "unknown": "#636366",
+}
+_INTENT_LABEL = {
+    "income": "收租", "hedge": "对冲",
+    "directional": "方向", "speculation": "投机", "mixed": "混合",
+    "unknown": "其他",
 }
 
-# 一句话通俗解释，让不熟悉术语的人也能秒懂
-_DIM_PLAIN = {
-    1: "你的总持仓规模相对账户净资产偏大，市场每跌 1%，亏损就越明显。",
-    2: "你整体是期权买方，每天光是时间流逝就在亏钱，需要有明确的短期催化剂支撑。",
-    3: "你整体是期权卖方（空 Vega），一旦市场恐慌、波动率飙升，你的持仓会承压。",
-    4: "账户保证金缓冲不足，市场一旦下跌，券商可能强制平仓你的仓位。",
-    5: "某只股票在组合里占比过高，它一旦暴跌，会对整体资产造成严重冲击。",
-    6: "你持有的期权到期日在财报发布之后，财报当天的跳空可能直接击穿安全垫。",
-    7: "期权快到期了或者已经进入实值，被指派（强制买入股票）的风险很高，需尽快决定。",
-    8: "这个 Sell Put 已经赚到了大部分权利金（>75%），继续持有的风险收益比已经不划算。",
-    9: "期权快到期且 Gamma 很高，股价稍微一动盈亏就会剧烈变化，止损很难精准执行。",
-    10: "如果大盘下跌 10%，你的组合预估亏损超过净资产的 10%，整体下行保护不足。",
-}
-
-# 每个维度的选项利弊，与 portfolio_risk.py 中 options 列表顺序对应（A/B/C/D）
-_DIM_OPTIONS_PROS_CONS = {
-    1: [
-        ("直接降低方向风险，效果最快", "可能踏空后续上涨，卖出时机难把握"),
-        ("保留持仓不变，控制下行风险", "需持续支付权利金，长期拖累收益"),
-        ("降低 Delta 同时收取权利金", "股价大涨时仓位会被 Call 走，限制上行"),
-        ("无摩擦成本，看多时可能受益", "下行时亏损随杠杆放大，风险持续存在"),
-    ],
-    2: [
-        ("止住每日时间损耗，确定性止血", "若行情随后爆发，会错失全部收益"),
-        ("若判断准确，潜在收益可观", "时间持续消耗，亏损每天叠加"),
-        ("降低 Theta 成本，同时保留方向性", "同时限制了最大盈利空间"),
-        ("无需操作，等待波动", "每日 Theta 是确定性支出，无催化剂时纯粹亏损"),
-    ],
-    3: [
-        ("直接降低 Vega 敞口，立竿见影", "需支付权利金买回，压缩已有利润"),
-        ("无需平仓原有仓位，灵活", "VIX 工具成本高且滑点大"),
-        ("零成本，IV 高时买回更划算", "IV 若继续上升，亏损持续扩大"),
-        ("Theta 收益可能覆盖 Vega 亏损", "需精确计算两者平衡，判断难度高"),
-    ],
-    4: [
-        ("最快释放保证金，立竿见影", "可能在最差时点被迫离场，踩在低点"),
-        ("不改变任何仓位", "需要额外资金，不一定随时可用"),
-        ("大幅降低保证金占用", "需支付买入 Put 权利金，减少最大收益"),
-        ("无操作成本", "期间若市场下跌，可能被强制平仓，更被动"),
-    ],
-    5: [
-        ("降低单股风险，改善分散度", "若该股后续大涨，减仓会带来遗憾"),
-        ("持仓不变，控制尾部风险", "长期持有 Put 成本较高"),
-        ("零成本，保留上行空间", "止损执行时可能有滑点，且需纪律执行"),
-        ("若长期看好该股，高仓位合理", "单股暴雷将对整体组合造成重大冲击"),
-    ],
-    6: [
-        ("彻底消除财报风险，锁定收益", "若财报平稳，白白让出剩余权利金"),
-        ("保留卖方收益，规避财报风险", "需支付 Roll 成本，权利金可能减少"),
-        ("扩大安全垫，应对财报跳空", "行权价降低意味着权利金同步减少"),
-        ("若判断正确，全收权利金", "财报跳空可能造成大幅亏损甚至被指派"),
-    ],
-    7: [
-        ("确定性止损，控制最大亏损", "若之后出现反弹，会后悔提前平仓"),
-        ("以行权价承接股票，可等待回升", "占用大量资金，股票可能继续下跌"),
-        ("争取时间等待反弹", "需支付 Roll 成本，亏损有可能继续扩大"),
-        ("若反弹则可减少亏损", "时间极短，不确定性极高，赌博成分大"),
-    ],
-    8: [
-        ("确定实现已有收益，释放保证金", "放弃剩余权利金（通常不超过 25%）"),
-        ("获取全部权利金，最大化收益", "若行情反转，已实现的大部分收益可能回吐"),
-        ("增加安全垫，同时可能增加权利金", "需支付 Roll 成本和时间"),
-        ("保留收益可能性，有止损保护", "止损线需设置精准，执行时有滑点风险"),
-    ],
-    9: [
-        ("保留部分收益，降低非线性风险", "减少了 Theta 收入来源"),
-        ("彻底消除 Gamma 风险", "放弃所有剩余权利金"),
-        ("限制最大亏损，保留 Theta 收益", "需支付买入 Put 权利金"),
-        ("若安全垫充足，收益最大", "Gamma 加速变化，止损难以精准执行"),
-    ],
-    10: [
-        ("直接对冲系统性风险，效果确定", "对冲成本较高，持续拖累整体收益"),
-        ("从根本上降低组合波动率", "可能在市场反弹时跑输大盘"),
-        ("限制极端亏损，同时降低保证金", "限制了最大收益空间"),
-        ("若市场未大跌，收益不受影响", "系统性下跌时亏损可能超出预期"),
-    ],
-}
-
-# Alert accent colors
-_LEVEL_COLOR  = {"red": "#ff453a", "yellow": "#ffb340"}
-_LEVEL_BG     = {"red": "rgba(255,69,58,0.10)",  "yellow": "rgba(255,179,64,0.09)"}
-_LEVEL_BORDER = {"red": "rgba(255,69,58,0.22)",  "yellow": "rgba(255,179,64,0.20)"}
-
-_OPT_LABELS = ["A", "B", "C", "D"]
-
-# Dims that require immediate action
-_URGENT_DIMS = {4, 6, 7, 9}
+_CSS = """
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #000; color: #f5f5f7; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif; font-size: 14px; line-height: 1.5; padding: 24px; }
+a { color: #0a84ff; }
+h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+h2 { font-size: 15px; font-weight: 600; color: #8e8e93; text-transform: uppercase; letter-spacing: 1px; margin: 28px 0 10px; }
+.summary-card { background: #1c1c1e; border: 1px solid #2c2c2e; border-radius: 16px; padding: 20px 24px; margin-bottom: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; }
+.stat-item { display: flex; flex-direction: column; }
+.stat-label { font-size: 11px; color: #8e8e93; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+.stat-value { font-size: 20px; font-weight: 600; }
+.narrative { background: #1c1c1e; border: 1px solid #2c2c2e; border-radius: 12px; padding: 14px 18px; margin-bottom: 20px; line-height: 1.6; color: #e5e5ea; }
+.action-list { margin-bottom: 24px; }
+.action-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; background: rgba(255,69,58,0.08); border: 1px solid rgba(255,69,58,0.20); border-radius: 10px; margin-bottom: 8px; font-size: 13px; }
+.action-dot { width: 8px; height: 8px; border-radius: 50%; background: #ff453a; flex-shrink: 0; margin-top: 5px; }
+.section-divider { display: flex; align-items: center; gap: 12px; margin: 24px 0 14px; }
+.section-divider .label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; white-space: nowrap; }
+.section-divider .line { flex: 1; height: 1px; background: #2c2c2e; }
+.alert-card { border-radius: 14px; padding: 16px 18px; margin-bottom: 12px; }
+.alert-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.severity-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.alert-title { font-size: 15px; font-weight: 600; }
+.alert-underlying { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 20px; background: #2c2c2e; color: #e5e5ea; }
+.intent-badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 20px; }
+.alert-technical { font-family: 'SF Mono', 'Menlo', monospace; font-size: 12px; color: #8e8e93; margin-bottom: 8px; }
+.alert-body { color: #e5e5ea; font-size: 13.5px; line-height: 1.6; margin-bottom: 12px; }
+.greek-row { display: flex; gap: 18px; flex-wrap: wrap; margin-bottom: 10px; }
+.greek-item { display: flex; flex-direction: column; }
+.greek-label { font-size: 10px; color: #8e8e93; }
+.greek-value { font-size: 13px; font-weight: 600; font-family: 'SF Mono', monospace; }
+.options-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.option-pill { font-size: 12px; padding: 4px 12px; border-radius: 20px; border: 1px solid #3a3a3c; color: #e5e5ea; background: #2c2c2e; cursor: default; }
+.option-pill.recommended { border-color: #0a84ff; color: #0a84ff; background: rgba(10,132,255,0.10); font-weight: 600; }
+.strategy-meta { font-size: 12px; color: #636366; margin-bottom: 10px; }
+.no-alerts { color: #636366; font-style: italic; font-size: 13px; padding: 8px 0; }
+</style>
+"""
 
 
-def _parse_recommended(text: str) -> str:
-    """Extract recommended option letter A-D from AI suggestion text."""
-    if not text:
+def _fmt_dollar(v: float) -> str:
+    if v >= 0:
+        return f"+${v:,.0f}"
+    return f"-${abs(v):,.0f}"
+
+
+def _parse_recommended(ai_suggestion: str) -> str:
+    """Parse '推荐选项C' or 'recommend option C' → 'C'."""
+    if not ai_suggestion:
         return ""
-    m = re.search(r'[推建][荐议][选项]*[\s：:]*([A-D])', text)
+    m = re.search(r'推荐选项\s*([A-D])', ai_suggestion)
     if m:
         return m.group(1)
-    m = re.search(r'选[择项]\s*([A-D])', text)
-    if m:
-        return m.group(1)
-    m = re.search(r'推荐\s*([A-D])\b', text)
+    m = re.search(r'\brecommend\w*\s+option\s*([A-D])\b', ai_suggestion, re.IGNORECASE)
     if m:
         return m.group(1)
     return ""
 
 
-def _option_pills(options: list, recommended: str) -> str:
-    """Compact horizontal pill row for ABCD options."""
+def _option_pills(options: list, ai_suggestion: str) -> str:
     if not options:
         return ""
-    pills = ""
-    for i, opt in enumerate(options[:4]):
-        label = _OPT_LABELS[i]
-        action = opt[3:] if opt.startswith(f"{label}. ") else opt
-        is_rec = label == recommended
-        rec_cls = " opt-pill-rec" if is_rec else ""
-        rec_mark = '<span class="rec-star">★</span>' if is_rec else ""
-        pills += f'<div class="opt-compact{rec_cls}" title="{_e(action)}">{label}{rec_mark}</div>'
-    # Full option list below pills
-    details = ""
-    for i, opt in enumerate(options[:4]):
-        label = _OPT_LABELS[i]
-        action = opt[3:] if opt.startswith(f"{label}. ") else opt
-        is_rec = label == recommended
-        rec_cls = " opt-detail-rec" if is_rec else ""
-        details += f'<div class="opt-detail{rec_cls}"><span class="opt-lbl">{label}</span> {_e(action)}</div>'
-    return f'<div class="opts-pills">{pills}</div><div class="opts-details">{details}</div>'
+    rec = _parse_recommended(ai_suggestion)
+    pills = []
+    for opt in options:
+        letter = opt[0] if opt else ""
+        is_rec = (letter == rec)
+        cls = "option-pill recommended" if is_rec else "option-pill"
+        label = f"{opt}{'★' if is_rec else ''}"
+        pills.append(f'<span class="{cls}">{_e(label)}</span>')
+    return f'<div class="options-row">{"".join(pills)}</div>'
 
 
-def _alert_card(alert: RiskAlert) -> str:
-    color      = _LEVEL_COLOR.get(alert.level,  "#ffb340")
-    bg         = _LEVEL_BG.get(alert.level,     "rgba(255,179,64,0.09)")
-    border_col = _LEVEL_BORDER.get(alert.level, "rgba(255,179,64,0.20)")
-    dim_name   = _DIM_NAMES.get(alert.dimension, f"维度 {alert.dimension}")
-    # Primary text: AI suggestion if available, else plain description
-    primary_text = alert.ai_suggestion or _DIM_PLAIN.get(alert.dimension, "")
-    recommended = _parse_recommended(alert.ai_suggestion) if alert.ai_suggestion else ""
-    pills_html = _option_pills(alert.options, recommended) if alert.options else ""
-    primary_html = f'<p class="ai-text">{_e(primary_text)}</p>' if primary_text else ""
-    opts_block = f'<div class="options-section">{pills_html}</div>' if pills_html else ""
+def _alert_card(alert, level_color: str, level_bg: str, level_border: str) -> str:
+    body_text = alert.ai_suggestion or alert.plain
+    pills_html = _option_pills(alert.options, alert.ai_suggestion)
     return f"""
-<div class="alert-card" style="border-color:{border_col}">
-  <div class="card-head" style="background:{bg};border-bottom:1px solid {border_col}">
-    <div class="card-left">
-      <span class="level-dot" style="background:{color}"></span>
-      <span class="card-dim-name">{_e(dim_name)}</span>
-    </div>
-    <span class="card-ticker" style="color:{color};border-color:{border_col}">{_e(alert.ticker)}</span>
+<div class="alert-card" style="background:{level_bg}; border:1px solid {level_border};">
+  <div class="alert-header">
+    <span class="severity-dot" style="background:{level_color};"></span>
+    <span class="alert-title">{_e(alert.title)}</span>
+    <span class="alert-underlying">{_e(alert.underlying)}</span>
   </div>
-  <div class="card-body">
-    <p class="tech-detail">{_e(alert.detail)}</p>
-    {primary_html}
-    {opts_block}
-  </div>
+  <div class="alert-technical">{_e(alert.technical)}</div>
+  <div class="alert-body">{_e(body_text)}</div>
+  {pills_html}
 </div>"""
 
 
-def _section_divider(label: str, count: int, color: str = "") -> str:
-    color_style = f"color:{color};" if color else ""
+def _strategy_card(sg) -> str:
+    intent_color = _INTENT_COLOR.get(sg.intent, "#636366")
+    intent_label = _INTENT_LABEL.get(sg.intent, sg.intent)
+    legs_summary = []
+    if sg.stock_leg:
+        legs_summary.append(f"{sg.stock_leg.position:+.0f} STK @ {sg.stock_leg.mark_price:.2f}")
+    for p in sg.legs:
+        if p.asset_category == "OPT":
+            direction = "Short" if p.position < 0 else "Long"
+            legs_summary.append(f"{direction} {abs(p.position):.0f}× {p.put_call}{p.strike:.0f} exp {p.expiry}")
+    for p in sg.modifiers:
+        legs_summary.append(f"[hedge] Long {abs(p.position):.0f}× {p.put_call}{p.strike:.0f}")
+
+    legs_str = " | ".join(legs_summary)
+    dte_str = f"DTE {sg.dte}" if sg.dte else ""
+
+    greeks_available = any(abs(v) > 1e-9 for v in
+                           [sg.net_delta, sg.net_theta, sg.net_vega, sg.net_gamma])
+    if greeks_available:
+        greek_html = f"""
+<div class="greek-row">
+  <div class="greek-item"><span class="greek-label">Δ 每1%</span><span class="greek-value">{_fmt_dollar(sg.net_delta * 0.01 * 100)}</span></div>
+  <div class="greek-item"><span class="greek-label">Θ 每天</span><span class="greek-value">{_fmt_dollar(sg.net_theta)}</span></div>
+  <div class="greek-item"><span class="greek-label">V 每1%IV</span><span class="greek-value">{_fmt_dollar(sg.net_vega * 0.01)}</span></div>
+  <div class="greek-item"><span class="greek-label">最大盈利</span><span class="greek-value">{"无上限" if sg.max_profit is None else _fmt_dollar(sg.max_profit)}</span></div>
+  <div class="greek-item"><span class="greek-label">最大亏损</span><span class="greek-value">{"无限制" if sg.max_loss is None else _fmt_dollar(-sg.max_loss)}</span></div>
+</div>"""
+    else:
+        greek_html = f"""
+<div class="greek-row">
+  <div class="greek-item"><span class="greek-label">最大盈利</span><span class="greek-value">{"无上限" if sg.max_profit is None else _fmt_dollar(sg.max_profit)}</span></div>
+  <div class="greek-item"><span class="greek-label">最大亏损</span><span class="greek-value">{"无限制" if sg.max_loss is None else _fmt_dollar(-sg.max_loss)}</span></div>
+  <span style="font-size:11px;color:#636366;">Greeks 未启用 — 在 Flex Query → Open Positions 中勾选 Delta/Theta/Vega/Gamma</span>
+</div>"""
+
     return f"""
-<div class="section-header">
-  <span class="section-label" style="{color_style}">{_e(label)}</span>
-  <div class="section-rule"></div>
-  <span class="section-label">{count} 条</span>
-</div>"""
-
-
-def _top_action_strip(top_actions: list) -> str:
-    if not top_actions:
-        return ""
-    items = ""
-    for a in top_actions:
-        color = _LEVEL_COLOR.get(a.level, "#ffb340")
-        dim_name = _DIM_NAMES.get(a.dimension, f"维度{a.dimension}")
-        recommended = _parse_recommended(a.ai_suggestion) if a.ai_suggestion else ""
-        rec_html = f'<span class="action-rec">→ {_e(recommended)}</span>' if recommended else ""
-        items += f"""
-<div class="action-item">
-  <span class="action-dot" style="background:{color}"></span>
-  <div class="action-body">
-    <span class="action-dim">{_e(dim_name)}</span>
-    <span class="action-ticker">{_e(a.ticker)}</span>
-    {rec_html}
+<div style="background:#1c1c1e; border:1px solid #2c2c2e; border-radius:14px; padding:16px 18px; margin-bottom:12px;">
+  <div class="alert-header">
+    <span class="alert-title">{_e(sg.strategy_type)}</span>
+    <span class="alert-underlying">{_e(sg.underlying)}</span>
+    <span class="intent-badge" style="background:{intent_color}22; color:{intent_color};">{intent_label}</span>
+    {"<span style='font-size:12px;color:#636366;'>" + _e(dte_str) + "</span>" if dte_str else ""}
   </div>
+  <div class="strategy-meta">{_e(legs_str)}</div>
+  {greek_html}
 </div>"""
+
+
+def _section_divider(label: str, color: str) -> str:
     return f"""
-<div class="top-actions">
-  <div class="top-actions-title">今日操作建议</div>
-  {items}
+<div class="section-divider">
+  <span class="label" style="color:{color};">{label}</span>
+  <span class="line"></span>
 </div>"""
 
 
-def generate_html_report(report: RiskReport) -> str:
-    red_count    = sum(1 for a in report.alerts if a.level == "red")
-    yellow_count = sum(1 for a in report.alerts if a.level == "yellow")
-    pnl_color    = "#34c759" if report.total_pnl >= 0 else "#ff453a"
-    cushion_val  = report.cushion * 100
-    cushion_color  = "#ff453a" if cushion_val < 10 else ("#ffb340" if cushion_val < 25 else "#34c759")
-    cushion_label  = "危险" if cushion_val < 10 else ("注意" if cushion_val < 25 else "安全")
-    stress   = report.summary_stats.get("stress_test", {})
-    drop_10  = stress.get("drop_10pct", 0)
-    acct_name = _e(report.account_id) if report.account_id else "Portfolio"
+def generate_html_report(report) -> str:
+    """Generate HTML report. Accepts StrategyRiskReport (Phase 7) or legacy RiskReport."""
+    if _HAS_STRATEGY_RISK and isinstance(report, StrategyRiskReport):
+        return _generate_strategy_report(report)
+    # Fallback: legacy report type
+    return _generate_legacy_report(report)
 
-    # Portfolio summary text
-    summary_text = getattr(report, "portfolio_summary", "")
-    summary_html = (f'<div class="portfolio-summary">{_e(summary_text)}</div>'
-                    if summary_text else "")
 
-    # Three-tier alert grouping
-    urgent   = [a for a in report.alerts if a.level == "red" and a.dimension in _URGENT_DIMS]
-    week_rev = [a for a in report.alerts if a.level == "red" and a.dimension not in _URGENT_DIMS]
-    observe  = [a for a in report.alerts if a.level == "yellow"]
+def _generate_strategy_report(report) -> str:
+    nlv = report.net_liquidation
+    cushion_pct = report.cushion * 100
+    stress = report.summary_stats.get("stress_test", {})
+    drop10 = stress.get("drop_10pct", 0)
 
-    urgent_html   = "\n".join(_alert_card(a) for a in urgent)   or '<p class="empty-state">无</p>'
-    week_html     = "\n".join(_alert_card(a) for a in week_rev) or '<p class="empty-state">无</p>'
-    observe_html  = "\n".join(_alert_card(a) for a in observe)  or '<p class="empty-state">无</p>'
+    cushion_color = "#ff453a" if cushion_pct < 10 else "#ffb340" if cushion_pct < 20 else "#30d158"
+    stress_color = "#ff453a" if drop10 < -nlv * 0.20 else "#ffb340" if drop10 < -nlv * 0.15 else "#30d158"
+    pnl_color = "#30d158" if report.total_pnl >= 0 else "#ff453a"
 
-    top_actions = getattr(report, "top_actions", [])
-    actions_strip = _top_action_strip(top_actions)
+    summary_card = f"""
+<div class="summary-card">
+  <div class="stat-item"><span class="stat-label">账户净资产</span><span class="stat-value">${nlv:,.0f}</span></div>
+  <div class="stat-item"><span class="stat-label">未实现盈亏</span><span class="stat-value" style="color:{pnl_color};">{_fmt_dollar(report.total_pnl)}</span></div>
+  <div class="stat-item"><span class="stat-label">保证金缓冲</span><span class="stat-value" style="color:{cushion_color};">{cushion_pct:.1f}%</span></div>
+  <div class="stat-item"><span class="stat-label">大盘-10%压测</span><span class="stat-value" style="color:{stress_color};">{_fmt_dollar(drop10)}</span></div>
+</div>"""
+
+    narrative_html = ""
+    if report.portfolio_summary:
+        narrative_html = f'<div class="narrative">{_e(report.portfolio_summary)}</div>'
+
+    # 今日操作清单
+    action_items_html = ""
+    if report.top_actions:
+        items = "".join(
+            f'<div class="action-item"><span class="action-dot"></span><span>{_e(a.title)} — {_e(a.underlying)}: {_e((a.ai_suggestion or a.plain)[:100])}</span></div>'
+            for a in report.top_actions
+        )
+        action_items_html = f'<h2>今日操作清单</h2><div class="action-list">{items}</div>'
+
+    # Three-tier alert sections
+    reds = [a for a in report.alerts if a.severity == "red"]
+    yellows = [a for a in report.alerts if a.severity == "yellow"]
+    watches = [a for a in report.alerts if a.severity == "watch"]
+
+    def _render_alerts(alerts_list, color, bg, border):
+        if not alerts_list:
+            return '<p class="no-alerts">暂无</p>'
+        return "".join(_alert_card(a, color, bg, border) for a in alerts_list)
+
+    red_html = _render_alerts(reds, _LEVEL_COLOR["red"], _LEVEL_BG["red"], _LEVEL_BORDER["red"])
+    yellow_html = _render_alerts(yellows, _LEVEL_COLOR["yellow"], _LEVEL_BG["yellow"], _LEVEL_BORDER["yellow"])
+    watch_html = _render_alerts(watches, _LEVEL_COLOR["watch"], _LEVEL_BG["watch"], _LEVEL_BORDER["watch"])
+
+    # Strategy cards (collapsible summary)
+    strategy_cards_html = ""
+    if report.strategies:
+        cards = "".join(_strategy_card(sg) for sg in report.strategies)
+        strategy_cards_html = f"""
+<h2>策略汇总</h2>
+{cards}"""
 
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>风险报告 · {acct_name} · {_e(report.report_date)}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:opsz,wght@9..40,300..600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<style>
-/* ── Reset ───────────────────────────────── */
-*, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
-
-/* ── Tokens ───────────────────────────────── */
-:root {{
-  --bg:        #080808;
-  --surface:   #101010;
-  --surface-2: #181818;
-  --border:    rgba(255,255,255,0.08);
-  --border-2:  rgba(255,255,255,0.05);
-  --text:      #ececec;
-  --text-2:    rgba(236,236,236,0.58);
-  --text-3:    rgba(236,236,236,0.38);
-  --red:       #ff453a;
-  --amber:     #ffb340;
-  --green:     #34c759;
-  --blue:      #0a84ff;
-  --r4: 4px; --r8: 8px; --r12: 12px;
-}}
-
-/* ── Base ─────────────────────────────────── */
-body {{
-  background: var(--bg);
-  color: var(--text);
-  font-family: "DM Sans", -apple-system, "Helvetica Neue", sans-serif;
-  font-size: 14px;
-  line-height: 1.5;
-  -webkit-font-smoothing: antialiased;
-  min-height: 100vh;
-  padding: 32px 16px 64px;
-}}
-@media (min-width: 480px) {{ body {{ padding: 40px 24px 64px; }} }}
-.container {{ max-width: 720px; margin: 0 auto; }}
-
-/* ── Animations ───────────────────────────── */
-@keyframes fadeUp {{
-  from {{ opacity: 0; transform: translateY(10px); }}
-  to   {{ opacity: 1; transform: translateY(0); }}
-}}
-.summary, .top-actions, .alert-card {{ animation: fadeUp 0.4s ease both; }}
-.alert-card:nth-child(1)  {{ animation-delay: 0.05s; }}
-.alert-card:nth-child(2)  {{ animation-delay: 0.10s; }}
-.alert-card:nth-child(3)  {{ animation-delay: 0.15s; }}
-.alert-card:nth-child(4)  {{ animation-delay: 0.20s; }}
-.alert-card:nth-child(5)  {{ animation-delay: 0.25s; }}
-.alert-card:nth-child(n+6){{ animation-delay: 0.30s; }}
-
-/* ── Page header ──────────────────────────── */
-.page-eyebrow {{
-  display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: 8px;
-}}
-.eyebrow-label {{
-  font-size: 11px; font-weight: 600; letter-spacing: 0.1em;
-  text-transform: uppercase; color: var(--text-3);
-}}
-.eyebrow-date {{
-  font-family: "DM Mono", monospace; font-size: 11px; color: var(--text-3);
-}}
-.page-title {{
-  font-family: "Instrument Serif", Georgia, serif;
-  font-style: italic;
-  font-size: clamp(28px, 7vw, 40px);
-  font-weight: 400; letter-spacing: -0.01em;
-  color: var(--text); line-height: 1.1; margin-bottom: 16px;
-}}
-.badges {{
-  display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px;
-}}
-.badge {{
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 5px 12px; border-radius: 20px;
-  font-size: 12px; font-weight: 500; letter-spacing: 0.01em; border: 1px solid;
-}}
-.badge-red    {{ color: var(--red);   background: rgba(255,69,58,0.10);  border-color: rgba(255,69,58,0.22); }}
-.badge-yellow {{ color: var(--amber); background: rgba(255,179,64,0.10); border-color: rgba(255,179,64,0.22); }}
-.badge-dot {{ width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }}
-
-/* ── Summary card ─────────────────────────── */
-.summary {{
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--r12); overflow: hidden; margin-bottom: 20px;
-}}
-.summary-hero {{
-  padding: 20px 20px 0;
-  display: grid; grid-template-columns: 1fr 1fr;
-  gap: 0 20px; padding-bottom: 20px;
-  border-bottom: 1px solid var(--border-2);
-}}
-@media (min-width: 480px) {{
-  .summary-hero {{ grid-template-columns: 1.4fr 1fr 1fr; padding: 24px 24px 20px; gap: 0; }}
-  .summary-hero .stat + .stat {{ border-left: 1px solid var(--border-2); padding-left: 20px; }}
-}}
-.summary-foot {{
-  padding: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px 0;
-}}
-@media (min-width: 480px) {{
-  .summary-foot {{ padding: 20px 24px; gap: 0; }}
-  .summary-foot .stat + .stat {{ border-left: 1px solid var(--border-2); padding-left: 20px; }}
-}}
-.portfolio-summary {{
-  padding: 16px 20px;
-  font-size: 13px; color: var(--text-2); line-height: 1.7;
-  border-top: 1px solid var(--border-2);
-}}
-@media (min-width: 480px) {{ .portfolio-summary {{ padding: 16px 24px; }} }}
-
-.stat-label {{
-  font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
-  text-transform: uppercase; color: var(--text-3); margin-bottom: 6px;
-}}
-.stat-value {{
-  font-family: "DM Mono", monospace; font-size: 22px; font-weight: 500;
-  letter-spacing: -0.02em; color: var(--text); line-height: 1; margin-bottom: 4px;
-}}
-.stat-value--hero {{ font-size: clamp(22px, 5vw, 30px); }}
-.stat-note {{ font-size: 11px; color: var(--text-2); line-height: 1.55; margin-top: 6px; }}
-
-/* Cushion segments */
-.cushion-track {{ display: flex; gap: 3px; margin-top: 10px; margin-bottom: 4px; }}
-.cushion-seg {{
-  height: 3px; border-radius: 2px; flex: 1;
-  background: var(--border); transition: background 0.6s ease;
-}}
-.cushion-label {{ font-size: 11px; font-weight: 600; color: var(--text-3); margin-top: 2px; }}
-
-/* ── Today's actions strip ────────────────── */
-.top-actions {{
-  background: var(--surface);
-  border: 1px solid rgba(255,69,58,0.20);
-  border-radius: var(--r12);
-  padding: 16px;
-  margin-bottom: 24px;
-}}
-.top-actions-title {{
-  font-size: 10px; font-weight: 600; letter-spacing: 0.1em;
-  text-transform: uppercase; color: var(--red);
-  margin-bottom: 12px;
-}}
-.action-item {{
-  display: flex; align-items: flex-start; gap: 10px;
-  padding: 7px 0; border-top: 1px solid var(--border-2);
-}}
-.action-item:first-of-type {{ border-top: none; }}
-.action-dot {{
-  width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; margin-top: 5px;
-}}
-.action-body {{ display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }}
-.action-dim {{ font-size: 13px; font-weight: 500; color: var(--text); }}
-.action-ticker {{
-  font-family: "DM Mono", monospace; font-size: 11px;
-  color: var(--text-3); letter-spacing: 0.04em;
-}}
-.action-rec {{
-  font-size: 12px; font-weight: 600; color: var(--amber);
-}}
-
-/* ── Section divider ──────────────────────── */
-.section-header {{
-  display: flex; align-items: center; gap: 12px; margin-bottom: 10px;
-}}
-.section-label {{
-  font-size: 10px; font-weight: 600; letter-spacing: 0.1em;
-  text-transform: uppercase; color: var(--text-3); white-space: nowrap;
-}}
-.section-rule {{ flex: 1; height: 1px; background: var(--border-2); }}
-.section-group {{ margin-bottom: 28px; }}
-
-/* ── Alert card ───────────────────────────── */
-.alert-card {{
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--r12); overflow: hidden; margin-bottom: 8px;
-  transition: border-color 0.2s;
-}}
-.alert-card:hover {{ border-color: rgba(255,255,255,0.14); }}
-.card-head {{
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 16px; gap: 12px;
-}}
-.card-left {{ display: flex; align-items: center; gap: 8px; min-width: 0; }}
-.level-dot {{ width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }}
-.card-dim-name {{
-  font-size: 13px; font-weight: 600; letter-spacing: -0.01em;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}}
-.card-ticker {{
-  font-family: "DM Mono", monospace; font-size: 11px; font-weight: 500;
-  letter-spacing: 0.06em; padding: 3px 8px; border-radius: var(--r4);
-  border: 1px solid; background: rgba(0,0,0,0.3); white-space: nowrap; flex-shrink: 0;
-}}
-.card-body {{ padding: 0 16px 14px; }}
-.tech-detail {{
-  font-family: "DM Mono", monospace; font-size: 11px; color: var(--text-3);
-  background: var(--surface-2); display: inline-block;
-  padding: 3px 8px; border-radius: var(--r4); margin-bottom: 10px;
-  letter-spacing: 0.01em; max-width: 100%;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}}
-.ai-text {{
-  font-size: 13px; color: var(--text-2); line-height: 1.7;
-  margin-bottom: 12px;
-}}
-
-/* ── Compact ABCD pills ───────────────────── */
-.options-section {{ padding-top: 2px; }}
-.opts-pills {{
-  display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px;
-}}
-.opt-compact {{
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 26px; height: 26px; border-radius: 50%;
-  background: var(--surface-2); border: 1px solid var(--border);
-  color: var(--text-3); font-size: 11px; font-weight: 600;
-  font-family: "DM Mono", monospace; cursor: default;
-  transition: all 0.15s;
-  position: relative;
-}}
-.opt-compact-rec {{
-  background: rgba(255,179,64,0.15);
-  border-color: rgba(255,179,64,0.40);
-  color: var(--amber);
-  width: 30px; height: 30px;
-  font-size: 12px;
-}}
-.rec-star {{
-  position: absolute; top: -4px; right: -4px;
-  font-size: 8px; color: var(--amber); line-height: 1;
-}}
-.opts-details {{
-  display: flex; flex-direction: column; gap: 4px;
-}}
-.opt-detail {{
-  font-size: 12px; color: var(--text-3); line-height: 1.5;
-  display: flex; gap: 6px;
-}}
-.opt-detail-rec {{ color: var(--text-2); font-weight: 500; }}
-.opt-lbl {{
-  font-family: "DM Mono", monospace; font-weight: 600;
-  color: var(--amber); flex-shrink: 0;
-}}
-.opt-detail:not(.opt-detail-rec) .opt-lbl {{ color: var(--text-3); }}
-
-.empty-state {{
-  text-align: center; color: var(--text-3); font-size: 13px; padding: 24px 0;
-}}
-</style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>期权组合风险报告 — {_e(report.account_id)} {_e(report.report_date)}</title>
+{_CSS}
 </head>
 <body>
-<div class="container">
+<h1>期权组合风险报告</h1>
+<p style="color:#8e8e93; font-size:13px; margin:4px 0 18px;">{_e(report.account_id)} · {_e(report.report_date)}</p>
 
-<div class="page-eyebrow">
-  <span class="eyebrow-label">Portfolio Risk Report</span>
-  <span class="eyebrow-date">{_e(report.report_date)}</span>
-</div>
-<h1 class="page-title">{acct_name}</h1>
-<div class="badges">
-  <span class="badge badge-red"><span class="badge-dot"></span>{red_count} 红色预警</span>
-  <span class="badge badge-yellow"><span class="badge-dot"></span>{yellow_count} 黄色提示</span>
-</div>
+{summary_card}
+{narrative_html}
+{action_items_html}
 
-<!-- Summary card -->
-<div class="summary">
-  <div class="summary-hero">
-    <div class="stat">
-      <div class="stat-label">净资产 NLV</div>
-      <div class="stat-value stat-value--hero">${report.net_liquidation:,.0f}</div>
-    </div>
-    <div class="stat">
-      <div class="stat-label">未实现盈亏</div>
-      <div class="stat-value" style="color:{pnl_color}">${report.total_pnl:+,.0f}</div>
-    </div>
-    <div class="stat">
-      <div class="stat-label">报告日期</div>
-      <div class="stat-value" style="font-size:16px;letter-spacing:0">{_e(report.report_date)}</div>
-    </div>
-  </div>
-  <div class="summary-foot">
-    <div class="stat">
-      <div class="stat-label">保证金缓冲</div>
-      <div class="stat-value" style="color:{cushion_color}">{cushion_val:.1f}%</div>
-      <div class="cushion-track" id="ctrack"></div>
-      <div class="cushion-label" style="color:{cushion_color}">{cushion_label}</div>
-      <div class="stat-note">可用资金超出维持保证金的部分<br>&gt;25% 安全 · &lt;10% 危险</div>
-    </div>
-    <div class="stat">
-      <div class="stat-label">大盘跌10%预估亏损</div>
-      <div class="stat-value" style="color:var(--red)">${drop_10:,.0f}</div>
-      <div class="stat-note">假设 SPY 跌10%<br>按各仓位市值 × Beta 估算</div>
-    </div>
-  </div>
-  {summary_html}
-</div>
+{_section_divider("立即处理", _LEVEL_COLOR["red"])}
+{red_html}
 
-<!-- Today's top actions -->
-{actions_strip}
+{_section_divider("本周评估", _LEVEL_COLOR["yellow"])}
+{yellow_html}
 
-<!-- Tier 1: 立即处理 -->
-<div class="section-group">
-{_section_divider("立即处理", len(urgent), "#ff453a")}
-{urgent_html}
-</div>
+{_section_divider("持续观察", _LEVEL_COLOR["watch"])}
+{watch_html}
 
-<!-- Tier 2: 本周评估 -->
-<div class="section-group">
-{_section_divider("本周评估", len(week_rev), "#ff453a")}
-{week_html}
-</div>
+{strategy_cards_html}
 
-<!-- Tier 3: 持续观察 -->
-<div class="section-group">
-{_section_divider("持续观察", len(observe), "#ffb340")}
-{observe_html}
-</div>
+</body>
+</html>"""
 
-</div>
-<script>
-(function() {{
-  // Cushion track — 10 segments
-  var val = {cushion_val:.2f};
-  var color = "{cushion_color}";
-  var track = document.getElementById("ctrack");
-  for (var i = 0; i < 10; i++) {{
-    var seg = document.createElement("div");
-    seg.className = "cushion-seg";
-    if (i < Math.round(Math.min(val / 40, 1) * 10)) {{
-      seg.style.background = color;
-      seg.style.opacity = 0.8 - i * 0.04;
-    }}
-    track.appendChild(seg);
-  }}
-}})();
-</script>
+
+def _generate_legacy_report(report) -> str:
+    """Minimal fallback for old RiskReport objects during migration."""
+    return f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>Risk Report</title>{_CSS}</head>
+<body>
+<h1>风险报告（旧格式）</h1>
+<p style="color:#8e8e93;">{getattr(report, 'account_id', '')} · {getattr(report, 'report_date', '')}</p>
+<p style="color:#636366; margin-top:20px;">请升级至 Phase 7 策略感知版本。</p>
 </body>
 </html>"""

@@ -4,7 +4,7 @@ import sqlite3
 from datetime import datetime, date, timedelta
 from typing import Optional, List, Dict, Any
 
-from src.portfolio_risk import RiskReport
+from src.strategy_risk import StrategyRiskReport as RiskReport
 
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS risk_reports (

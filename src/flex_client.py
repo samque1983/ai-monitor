@@ -50,6 +50,12 @@ class FlexClient:
         xml_text = self._get_statement(ref_code)
         return self._parse(xml_text)
 
+    def fetch_from_file(self, path: str) -> Tuple[List[PositionRecord], AccountSummary]:
+        """Load positions and account summary from a local Flex XML file."""
+        with open(path, "r", encoding="utf-8") as f:
+            xml_text = f.read()
+        return self._parse(xml_text)
+
     def _send_request(self) -> str:
         resp = requests.get(SEND_URL, params={"t": self._token, "q": self._query_id, "v": "3"})
         root = ET.fromstring(resp.text)

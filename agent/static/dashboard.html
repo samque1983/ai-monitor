@@ -968,7 +968,7 @@ function cardDividend(s) {
     const histMax = p.yield_hist_max != null ? p.yield_hist_max : null;
     if (p10 == null || p90 == null) {
       return `<div class="entry-banner">
-        <span class="entry-banner-label">历史分位</span>
+        <span class="entry-banner-label">股息率百分位</span>
         <span class="entry-banner-pct">${pct}%</span>
       </div>`;
     }
@@ -979,11 +979,11 @@ function cardDividend(s) {
       ? `历史最高 ${histMax.toFixed(1)}%（含黑天鹅期，已剔除极值计算分位）`
       : '';
     return `<div class="entry-banner">
-      <span class="entry-banner-label">入场时机</span>
+      <span class="entry-banner-label">股息率百分位</span>
       <span class="entry-banner-bar" style="color:${color}">${bar}</span>
       <span class="entry-banner-pct" style="color:${color}">${pct}%</span>
       <span class="entry-banner-range">(正常区间 ${range})</span>
-      ${tip ? `<span style="opacity:0.55;cursor:help;margin-left:4px" title="${tip}">ℹ</span>` : ''}
+      ${tip ? `<span style="opacity:0.55;cursor:pointer;margin-left:4px;position:relative" onclick="showTabTooltip('${tip}', this)">ℹ</span>` : ''}
     </div>`;
   })();
 

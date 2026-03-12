@@ -9,7 +9,10 @@ from typing import Dict, List, Tuple
 from src.config import load_config
 from src.data_loader import fetch_universe
 from src.market_data import MarketDataProvider
-from src.portfolio_risk import load_account_configs, PortfolioRiskAnalyzer, generate_risk_suggestion, generate_portfolio_summary
+from src.risk_utils import load_account_configs, AccountConfig
+from src.option_strategies import OptionStrategyRecognizer
+from src.strategy_risk import (StrategyRiskEngine, generate_strategy_suggestion,
+                                generate_portfolio_summary)
 from src.portfolio_report import generate_html_report
 from src.risk_store import RiskStore
 from src.flex_client import FlexClient
@@ -148,13 +151,9 @@ def _build_agent_payload(
         signals.append({
             "signal_type": "dividend",
             "ticker": td.ticker,
-            "market": td.market,
             "last_price": round(float(td.last_price), 2),
             "current_yield": round(float(s.current_yield), 2),
             "yield_percentile": round(float(s.yield_percentile), 0),
-            "yield_p10": round(float(s.yield_p10), 2) if s.yield_p10 is not None else None,
-            "yield_p90": round(float(s.yield_p90), 2) if s.yield_p90 is not None else None,
-            "yield_hist_max": round(float(s.yield_hist_max), 2) if s.yield_hist_max is not None else None,
             "quality_score": round(float(td.dividend_quality_score), 0) if td.dividend_quality_score is not None else None,
             "payout_ratio": round(float(td.payout_ratio), 1) if td.payout_ratio is not None else None,
             "payout_type": td.payout_type or "GAAP",
@@ -179,10 +178,6 @@ def _build_agent_payload(
             "needs_reeval": s.needs_reeval,
             "quality_breakdown": td.quality_breakdown,
             "analysis_text": td.analysis_text or "",
-            "sgov_yield": td.sgov_yield,
-            "sgov_adjusted_apy": td.sgov_adjusted_apy,
-            "recommended_strategy": td.recommended_strategy,
-            "recommended_reason": td.recommended_reason,
         })
 
     return signals
@@ -481,13 +476,17 @@ def run_scan(config_path: str = "config.yaml"):
     logger.info(f"Scan completed in {elapsed:.1f}s")
 
 
-def run_risk_report(account_config, config):
-    """Fetch Flex data, analyze risk, save HTML report."""
+def run_risk_report(account_config, config, flex_file: str = ""):
+    """Fetch Flex data, run strategy recognition + risk engine, save HTML report."""
     store = RiskStore()
     client = FlexClient(token=account_config.flex_token, query_id=account_config.flex_query_id)
-    positions, account_summary = client.fetch()
+    if flex_file:
+        print(f"Loading positions from file: {flex_file}")
+        positions, account_summary = client.fetch_from_file(flex_file)
+    else:
+        positions, account_summary = client.fetch()
 
-    # Manual overrides via env vars (Option D): ACCOUNT_{KEY}_NLV / _CUSHION / _MAINT_MARGIN
+    # Manual overrides via env vars: ACCOUNT_{KEY}_NLV / _CUSHION / _MAINT_MARGIN
     key = account_config.key
     if nlv := os.environ.get(f"ACCOUNT_{key}_NLV"):
         account_summary.net_liquidation = float(nlv)
@@ -496,25 +495,21 @@ def run_risk_report(account_config, config):
     if maint := os.environ.get(f"ACCOUNT_{key}_MAINT_MARGIN"):
         account_summary.maint_margin_req = float(maint)
 
-    analyzer = PortfolioRiskAnalyzer()
-    report = analyzer.analyze(positions, account_summary)
+    # Layer 1: recognize strategies
+    recognizer = OptionStrategyRecognizer()
+    strategies = recognizer.recognize(positions)
+
+    # Layer 2: risk analysis
+    engine = StrategyRiskEngine()
+    report = engine.analyze(strategies, account_summary)
     report.account_id = account_config.key
 
-    # Generate AI suggestions for all alerts (red first, then yellow)
+    # Layer 3: LLM suggestions
     llm_cfg = config.get("llm", {}) if config else {}
-    for alert in sorted(report.alerts, key=lambda a: 0 if a.level == "red" else 1):
-        alert.ai_suggestion = generate_risk_suggestion(alert, llm_cfg)
-
-    # Portfolio-level summary
+    for alert in report.alerts:
+        if alert.severity == "red":
+            alert.ai_suggestion = generate_strategy_suggestion(alert, llm_cfg)
     report.portfolio_summary = generate_portfolio_summary(report, llm_cfg)
-
-    # Build top_actions: actionable red alerts, priority dims (4,6,7,9) first
-    _priority_dims = {4, 6, 7, 9}
-    red_alerts = [a for a in report.alerts if a.level == "red"]
-    report.top_actions = (
-        [a for a in red_alerts if a.dimension in _priority_dims]
-        + [a for a in red_alerts if a.dimension not in _priority_dims]
-    )[:5]
 
     html = generate_html_report(report)
     store.save_report(report, html)
@@ -524,11 +519,10 @@ def run_risk_report(account_config, config):
     with open(html_path, "w", encoding="utf-8") as f:
         f.write(html)
     print(f"Report saved: {html_path}")
-    red = sum(1 for a in report.alerts if a.level == "red")
-    yellow = sum(1 for a in report.alerts if a.level == "yellow")
+    red = sum(1 for a in report.alerts if a.severity == "red")
+    yellow = sum(1 for a in report.alerts if a.severity == "yellow")
     print(f"[{account_config.name}] NLV=${report.net_liquidation:,.0f} "
-          f"cushion={report.cushion*100:.1f}% "
-          f"alerts: {red} red / {yellow} yellow")
+          f"cushion={report.cushion * 100:.1f}% alerts: {red} red / {yellow} yellow")
 
 
 def run_all_accounts(config):
@@ -589,6 +583,8 @@ if __name__ == "__main__":
     parser.add_argument("--risk-history", action="store_true", help="Show risk history")
     parser.add_argument("--account", type=str, default="", help="Account key (e.g. ALICE)")
     parser.add_argument("--days", type=int, default=7, help="History days")
+    parser.add_argument("--flex-file", type=str, default="",
+                        help="Load positions from local Flex XML file instead of IBKR API")
     args = parser.parse_args()
 
     if args.risk_report:
@@ -599,7 +595,7 @@ if __name__ == "__main__":
             configs = load_account_configs()
             acct = next((c for c in configs if c.key == args.account.upper()), None)
             if acct:
-                run_risk_report(acct, cfg)
+                run_risk_report(acct, cfg, flex_file=args.flex_file)
             else:
                 print(f"Account '{args.account}' not found in env vars.")
         else:

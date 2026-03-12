@@ -404,30 +404,33 @@ def test_run_risk_report_env_override(monkeypatch):
     monkeypatch.setenv("ACCOUNT_TEST_CUSHION", "0.32")
     monkeypatch.setenv("ACCOUNT_TEST_MAINT_MARGIN", "85000")
 
-    from src.portfolio_risk import AccountConfig
+    from src.risk_utils import AccountConfig
     acct = AccountConfig(key="TEST", name="Test", code="",
                          flex_token="tok", flex_query_id="123")
 
-    from src.flex_client import PositionRecord, AccountSummary
+    from src.flex_client import AccountSummary
     mock_summary = AccountSummary(net_liquidation=0, gross_position_value=0,
                                   init_margin_req=0, maint_margin_req=0,
                                   excess_liquidity=0, available_funds=0, cushion=0)
 
     with patch("src.main.FlexClient") as MockFlex, \
-         patch("src.main.PortfolioRiskAnalyzer") as MockAnalyzer, \
+         patch("src.main.OptionStrategyRecognizer") as MockRecognizer, \
+         patch("src.main.StrategyRiskEngine") as MockEngine, \
          patch("src.main.generate_html_report", return_value="<html/>"), \
          patch("src.main.RiskStore"):
         MockFlex.return_value.fetch.return_value = ([], mock_summary)
-        MockAnalyzer.return_value.analyze.return_value = MagicMock(
+        mock_report = MagicMock(
             account_id="", report_date="2026-03-11",
-            net_liquidation=0, total_pnl=0, cushion=0, alerts=[]
+            net_liquidation=0, total_pnl=0, cushion=0, alerts=[],
+            portfolio_summary=""
         )
+        MockEngine.return_value.analyze.return_value = mock_report
+        MockRecognizer.return_value.recognize.return_value = []
         from src.main import run_risk_report
-        from src.config import load_config
         run_risk_report(acct, {})
 
     # Verify the summary passed to analyze() has overridden values
-    call_args = MockAnalyzer.return_value.analyze.call_args
+    call_args = MockEngine.return_value.analyze.call_args
     passed_summary = call_args[0][1]
     assert passed_summary.net_liquidation == 500000.0
     assert passed_summary.cushion == pytest.approx(0.32)
@@ -442,11 +445,12 @@ def test_main_risk_history_args(monkeypatch):
 
 
 def test_run_risk_report_populates_ai_suggestions(monkeypatch):
-    """run_risk_report calls generate_risk_suggestion for red alerts and sets ai_suggestion."""
+    """run_risk_report calls generate_strategy_suggestion for red alerts."""
     monkeypatch.setenv("ACCOUNT_TEST_NLV", "100000")
     monkeypatch.setenv("ACCOUNT_TEST_CUSHION", "0.05")
 
-    from src.portfolio_risk import AccountConfig, RiskAlert
+    from src.risk_utils import AccountConfig
+    from src.strategy_risk import StrategyRiskAlert
     from src.flex_client import AccountSummary
     acct = AccountConfig(key="TEST", name="Test", code="",
                          flex_token="tok", flex_query_id="123")
@@ -454,14 +458,17 @@ def test_run_risk_report_populates_ai_suggestions(monkeypatch):
                                   init_margin_req=0, maint_margin_req=0,
                                   excess_liquidity=0, available_funds=0, cushion=0)
 
-    red_alert = RiskAlert(dimension=4, level="red", ticker="ACCOUNT",
-                          detail="cushion 5.0%", options=["A", "B"])
+    red_alert = StrategyRiskAlert(rule_id=4, severity="red", urgency=True,
+                                   strategy_ref=None, underlying="ACCOUNT",
+                                   title="保证金危险", technical="cushion 5.0%",
+                                   plain="保证金不足。", options=["A", "B"])
 
     with patch("src.main.FlexClient") as MockFlex, \
-         patch("src.main.PortfolioRiskAnalyzer") as MockAnalyzer, \
+         patch("src.main.OptionStrategyRecognizer") as MockRecognizer, \
+         patch("src.main.StrategyRiskEngine") as MockEngine, \
          patch("src.main.generate_html_report", return_value="<html/>"), \
          patch("src.main.RiskStore"), \
-         patch("src.main.generate_risk_suggestion", return_value="AI建议文本") as mock_suggest:
+         patch("src.main.generate_strategy_suggestion", return_value="AI建议文本") as mock_suggest:
         MockFlex.return_value.fetch.return_value = ([], mock_summary)
         mock_report = MagicMock()
         mock_report.account_id = ""
@@ -470,7 +477,9 @@ def test_run_risk_report_populates_ai_suggestions(monkeypatch):
         mock_report.total_pnl = 0
         mock_report.cushion = 0.05
         mock_report.alerts = [red_alert]
-        MockAnalyzer.return_value.analyze.return_value = mock_report
+        mock_report.portfolio_summary = ""
+        MockEngine.return_value.analyze.return_value = mock_report
+        MockRecognizer.return_value.recognize.return_value = []
 
         from src.main import run_risk_report
         run_risk_report(acct, {})
