@@ -185,13 +185,19 @@ class IBPoller(EWrapper, EClient):
         self._portfolio_mark: Dict[int, float] = {}    # conId → mark price
         self._portfolio_pnl:  Dict[int, float] = {}    # conId → unrealizedPNL
         self._underlying_prices: Dict[str, float] = {} # symbol → stock price
+        # Underlying stock price requests (reqId range 3000+)
+        self._und_req_map: Dict[int, str] = {}         # reqId → symbol
+        self._und_done = threading.Event()
+        self._next_und_req_id = 3000
 
     # ── EWrapper callbacks ────────────────────────────────────────────────────
 
     def error(self, reqId: TickerId, errorCode: int, errorString: str, advancedOrderRejectJson=""):
         # 2104/2106/2158 = market data farm connection warnings (non-fatal)
-        # 354 = requested market data not subscribed (non-fatal for Greeks)
-        if errorCode in (2104, 2106, 2158, 354):
+        # 354   = requested market data not subscribed (non-fatal for Greeks)
+        # 10089/10090/10091/10167 = live data unavailable, degraded to delayed
+        #   (all informational — delayed price ticks will still arrive)
+        if errorCode in (2104, 2106, 2158, 354, 10089, 10090, 10091, 10167):
             return
         msg = f"IB error {errorCode}: {errorString} (reqId={reqId})"
         logger.warning(msg)
@@ -201,6 +207,10 @@ class IBPoller(EWrapper, EClient):
             del self._opt_req_map[reqId]
             if not self._opt_req_map:
                 self._greeks_done.set()
+        if reqId in self._und_req_map:
+            del self._und_req_map[reqId]
+            if not self._und_req_map:
+                self._und_done.set()
 
     def position(self, account: str, contract: Contract, position: float, avgCost: float):
         """Called once per position."""
@@ -268,6 +278,24 @@ class IBPoller(EWrapper, EClient):
         elif contract.secType == "OPT":
             self._portfolio_mark[con_id] = float(marketPrice)
             self._portfolio_pnl[con_id]  = float(unrealizedPNL) if unrealizedPNL else 0.0
+
+    def tickPrice(self, reqId: TickerId, tickType: int, price: float, attrib):
+        """Called for stock price ticks.
+        Live: 4=last, 9=close.  Delayed: 66=delayed_last, 75=delayed_close.
+        """
+        if reqId not in self._und_req_map:
+            return
+        if tickType not in (4, 9, 66, 75):
+            return
+        if price and 0 < price < 1e9:
+            sym = self._und_req_map[reqId]
+            self._underlying_prices[sym] = float(price)
+            logger.debug(f"Underlying price: {sym} = {price:.2f} (tickType={tickType})")
+            del self._und_req_map[reqId]
+            self.cancelMktData(reqId)
+            if not self._und_req_map:
+                logger.info("All underlying prices received")
+                self._und_done.set()
 
     def tickOptionComputation(
         self, reqId: TickerId, tickType: int, tickAttrib: int,
@@ -380,90 +408,37 @@ class IBPoller(EWrapper, EClient):
         logger.info(f"BS Greeks filled for {filled} options "
                     f"(underlying prices available: {len(self._underlying_prices)})")
 
-    def _fetch_missing_underlying_prices(self) -> None:
-        """Use yfinance to fill underlying prices for options whose stock is
-        not held in the portfolio (so updatePortfolio never sent the price).
-        Respects VERIFY_SSL=false for corporate proxy environments.
+    def _request_missing_underlyings(self) -> None:
+        """Subscribe to market data for underlying stocks whose price wasn't
+        provided by updatePortfolio (i.e. we hold options but not the stock).
+        Uses IB Gateway directly — no external dependencies, no rate limits.
         """
-        try:
-            import yfinance as yf
-        except ImportError:
-            logger.warning("yfinance not installed — skipping fallback prices. "
-                           "Run: pip install yfinance")
-            return
-
-        # Collect symbols needed but missing
-        missing: Dict[str, str] = {}  # underlying_symbol → currency
-        for contract, pos_data in self._opt_contracts:
+        missing: Dict[str, str] = {}  # symbol → currency
+        for _, pos_data in self._opt_contracts:
             sym = pos_data.underlying_symbol
             if sym not in self._underlying_prices:
                 missing[sym] = pos_data.currency
 
         if not missing:
+            self._und_done.set()
             return
 
-        logger.info(f"Fetching {len(missing)} missing underlying prices via yfinance…")
+        logger.info(f"Requesting {len(missing)} missing underlying prices from IB…")
 
-        # Build a session that bypasses SSL for corporate proxies (VERIFY_SSL=false)
-        verify_ssl = os.environ.get("VERIFY_SSL", "true").lower() != "false"
-        session = None
-        if not verify_ssl:
-            import urllib3
-            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-            try:
-                # yfinance >= 0.2 uses curl_cffi; pass verify=False via its session
-                import curl_cffi.requests as _curl
-                session = _curl.Session(verify=False)
-            except ImportError:
-                # older yfinance uses requests
-                import requests as _req
-                s = _req.Session()
-                s.verify = False
-                session = s
+        # Request delayed-frozen data so IB delivers last close when market is shut
+        self.reqMarketDataType(4)
 
-        # Map yfinance ticker → original symbol for reverse lookup
-        yf_map: Dict[str, str] = {
-            self._to_yf_ticker(sym, cur): sym for sym, cur in missing.items()
-        }
-        yf_tickers = list(yf_map.keys())
+        for sym, currency in missing.items():
+            stk = Contract()
+            stk.symbol = sym
+            stk.secType = "STK"
+            stk.currency = currency
+            stk.exchange = "SEHK" if currency == "HKD" else "SMART"
 
-        try:
-            import pandas as pd
-            kwargs: dict = {"period": "2d", "progress": False, "auto_adjust": True}
-            if session:
-                kwargs["session"] = session
-            df = yf.download(yf_tickers, **kwargs)
-            if df.empty:
-                logger.warning("yfinance returned empty data (rate limited or no market data)")
-            else:
-                # df columns: ("Close", ticker) when multi-ticker, or just "Close" for single
-                close_col = df["Close"] if "Close" in df.columns else df
-                last_row = close_col.iloc[-1]
-                for yf_tick, sym in yf_map.items():
-                    if isinstance(last_row, pd.Series):
-                        price = last_row.get(yf_tick)
-                    else:
-                        price = float(last_row) if len(yf_tickers) == 1 else None
-                    if price is not None and not pd.isna(price) and float(price) > 0:
-                        self._underlying_prices[sym] = float(price)
-                        logger.debug(f"yfinance price: {sym} ({yf_tick}) = {price:.2f}")
-        except Exception as e:
-            logger.warning(f"yfinance batch download failed: {e}")
-
-        fetched = sum(1 for sym in missing if sym in self._underlying_prices)
-        logger.info(f"yfinance: fetched {fetched}/{len(missing)} missing underlying prices")
-
-    @staticmethod
-    def _to_yf_ticker(symbol: str, currency: str) -> str:
-        """Convert IB underlying symbol to yfinance ticker."""
-        if currency == "HKD":
-            # IB: "941", "3968" → yfinance: "0941.HK", "3968.HK"
-            try:
-                return f"{int(symbol):04d}.HK"
-            except ValueError:
-                return f"{symbol}.HK"
-        # US: handle edge cases like "BRK B" → "BRK-B"
-        return symbol.replace(" ", "-")
+            req_id = self._next_und_req_id
+            self._next_und_req_id += 1
+            self._und_req_map[req_id] = sym
+            self.reqMktData(req_id, stk, "", False, False, [])
 
     @staticmethod
     def _dte_days(expiry_str: str) -> Optional[int]:
@@ -515,8 +490,17 @@ def fetch_from_gateway(
         poller.disconnect()
         raise RuntimeError("Timeout waiting for positions from IB Gateway")
 
-    # Step 2a: supplement underlying prices for options without a stock position
-    poller._fetch_missing_underlying_prices()
+    # Step 2a: request underlying stock prices for options without a stock position
+    poller._request_missing_underlyings()
+    und_ok = poller._und_done.wait(timeout=15)
+    if not und_ok:
+        missing_still = len(poller._und_req_map)
+        logger.warning(f"Underlying price timeout — {missing_still} symbols still missing, "
+                       "proceeding with partial BS Greeks")
+        for req_id in list(poller._und_req_map.keys()):
+            poller.cancelMktData(req_id)
+
+    logger.info(f"Underlying prices available: {len(poller._underlying_prices)}")
 
     # Step 2b: compute BS Greeks from updatePortfolio data (fills all options,
     #          including HK/SEHK which don't respond to reqMktData after close)
