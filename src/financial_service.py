@@ -160,6 +160,65 @@ class FinancialServiceAnalyzer:
             logger.warning(f"Defensiveness scoring failed for {sector}/{industry} [{type(e).__name__}]: {e}, using 50.0")
             return 50.0
 
+    def _get_health_assessment(self, ticker: str, fundamentals: Dict[str, Any]) -> Optional[Dict]:
+        """LLM health assessment for anomalous companies. Returns {health_score, fcf_payout_est, rationale} or None."""
+        if self.store:
+            cached = self.store.get_health_assessment(ticker)
+            if cached is not None:
+                logger.debug(f"Health assessment cache hit: {ticker}")
+                return cached
+        try:
+            client = self._get_client()
+            sector = fundamentals.get("sector") or ""
+            industry = fundamentals.get("industry") or ""
+            payout = fundamentals.get("payout_ratio") or 0.0
+            de = fundamentals.get("debt_to_equity") or 0.0
+            roe = fundamentals.get("roe") or 0.0
+            consec = fundamentals.get("consecutive_years") or 0
+            growth = fundamentals.get("dividend_growth_5y") or 0.0
+            fcf = fundamentals.get("free_cash_flow")
+            shares = fundamentals.get("shares_outstanding")
+            annual_div = fundamentals.get("annual_dividend")
+
+            fcf_info = ""
+            if fcf and fcf > 0 and shares and annual_div:
+                fcf_payout_real = (annual_div * shares / fcf) * 100
+                fcf_info = f"自由现金流派息率（实际）: {fcf_payout_real:.1f}%\n"
+
+            prompt = (
+                f"股票: {ticker} | 行业: {sector}/{industry}\n"
+                f"GAAP派息率: {payout:.1f}% | 资产负债率(D/E): {de:.0f}x | ROE: {roe:.1f}%\n"
+                f"连续派息: {consec}年 | 股息5年CAGR: {growth:.1f}%\n"
+                f"{fcf_info}"
+                "注意：D/E极高或ROE异常通常表示负账面净资产（大量股票回购或并购摊销），GAAP派息率可能失真。\n"
+                "请评估该公司真实的股息安全性，估算FCF派息率（若无数据则根据行业特征估算），给出综合财务健康分。\n"
+                '返回严格JSON: {"health_score": float(0-100), "fcf_payout_est": float(%), "rationale": "1句中文说明"}'
+            )
+            raw = client.simple_chat(
+                "你是专业股息分析师。只返回严格JSON，不加任何解释或markdown。",
+                prompt,
+                max_tokens=150,
+            )
+            raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+            data = json.loads(raw)
+            result = {
+                "health_score": float(data["health_score"]),
+                "fcf_payout_est": float(data["fcf_payout_est"]),
+                "rationale": str(data.get("rationale", "")),
+            }
+            if self.store:
+                self.store.save_health_assessment(
+                    ticker,
+                    health_score=result["health_score"],
+                    fcf_payout_est=result["fcf_payout_est"],
+                    rationale=result["rationale"],
+                )
+            logger.info(f"Health assessment: {ticker} → score={result['health_score']:.0f}, fcf_payout={result['fcf_payout_est']:.1f}% ({result['rationale']})")
+            return result
+        except Exception as e:
+            logger.warning(f"Health assessment failed for {ticker} [{type(e).__name__}]: {e}, using rule-based")
+            return None
+
     def _get_analysis_text(self, ticker: str, sector: str, industry: str,
                            quality_result: "DividendQualityScore",
                            fundamentals: Dict[str, Any] = None) -> str:
@@ -312,6 +371,19 @@ class FinancialServiceAnalyzer:
         # 3. 行业防御性评分（LLM评分或固定50分）
         defensiveness_score = defensiveness_override if defensiveness_override is not None else 50.0
 
+        # 3b. LLM health override for anomalous companies (negative equity / GAAP distortion)
+        health_rationale = None
+        if self._is_anomalous(fundamentals) and self._has_llm_key():
+            assessment = self._get_health_assessment(ticker, fundamentals)
+            if assessment:
+                health_score = float(assessment["health_score"])
+                effective_payout_ratio = float(assessment["fcf_payout_est"])
+                payout_type = "LLM"
+                payout_score = 40.0 if effective_payout_ratio < 70 else 20.0
+                health_rationale = assessment["rationale"]
+                # Recompute health_score cap (LLM value is already 0-100)
+                health_score = max(0.0, min(100.0, health_score))
+
         # 4. 综合评分（加权平均）
         overall_score = (
             stability_score * 0.4 +
@@ -353,6 +425,7 @@ class FinancialServiceAnalyzer:
             effective_payout_ratio=effective_payout_ratio,
             quality_breakdown=quality_breakdown,
             analysis_text="",
+            health_rationale=health_rationale,
         )
 
 

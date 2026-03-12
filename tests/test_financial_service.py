@@ -573,6 +573,71 @@ def test_analysis_text_prompt_includes_business_structure(tmp_path):
 
 # ── Task 1: Anomaly Detection + health_rationale field ──────────────────────
 
+# ── Task 3: LLM Health Assessment + Score Override ──────────────────────────
+
+def test_llm_health_assessment_overrides_rule_score():
+    """For anomalous company, LLM health_score replaces rule-based value."""
+    mock_store = MagicMock()
+    mock_store.get_health_assessment.return_value = None  # no cache
+    analyzer = FinancialServiceAnalyzer(enabled=True, api_key="fake-key", store=mock_store)
+    fundamentals = {
+        "consecutive_years": 11, "dividend_growth_5y": 7.0,
+        "roe": 126.0, "debt_to_equity": 464.0,
+        "payout_ratio": 103.7, "sector": "Consumer Defensive",
+        "industry": "Household Products",
+        "free_cash_flow": 2_000_000_000, "shares_outstanding": 340_000_000,
+        "annual_dividend": 5.00,
+    }
+    mock_response = '{"health_score": 72.0, "fcf_payout_est": 55.0, "rationale": "KMB负净资产结构，FCF派息率约55%，实际安全"}'
+    with patch.object(analyzer, '_get_client') as mock_get_client:
+        mock_client = MagicMock()
+        mock_client.simple_chat.return_value = mock_response
+        mock_get_client.return_value = mock_client
+        result = analyzer._calculate_rule_based_score("KMB", fundamentals)
+    assert result.health_score == 72.0
+    assert result.payout_type == "LLM"
+    assert abs(result.effective_payout_ratio - 55.0) < 0.1
+    assert "负净资产" in (result.health_rationale or "")
+
+
+def test_llm_health_failure_falls_back_to_rules():
+    """LLM failure leaves rule-based health_score intact."""
+    mock_store = MagicMock()
+    mock_store.get_health_assessment.return_value = None
+    analyzer = FinancialServiceAnalyzer(enabled=True, api_key="fake-key", store=mock_store)
+    fundamentals = {
+        "consecutive_years": 11, "dividend_growth_5y": 7.0,
+        "roe": 126.0, "debt_to_equity": 464.0,
+        "payout_ratio": 103.7, "sector": "Consumer Defensive",
+        "industry": "Household Products",
+    }
+    with patch.object(analyzer, '_get_client') as mock_get_client:
+        mock_client = MagicMock()
+        mock_client.simple_chat.side_effect = Exception("LLM error")
+        mock_get_client.return_value = mock_client
+        result = analyzer._calculate_rule_based_score("KMB", fundamentals)
+    # Falls back: health_rationale is None, payout_type is GAAP, health_score is rule-based
+    assert result.health_rationale is None
+    assert result.payout_type == "GAAP"
+    assert result.health_score >= 0  # rule-based value
+
+
+def test_normal_company_skips_llm():
+    """Normal company (D/E 50, payout 65%) does not call LLM."""
+    mock_store = MagicMock()
+    analyzer = FinancialServiceAnalyzer(enabled=True, api_key="fake-key", store=mock_store)
+    fundamentals = {
+        "consecutive_years": 8, "dividend_growth_5y": 5.0,
+        "roe": 15.0, "debt_to_equity": 50.0, "payout_ratio": 65.0,
+        "sector": "Consumer Defensive",
+    }
+    with patch.object(analyzer, '_get_client') as mock_get_client:
+        analyzer._calculate_rule_based_score("KO", fundamentals)
+        mock_get_client.assert_not_called()
+
+
+# ── Task 1: Anomaly Detection + health_rationale field ──────────────────────
+
 def test_anomaly_detection_negative_equity():
     """D/E > 200 triggers anomaly detection (negative book equity signal)."""
     analyzer = FinancialServiceAnalyzer(enabled=False, fallback_to_rules=True)
