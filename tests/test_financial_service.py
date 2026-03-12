@@ -569,3 +569,39 @@ def test_analysis_text_prompt_includes_business_structure(tmp_path):
     assert "增量新业务" in user_message, f"Prompt missing '增量新业务': {user_message}"
     assert "估值区间" in user_message, f"Prompt missing '估值区间': {user_message}"
     store.close()
+
+
+# ── Task 1: Anomaly Detection + health_rationale field ──────────────────────
+
+def test_anomaly_detection_negative_equity():
+    """D/E > 200 triggers anomaly detection (negative book equity signal)."""
+    analyzer = FinancialServiceAnalyzer(enabled=False, fallback_to_rules=True)
+    assert analyzer._is_anomalous({"debt_to_equity": 250, "payout_ratio": 60, "sector": "Consumer Defensive"}) is True
+
+
+def test_anomaly_detection_gaap_payout_over_100():
+    """GAAP payout > 100% outside FCF sectors triggers anomaly."""
+    analyzer = FinancialServiceAnalyzer(enabled=False, fallback_to_rules=True)
+    assert analyzer._is_anomalous({"debt_to_equity": 50, "payout_ratio": 103, "sector": "Consumer Defensive"}) is True
+
+
+def test_anomaly_detection_normal_company():
+    """Normal company (D/E 50, payout 65%) does NOT trigger."""
+    analyzer = FinancialServiceAnalyzer(enabled=False, fallback_to_rules=True)
+    assert analyzer._is_anomalous({"debt_to_equity": 50, "payout_ratio": 65, "sector": "Consumer Defensive"}) is False
+
+
+def test_anomaly_detection_fcf_sector_payout_over_100_not_anomalous():
+    """Energy sector with payout > 100% is handled by FCF logic, not anomaly."""
+    analyzer = FinancialServiceAnalyzer(enabled=False, fallback_to_rules=True)
+    assert analyzer._is_anomalous({"debt_to_equity": 50, "payout_ratio": 110, "sector": "Energy"}) is False
+
+
+def test_dividend_quality_score_has_health_rationale():
+    """DividendQualityScore supports health_rationale field."""
+    score = DividendQualityScore(
+        overall_score=77.0, stability_score=80.0, health_score=70.0,
+        defensiveness_score=75.0, risk_flags=[],
+        health_rationale="KMB负净资产结构，FCF派息率约55%，实际安全"
+    )
+    assert score.health_rationale == "KMB负净资产结构，FCF派息率约55%，实际安全"

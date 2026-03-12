@@ -55,6 +55,7 @@ class DividendQualityScore:
     # ^ Independent display view (5 dims × 0-20 = max 100).
     # NOT a mathematical decomposition of overall_score.
     analysis_text: Optional[str] = None
+    health_rationale: Optional[str] = None
 
 
 class FinancialServiceAnalyzer:
@@ -94,6 +95,18 @@ class FinancialServiceAnalyzer:
         self.model = model
         self.store = store
         self._client = None
+
+    @staticmethod
+    def _is_anomalous(fundamentals: Dict[str, Any]) -> bool:
+        """Return True if GAAP metrics are likely distorted (negative equity or payout > 100% outside FCF sectors)."""
+        de = fundamentals.get("debt_to_equity") or 0.0
+        payout = fundamentals.get("payout_ratio") or 0.0
+        sector = fundamentals.get("sector") or ""
+        if de > 200:
+            return True
+        if payout > 100 and sector not in FCF_PAYOUT_SECTORS:
+            return True
+        return False
 
     def _has_llm_key(self) -> bool:
         """Return True if any LLM API key is available."""
