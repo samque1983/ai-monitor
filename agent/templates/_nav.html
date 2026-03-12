@@ -27,6 +27,7 @@
   border-right: 1px solid var(--border);
   flex-direction: column;
   z-index: 100;
+  overflow: hidden;
 }
 .sidebar-brand {
   padding: 28px 20px 24px;
@@ -174,51 +175,156 @@
   }
   .mobile-topbar { display: none; }
   .bottom-nav { display: none; }
+
+  /* ── Drill-down two-panel structure ── */
+  .sidebar-root,
+  .sidebar-sub {
+    position: absolute;
+    top: 0; left: 0; width: 100%; height: 100%;
+    display: flex; flex-direction: column;
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow-y: auto; scrollbar-width: none;
+  }
+  .sidebar-root::-webkit-scrollbar,
+  .sidebar-sub::-webkit-scrollbar { display: none; }
+  .sidebar-root { transform: translateX(0); }
+  .sidebar-root.hidden { transform: translateX(-100%); }
+  .sidebar-sub { transform: translateX(100%); }
+  .sidebar-sub.visible { transform: translateX(0); }
+
+  /* Sub panel header */
+  .sidebar-sub-header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 14px 16px 12px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .sidebar-back {
+    display: flex; align-items: center; gap: 4px;
+    padding: 4px 8px 4px 4px;
+    border: none; background: transparent;
+    color: var(--text-3); cursor: pointer;
+    font-size: 12px; font-family: "DM Sans", sans-serif;
+    border-radius: 6px;
+    transition: color 0.15s, background 0.15s;
+  }
+  .sidebar-back:hover { color: var(--text); background: var(--surface-2); }
+  .sidebar-back svg { flex-shrink: 0; }
+  .sidebar-sub-title {
+    font-size: 14px; font-weight: 600; color: var(--text);
+    font-family: "DM Sans", sans-serif;
+  }
+  .sidebar-sub-content {
+    flex: 1; overflow-y: auto; padding: 12px 0;
+    scrollbar-width: none;
+  }
+  .sidebar-sub-content::-webkit-scrollbar { display: none; }
+  .sidebar-divider { height: 1px; background: var(--border-2); margin: 8px 0; }
+
+  /* Filter buttons */
+  .sidebar-group { margin-bottom: 4px; }
+  .sidebar-group-label {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--text-3);
+    padding: 10px 20px 4px;
+  }
+  .sidebar-filter-btn {
+    display: flex; align-items: center; gap: 8px;
+    width: 100%; padding: 8px 20px;
+    border: none; background: transparent;
+    color: var(--text-2); font-size: 13px;
+    font-family: "DM Sans", sans-serif;
+    cursor: pointer; text-align: left;
+    transition: background 0.15s, color 0.15s;
+    position: relative;
+  }
+  .sidebar-filter-btn:hover { background: var(--surface-2); color: var(--text); }
+  .sidebar-filter-btn.active { color: var(--text); background: var(--surface-2); }
+  .sidebar-filter-btn.active::before {
+    content: '';
+    position: absolute; left: 0; top: 20%; bottom: 20%;
+    width: 3px; border-radius: 2px; background: var(--amber);
+  }
+  .sidebar-filter-count {
+    margin-left: auto;
+    font-family: "DM Mono", monospace; font-size: 11px; color: var(--text-3);
+  }
+  .sidebar-time { padding-bottom: 8px; }
+  .sidebar-time-btn {
+    display: block; width: 100%; padding: 8px 20px;
+    border: none; background: transparent;
+    color: var(--text-3); font-size: 13px;
+    font-family: "DM Sans", sans-serif;
+    cursor: pointer; text-align: left;
+    transition: background 0.15s, color 0.15s;
+  }
+  .sidebar-time-btn:hover { background: var(--surface-2); color: var(--text-2); }
+  .sidebar-time-btn.active { color: var(--text); background: var(--surface-2); }
 }
 </style>
 
 <!-- SIDEBAR -->
 <aside class="sidebar">
-  <div class="sidebar-brand">
-    <div class="brand-eyebrow"><span class="brand-pulse"></span>寻找机会 监控风险</div>
-    <div class="brand-title">AI 领航员</div>
-    <div class="brand-sub">v1.9 · LIVE</div>
+
+  <!-- Panel 1: Root nav -->
+  <div class="sidebar-root" id="sidebar-root">
+    <div class="sidebar-brand">
+      <div class="brand-eyebrow"><span class="brand-pulse"></span>寻找机会 监控风险</div>
+      <div class="brand-title">AI 领航员</div>
+      <div class="brand-sub">v1.9 · LIVE</div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-group-label">监控</div>
+      <a class="nav-item {% if active_page == 'dashboard' %}active{% endif %}" href="/dashboard"
+        {% if active_page == 'dashboard' %}onclick="event.preventDefault(); showSubPanel();"{% endif %}>
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="2"/><path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 6a6 6 0 1 0 6 6"/><line x1="12" y1="12" x2="18.5" y2="5.5"/>
+        </svg>
+        <span class="nav-item-text">市场雷达</span>
+        {% if signal_count > 0 %}<span class="nav-badge">{{ signal_count }}</span>{% endif %}
+      </a>
+      <a class="nav-item {% if active_page == 'risk' %}active{% endif %}" href="/risk-report">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        <span class="nav-item-text">风险报告</span>
+      </a>
+      <div class="nav-group-label" style="margin-top:4px;">AI</div>
+      <a class="nav-item {% if active_page == 'chat' %}active{% endif %}" href="/chat">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          <circle cx="9" cy="10" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="10" r="1" fill="currentColor" stroke="none"/><circle cx="15" cy="10" r="1" fill="currentColor" stroke="none"/>
+        </svg>
+        <span class="nav-item-text">AI 领航</span>
+      </a>
+      <div class="nav-group-label" style="margin-top:4px;">设置</div>
+      <a class="nav-item {% if active_page == 'watchlist' %}active{% endif %}" href="/watchlist">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+        </svg>
+        <span class="nav-item-text">自选池</span>
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="footer-time" id="nav-clock">--:--:--</div>
+      <div class="footer-date" id="nav-date">----/--/--</div>
+    </div>
   </div>
-  <nav class="sidebar-nav">
-    <div class="nav-group-label">监控</div>
-    <a class="nav-item {% if active_page == 'dashboard' %}active{% endif %}" href="/dashboard">
-      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="2"/><path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 6a6 6 0 1 0 6 6"/><line x1="12" y1="12" x2="18.5" y2="5.5"/>
-      </svg>
-      <span class="nav-item-text">市场雷达</span>
-      {% if signal_count > 0 %}<span class="nav-badge">{{ signal_count }}</span>{% endif %}
-    </a>
-    <a class="nav-item {% if active_page == 'risk' %}active{% endif %}" href="/risk-report">
-      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-      </svg>
-      <span class="nav-item-text">风险报告</span>
-    </a>
-    <div class="nav-group-label" style="margin-top:4px;">AI</div>
-    <a class="nav-item {% if active_page == 'chat' %}active{% endif %}" href="/chat">
-      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-        <circle cx="9" cy="10" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="10" r="1" fill="currentColor" stroke="none"/><circle cx="15" cy="10" r="1" fill="currentColor" stroke="none"/>
-      </svg>
-      <span class="nav-item-text">AI 领航</span>
-    </a>
-    <div class="nav-group-label" style="margin-top:4px;">设置</div>
-    <a class="nav-item {% if active_page == 'watchlist' %}active{% endif %}" href="/watchlist">
-      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-      </svg>
-      <span class="nav-item-text">自选池</span>
-    </a>
-  </nav>
-  <div class="sidebar-footer">
-    <div class="footer-time" id="nav-clock">--:--:--</div>
-    <div class="footer-date" id="nav-date">----/--/--</div>
+
+  <!-- Panel 2: Sub panel (populated by page JS) -->
+  <div class="sidebar-sub" id="sidebar-sub">
+    <div class="sidebar-sub-header">
+      <button class="sidebar-back" onclick="typeof showRootPanel==='function' && showRootPanel()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="15 18 9 12 15 6"/>
+        </svg>
+        返回
+      </button>
+      <span class="sidebar-sub-title" id="sidebar-sub-title"></span>
+    </div>
+    <div class="sidebar-sub-content" id="sidebar-sub-content"></div>
   </div>
+
 </aside>
 
 <!-- MOBILE TOP BAR -->

@@ -443,6 +443,60 @@ const currentFilters = Object.fromEntries(
   FILTER_CONFIG.map(f => [f.id, 'all'])
 );
 
+// ── Sidebar drill-down ────────────────────────────────────────────────────
+function showSubPanel() {
+  const subTitle = document.getElementById('sidebar-sub-title');
+  if (subTitle) subTitle.textContent = '市场雷达';
+  const root = document.getElementById('sidebar-root');
+  const sub  = document.getElementById('sidebar-sub');
+  if (root) root.classList.add('hidden');
+  if (sub)  sub.classList.add('visible');
+}
+
+function showRootPanel() {
+  const root = document.getElementById('sidebar-root');
+  const sub  = document.getElementById('sidebar-sub');
+  if (root) root.classList.remove('hidden');
+  if (sub)  sub.classList.remove('visible');
+}
+
+// ── Sidebar filter render ─────────────────────────────────────────────────
+function buildSidebarFilters() {
+  const groups = FILTER_CONFIG.map(f => {
+    const btns = f.options.map(opt => {
+      const active = currentFilters[f.id] === opt.value ? ' active' : '';
+      const count = allSignals.filter(s =>
+        FILTER_CONFIG.every(other =>
+          other.id === f.id
+            ? other.match(s, opt.value)
+            : other.match(s, currentFilters[other.id])
+        )
+      ).length;
+      return `<button class="sidebar-filter-btn${active}"
+        data-filter-id="${f.id}" data-filter-value="${opt.value}">
+        ${opt.label}<span class="sidebar-filter-count">${count}</span>
+      </button>`;
+    }).join('');
+    return `<div class="sidebar-group">
+      <div class="sidebar-group-label">${f.label}</div>
+      ${btns}
+    </div>`;
+  }).join('');
+
+  const ranges = [
+    { value: '24h', label: '24小时' },
+    { value: '7d',  label: '最近一周' },
+    { value: '30d', label: '最近一月' },
+  ];
+  const timeBtns = ranges.map(r =>
+    `<button class="sidebar-time-btn${r.value === currentRange ? ' active' : ''}" data-range="${r.value}">${r.label}</button>`
+  ).join('');
+
+  return groups
+    + `<div class="sidebar-divider"></div>`
+    + `<div class="sidebar-time"><div class="sidebar-group-label">时间范围</div>${timeBtns}</div>`;
+}
+
 // ── Mobile chip rows render ───────────────────────────────────────────────
 function buildMobileChips() {
   return FILTER_CONFIG.map(f => {
@@ -458,11 +512,10 @@ function buildMobileChips() {
 }
 
 function renderFilterUI() {
+  const subEl = document.getElementById('sidebar-sub-content');
+  if (subEl) subEl.innerHTML = buildSidebarFilters();
   const mobileEl = document.getElementById('mobile-chips-container');
   if (mobileEl) mobileEl.innerHTML = buildMobileChips();
-  // Sync last-updated
-  const mainMeta = document.getElementById('last-updated');
-  if (mainMeta) mainMeta.textContent = mainMeta.textContent;
 }
 
 // ── Fetch ─────────────────────────────────────────────────────────────────
@@ -1170,7 +1223,10 @@ document.addEventListener('click', e => {
 });
 
 // ── Init ──────────────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', load);
+document.addEventListener('DOMContentLoaded', () => {
+  load();
+  showSubPanel();
+});
 </script>
 </body>
 </html>
