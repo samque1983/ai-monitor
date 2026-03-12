@@ -271,9 +271,13 @@ class FinancialServiceAnalyzer:
         sector = fundamentals.get('sector') or ''
         free_cash_flow = fundamentals.get('free_cash_flow')
         annual_dividend = fundamentals.get('annual_dividend')
+        shares_outstanding = fundamentals.get('shares_outstanding')
 
-        if sector in FCF_PAYOUT_SECTORS and free_cash_flow and annual_dividend and free_cash_flow > 0:
-            effective_payout_ratio = (annual_dividend / free_cash_flow) * 100
+        if (sector in FCF_PAYOUT_SECTORS
+                and free_cash_flow and free_cash_flow > 0
+                and annual_dividend and shares_outstanding):
+            total_dividends = annual_dividend * shares_outstanding
+            effective_payout_ratio = (total_dividends / free_cash_flow) * 100
             payout_type = "FCF"
         else:
             effective_payout_ratio = fundamentals.get('payout_ratio') or 0.0

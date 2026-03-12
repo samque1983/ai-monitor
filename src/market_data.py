@@ -674,6 +674,7 @@ class MarketDataProvider:
                 "industry": info.get("industry"),
                 "sector": info.get("sector"),
                 "free_cash_flow": info.get("freeCashflow"),
+                "shares_outstanding": info.get("sharesOutstanding"),
                 "dividend_yield": dividend_yield,
                 "company_name": company_name,
                 "forward_dividend_rate": info.get("forwardAnnualDividendRate"),

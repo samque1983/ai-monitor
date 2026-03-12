@@ -187,10 +187,11 @@ def test_fcf_payout_used_for_capital_intensive_sectors(sector):
         'dividend_growth_5y': 3.0,
         'roe': 12.0,
         'debt_to_equity': 1.5,
-        'payout_ratio': 120.0,      # GAAP payout > 100 — would trigger exclusion
+        'payout_ratio': 120.0,          # GAAP payout > 100 — would trigger exclusion
         'sector': sector,
-        'free_cash_flow': 5_000_000,
-        'annual_dividend': 3_000_000,  # FCF payout = 60% — healthy
+        'free_cash_flow': 5_000_000_000,    # $5B total FCF
+        'annual_dividend': 3.00,             # $3.00 per share (TTM)
+        'shares_outstanding': 1_000_000_000, # 1B shares → total = $3B → FCF payout = 60%
     }
     result = analyzer.analyze_dividend_quality("TEST", fundamentals)
     assert result is not None
@@ -214,6 +215,50 @@ def test_gaap_payout_used_for_non_fcf_sectors():
     result = analyzer.analyze_dividend_quality("TEST", fundamentals)
     assert result.payout_type == "GAAP"
     assert result.effective_payout_ratio == pytest.approx(65.0)
+
+
+def test_fcf_payout_uses_per_share_dividend_with_shares_outstanding():
+    """FCF payout must convert per-share dividend to total via shares_outstanding.
+
+    Real-world units: annual_dividend is per-share ($3.80/share),
+    free_cash_flow is total company dollars ($18B). Without shares_outstanding
+    the ratio would be ~0% instead of the correct ~21%.
+    """
+    analyzer = FinancialServiceAnalyzer(enabled=False, fallback_to_rules=True)
+    fundamentals = {
+        'consecutive_years': 10,
+        'dividend_growth_5y': 5.0,
+        'roe': 15.0,
+        'debt_to_equity': 0.8,
+        'payout_ratio': 120.0,          # GAAP > 100 — would wrongly exclude
+        'sector': 'Energy',
+        'free_cash_flow': 18_000_000_000,   # $18B total FCF
+        'annual_dividend': 3.80,             # $3.80 per share (TTM)
+        'shares_outstanding': 1_000_000_000, # 1B shares
+    }
+    result = analyzer.analyze_dividend_quality("XOM", fundamentals)
+    assert result.payout_type == "FCF"
+    # (3.80 * 1_000_000_000) / 18_000_000_000 * 100 = 21.1%
+    assert result.effective_payout_ratio == pytest.approx(21.1, rel=0.01)
+
+
+def test_fcf_payout_fallback_when_shares_outstanding_missing():
+    """FCF sector with missing shares_outstanding falls back to GAAP payout."""
+    analyzer = FinancialServiceAnalyzer(enabled=False, fallback_to_rules=True)
+    fundamentals = {
+        'consecutive_years': 8,
+        'dividend_growth_5y': 3.0,
+        'roe': 12.0,
+        'debt_to_equity': 1.0,
+        'payout_ratio': 55.0,
+        'sector': 'Energy',
+        'free_cash_flow': 18_000_000_000,
+        'annual_dividend': 3.80,
+        'shares_outstanding': None,     # missing → cannot compute total dividends
+    }
+    result = analyzer.analyze_dividend_quality("XOM", fundamentals)
+    assert result.payout_type == "GAAP"
+    assert result.effective_payout_ratio == pytest.approx(55.0)
 
 
 def test_fcf_payout_fallback_when_free_cash_flow_missing():
