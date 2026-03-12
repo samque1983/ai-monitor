@@ -185,13 +185,27 @@ class FinancialServiceAnalyzer:
                 fcf_payout_real = (annual_div * shares / fcf) * 100
                 fcf_info = f"自由现金流派息率（实际）: {fcf_payout_real:.1f}%\n"
 
+            has_real_fcf = bool(fcf_info)
+            fcf_guidance = (
+                f"{fcf_info}"
+                if has_real_fcf else
+                "注意：本次无实际FCF数据。估算fcf_payout_est时必须基于该行业典型FCF margin，"
+                "切勿受D/E或GAAP派息率数字影响拔高估算值。\n"
+                "行业FCF派息率参考基准（无数据时使用）：\n"
+                "  必需消费品(KMB/CL/MO等): 60-90%\n"
+                "  工业/医疗: 50-80%\n"
+                "  科技: 30-60%\n"
+                "  金融/银行: 30-50%\n"
+                "  能源管道: 80-120%\n"
+            )
             prompt = (
                 f"股票: {ticker} | 行业: {sector}/{industry}\n"
                 f"GAAP派息率: {payout:.1f}% | 资产负债率(D/E): {de:.0f}x | ROE: {roe:.1f}%\n"
                 f"连续派息: {consec}年 | 股息5年CAGR: {growth:.1f}%\n"
-                f"{fcf_info}"
-                "注意：D/E极高或ROE异常通常表示负账面净资产（大量股票回购或并购摊销），GAAP派息率可能失真。\n"
-                "请评估该公司真实的股息安全性，估算FCF派息率（若无数据则根据行业特征估算），给出综合财务健康分。\n"
+                f"{fcf_guidance}"
+                "重要背景：D/E极高或ROE异常几乎必然是负账面净资产（长期大量回购或并购摊销所致），"
+                "这是资本结构特征而非债务危机信号，不能据此推断FCF偏低。\n"
+                "请评估真实股息安全性，给出保守但合理的FCF派息率估算和综合健康分。\n"
                 '返回严格JSON: {"health_score": float(0-100), "fcf_payout_est": float(%), "rationale": "1句中文说明"}'
             )
             raw = client.simple_chat(
