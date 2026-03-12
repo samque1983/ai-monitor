@@ -876,13 +876,6 @@ function cardDividend(s) {
   const moatScore = p.quality_breakdown?.moat ?? null;
   const biz       = bizTypeLabel(moatScore);
 
-  // Header chips
-  const pctChip = (() => {
-    if (p.yield_percentile == null) return '';
-    if (p.yield_percentile === 50) return '<span class="pct-chip pct-acc">积累中</span>';
-    const cls = p.yield_percentile >= 75 ? 'pct-high' : p.yield_percentile >= 50 ? 'pct-mid' : 'pct-low';
-    return `<span class="pct-chip ${cls}">历史${p.yield_percentile}%</span>`;
-  })();
 
   // Analysis — collapsible with prominent arrow
   const analysisSection = (() => {
@@ -985,7 +978,7 @@ function cardDividend(s) {
       <div class="card-head-left">
         <span class="card-ticker">${s.ticker}</span>
         <span class="type-badge badge-dividend">股息</span>
-        ${pctChip}
+
       </div>
       <div class="card-kpi kpi-amber">${p.current_yield}%<small>股息率</small></div>
     </div>
