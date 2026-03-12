@@ -352,8 +352,7 @@ body {
 
 /* Arrow */
 .toggle-arrow {
-  font-size: 20px; font-weight: 400; color: var(--text);
-  opacity: 0.70;
+  font-size: 13px; color: var(--text-2);
   transition: transform 0.22s ease; flex-shrink: 0; margin-left: 10px;
   line-height: 1; display: inline-block;
 }
@@ -906,7 +905,7 @@ function toggleAnalysis(el) {
   const body  = el.nextElementSibling;
   if (!body) return;
   const open = body.classList.toggle('open');
-  if (arrow) arrow.style.transform = open ? 'rotate(90deg)' : 'rotate(0deg)';
+  if (arrow) arrow.style.transform = open ? 'rotate(0deg)' : 'rotate(-90deg)';
 }
 
 var WATCH_KEY = 'watched_opportunities';
@@ -1089,9 +1088,9 @@ function cardDividend(s) {
     }
     return `<div class="analysis-toggle" onclick="toggleAnalysis(this)">
       <span>${bizBlock}</span>
-      <span class="toggle-arrow">›</span>
+      <span class="toggle-arrow">▾</span>
     </div>
-    <div class="analysis-body">${renderAnalysisText(p.analysis_text)}</div>`;
+    <div class="analysis-body open">${renderAnalysisText(p.analysis_text)}</div>`;
   })();
 
   // Risk flags
@@ -1134,8 +1133,8 @@ function cardDividend(s) {
     const qLbl    = qs >= 80 ? '优' : qs >= 65 ? '良' : '差';
     const qSty    = qs >= 80 ? 'color:var(--green)' : qs >= 65 ? 'color:var(--amber)' : 'color:var(--red)';
     const stabHtml = p.quality_breakdown
-      ? `<span class="stab-info-btn" onclick="toggleDetail(this)">ℹ</span>
-         <div class="stability-detail" style="display:none">${qualityBreakdownHtml(p.quality_breakdown)}</div>`
+      ? `<span class="stab-info-btn" onclick="toggleDetail(this)" style="font-size:12px;opacity:1;color:var(--text-3)">▾</span>
+         <div class="stability-detail">${qualityBreakdownHtml(p.quality_breakdown)}</div>`
       : '';
     return `<div class="card-row">
       <span class="row-label">综合质量</span>
