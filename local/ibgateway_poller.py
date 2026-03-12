@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 IB Gateway Poller — connects to local IB Gateway, fetches positions +
-account summary, POSTs to cloud risk pipeline endpoint.
+account summary + real Greeks, POSTs to cloud risk pipeline endpoint.
 
 Usage:
     cd local/
@@ -15,7 +15,7 @@ import time
 import logging
 import threading
 from dataclasses import dataclass, asdict
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import requests
 from dotenv import load_dotenv
@@ -40,6 +40,18 @@ except ImportError:
     sys.exit(1)
 
 
+def _valid_greek(val) -> bool:
+    """Return True if value is a real Greek (not None, not ibapi sentinel)."""
+    if val is None:
+        return False
+    try:
+        f = float(val)
+        # ibapi uses large sentinels (e.g. UNSET_DOUBLE); real Greeks are tiny
+        return abs(f) < 1e10
+    except (TypeError, ValueError):
+        return False
+
+
 @dataclass
 class PositionData:
     symbol: str
@@ -50,9 +62,9 @@ class PositionData:
     multiplier: float
     position: float
     cost_basis_price: float
-    mark_price: float         # 0.0 — cloud fills via market data
-    unrealized_pnl: float     # 0.0
-    delta: float              # 0.0 — cloud enriches
+    mark_price: float
+    unrealized_pnl: float
+    delta: float
     gamma: float
     theta: float
     vega: float
@@ -83,7 +95,7 @@ _ACCT_FIELD_MAP = {
 
 
 class IBPoller(EWrapper, EClient):
-    """Collects positions and account summary from IB Gateway."""
+    """Collects positions, account summary, and option Greeks from IB Gateway."""
 
     def __init__(self, ib_account_id: str):
         EWrapper.__init__(self)
@@ -94,27 +106,37 @@ class IBPoller(EWrapper, EClient):
         self._positions_done = threading.Event()
         self._account_done = threading.Event()
         self._errors: List[str] = []
+        # Greeks collection — populated after positionEnd
+        self._opt_contracts: List[Tuple[Contract, PositionData]] = []
+        self._opt_req_map: Dict[int, PositionData] = {}  # reqId → PositionData
+        self._greeks_done = threading.Event()
+        self._next_req_id = 2000  # start above any system reqIds
 
     # ── EWrapper callbacks ────────────────────────────────────────────────────
 
     def error(self, reqId: TickerId, errorCode: int, errorString: str, advancedOrderRejectJson=""):
         # 2104/2106/2158 = market data farm connection warnings (non-fatal)
-        if errorCode in (2104, 2106, 2158):
+        # 354 = requested market data not subscribed (non-fatal for Greeks)
+        if errorCode in (2104, 2106, 2158, 354):
             return
         msg = f"IB error {errorCode}: {errorString} (reqId={reqId})"
         logger.warning(msg)
         self._errors.append(msg)
+        # If a mktData request fails, remove it from pending so we don't hang
+        if reqId in self._opt_req_map:
+            del self._opt_req_map[reqId]
+            if not self._opt_req_map:
+                self._greeks_done.set()
 
     def position(self, account: str, contract: Contract, position: float, avgCost: float):
         """Called once per position."""
         ac = contract.secType  # "STK" or "OPT"
-        put_call = contract.right if ac == "OPT" else ""  # "P" or "C"
+        put_call = contract.right if ac == "OPT" else ""
         expiry = contract.lastTradeDateOrContractMonth or ""
         expiry = expiry.replace("-", "")[:8]
         multiplier = float(contract.multiplier or 1)
-        underlying = contract.symbol
 
-        self.positions.append(PositionData(
+        p = PositionData(
             symbol=contract.localSymbol or contract.symbol,
             asset_category=ac,
             put_call=put_call,
@@ -126,13 +148,19 @@ class IBPoller(EWrapper, EClient):
             mark_price=0.0,
             unrealized_pnl=0.0,
             delta=0.0, gamma=0.0, theta=0.0, vega=0.0,
-            underlying_symbol=underlying,
+            underlying_symbol=contract.symbol,
             currency=contract.currency or "USD",
-        ))
+        )
+        self.positions.append(p)
+
+        # Store contract for later Greeks request
+        if ac == "OPT":
+            self._opt_contracts.append((contract, p))
 
     def positionEnd(self):
         """Called when all positions have been delivered."""
-        logger.info(f"Received {len(self.positions)} positions")
+        logger.info(f"Received {len(self.positions)} positions "
+                    f"({len(self._opt_contracts)} options)")
         self._positions_done.set()
 
     def updateAccountValue(self, key: str, val: str, currency: str, accountName: str):
@@ -140,8 +168,7 @@ class IBPoller(EWrapper, EClient):
         if currency not in ("USD", "BASE", "") or key not in _ACCT_FIELD_MAP:
             return
         try:
-            field_name = _ACCT_FIELD_MAP[key]
-            setattr(self.account, field_name, float(val))
+            setattr(self.account, _ACCT_FIELD_MAP[key], float(val))
         except (ValueError, AttributeError):
             pass
 
@@ -151,14 +178,57 @@ class IBPoller(EWrapper, EClient):
                     f"cushion={self.account.cushion*100:.1f}%")
         self._account_done.set()
 
+    def tickOptionComputation(
+        self, reqId: TickerId, tickType: int, tickAttrib: int,
+        impliedVol: float, delta: float, optPrice: float,
+        pvDividend: float, gamma: float, vega: float,
+        theta: float, undPrice: float,
+    ):
+        """Called with option model Greeks. tickType 13 = MODEL_OPTION."""
+        # Only use model-computed Greeks (tickType 13); skip bid/ask/last Greeks
+        if tickType != 13:
+            return
+        if reqId not in self._opt_req_map:
+            return
+
+        p = self._opt_req_map[reqId]
+        if _valid_greek(delta):
+            p.delta = float(delta)
+            p.gamma = float(gamma) if _valid_greek(gamma) else 0.0
+            p.theta = float(theta) if _valid_greek(theta) else 0.0
+            p.vega  = float(vega)  if _valid_greek(vega)  else 0.0
+            logger.debug(f"Greeks: {p.symbol} δ={p.delta:.3f} γ={p.gamma:.4f} "
+                         f"θ={p.theta:.4f} ν={p.vega:.4f}")
+            del self._opt_req_map[reqId]
+            self.cancelMktData(reqId)
+            if not self._opt_req_map:
+                logger.info("All option Greeks received")
+                self._greeks_done.set()
+
+    # ── Greeks request ────────────────────────────────────────────────────────
+
+    def request_greeks(self) -> None:
+        """Subscribe to market data for each option position to get real Greeks."""
+        if not self._opt_contracts:
+            self._greeks_done.set()
+            return
+        for contract, pos_data in self._opt_contracts:
+            req_id = self._next_req_id
+            self._next_req_id += 1
+            self._opt_req_map[req_id] = pos_data
+            self.reqMktData(req_id, contract, "", False, False, [])
+        logger.info(f"Requesting Greeks for {len(self._opt_contracts)} options…")
+
 
 def fetch_from_gateway(
-    host: str, port: int, client_id: int, ib_account_id: str, timeout: int = 30
+    host: str, port: int, client_id: int, ib_account_id: str,
+    timeout: int = 30, greeks_timeout: int = 20,
 ) -> tuple:
-    """Connect to IB Gateway, fetch positions + account summary.
+    """Connect to IB Gateway, fetch positions + account summary + Greeks.
 
     Returns (poller.positions, poller.account).
-    Raises RuntimeError on connection failure or timeout.
+    Greeks timeout is non-fatal — positions without Greeks are sent with delta=0.
+    Raises RuntimeError on connection failure or positions/account timeout.
     """
     poller = IBPoller(ib_account_id)
     poller.connect(host, port, clientId=client_id)
@@ -174,19 +244,39 @@ def fetch_from_gateway(
 
     logger.info(f"Connected to IB Gateway at {host}:{port}")
 
+    # Step 1: fetch positions + account summary
     poller.reqAccountUpdates(True, ib_account_id)
     poller.reqPositions()
 
-    account_ok = poller._account_done.wait(timeout=timeout)
+    account_ok   = poller._account_done.wait(timeout=timeout)
     positions_ok = poller._positions_done.wait(timeout=timeout)
+
+    if not account_ok:
+        poller.disconnect()
+        raise RuntimeError("Timeout waiting for account summary from IB Gateway")
+    if not positions_ok:
+        poller.disconnect()
+        raise RuntimeError("Timeout waiting for positions from IB Gateway")
+
+    # Step 2: fetch Greeks for option positions (non-blocking on failure)
+    poller.request_greeks()
+    greeks_ok = poller._greeks_done.wait(timeout=greeks_timeout)
+
+    if not greeks_ok:
+        missing = len(poller._opt_req_map)
+        total   = len(poller._opt_contracts)
+        logger.warning(f"Greeks timeout — {missing}/{total} options missing Greeks, "
+                       "proceeding with partial data")
+        for req_id in list(poller._opt_req_map.keys()):
+            poller.cancelMktData(req_id)
+
+    opt_with_greeks = sum(1 for p in poller.positions
+                          if p.asset_category == "OPT" and p.delta != 0.0)
+    logger.info(f"Greeks summary: {opt_with_greeks}/{len(poller._opt_contracts)} "
+                f"options have real Greeks")
 
     poller.reqAccountUpdates(False, ib_account_id)
     poller.disconnect()
-
-    if not account_ok:
-        raise RuntimeError("Timeout waiting for account summary from IB Gateway")
-    if not positions_ok:
-        raise RuntimeError("Timeout waiting for positions from IB Gateway")
 
     return poller.positions, poller.account
 
