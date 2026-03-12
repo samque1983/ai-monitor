@@ -304,6 +304,26 @@ def test_get_yield_percentile_returns_result_type():
     assert result.hist_max >= result.p90
 
 
+def test_save_and_get_health_assessment(tmp_path):
+    """Health assessment round-trips through analysis_cache with :health key."""
+    from src.dividend_store import DividendStore
+    store = DividendStore(str(tmp_path / "test.db"))
+    store.save_health_assessment("KMB", health_score=72.0, fcf_payout_est=55.0,
+                                  rationale="KMB负净资产结构，FCF派息率约55%，实际安全")
+    result = store.get_health_assessment("KMB")
+    assert result is not None
+    assert result["health_score"] == 72.0
+    assert result["fcf_payout_est"] == 55.0
+    assert "负净资产" in result["rationale"]
+
+
+def test_health_assessment_cache_miss_returns_none(tmp_path):
+    """Returns None when no cached health assessment exists."""
+    from src.dividend_store import DividendStore
+    store = DividendStore(str(tmp_path / "test.db"))
+    assert store.get_health_assessment("UNKNOWN") is None
+
+
 def test_get_yield_percentile_winsorized():
     """Top 5% values should not inflate the percentile calculation."""
     store = DividendStore(db_path=':memory:')

@@ -363,6 +363,38 @@ class DividendStore:
         logger.info(f"Cleared analysis_cache: {deleted} entries deleted")
         return deleted
 
+    def get_health_assessment(self, ticker: str) -> Optional[Dict]:
+        """Return cached LLM health assessment dict or None if missing/expired."""
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT text, expires FROM analysis_cache WHERE ticker=?", (f"{ticker}:health",)
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        text, expires = row
+        if expires < date.today().isoformat():
+            return None
+        try:
+            return json.loads(text)
+        except (json.JSONDecodeError, TypeError):
+            return None
+
+    def save_health_assessment(self, ticker: str, health_score: float,
+                                fcf_payout_est: float, rationale: str,
+                                ttl_days: int = 7):
+        """Persist LLM health assessment with TTL (default 7 days)."""
+        expires = (date.today() + timedelta(days=ttl_days)).isoformat()
+        payload = json.dumps({"health_score": health_score,
+                              "fcf_payout_est": fcf_payout_est,
+                              "rationale": rationale})
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "INSERT OR REPLACE INTO analysis_cache (ticker, text, expires) VALUES (?,?,?)",
+            (f"{ticker}:health", payload, expires),
+        )
+        self.conn.commit()
+
     def save_analysis_text(self, ticker: str, text: str, ttl_days: int = 7):
         """Persist analysis text with TTL (default 7 days)."""
         expires = (date.today() + timedelta(days=ttl_days)).isoformat()
