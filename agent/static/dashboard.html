@@ -508,9 +508,88 @@ body {
 <script>
 'use strict';
 
-let currentRange = '24h';
-let currentCat   = 'all';
-let allSignals   = [];
+let currentRange   = '24h';
+let allSignals     = [];
+
+// ── Filter config (add new dimensions here only) ──────────────────────────
+const FILTER_CONFIG = [
+  {
+    id: 'type',
+    label: '信号类型',
+    options: [
+      { value: 'all',         label: '全部' },
+      { value: 'opportunity', label: '机会提醒' },
+      { value: 'risk',        label: '市场风控' },
+    ],
+    match: (s, v) => v === 'all' || s.category === v,
+  },
+  {
+    id: 'market',
+    label: '市场',
+    options: [
+      { value: 'all', label: '全部' },
+      { value: 'US',  label: '美股' },
+      { value: 'HK',  label: '港股' },
+      { value: 'CN',  label: 'A股'  },
+    ],
+    match: (s, v) => v === 'all' || (s.payload?.market || 'US') === v,
+  },
+];
+
+// Active filter values keyed by FILTER_CONFIG id
+const currentFilters = Object.fromEntries(
+  FILTER_CONFIG.map(f => [f.id, 'all'])
+);
+
+// ── Sidebar filter render ─────────────────────────────────────────────────
+function buildSidebarFilters() {
+  return FILTER_CONFIG.map(f => {
+    const btns = f.options.map(opt => {
+      const active = currentFilters[f.id] === opt.value ? ' active' : '';
+      const count = allSignals.filter(s => {
+        // Count matching this option AND all other active filters
+        return FILTER_CONFIG.every(other =>
+          other.id === f.id
+            ? other.match(s, opt.value)
+            : other.match(s, currentFilters[other.id])
+        );
+      }).length;
+      return `<button class="sidebar-filter-btn${active}"
+        data-filter-id="${f.id}" data-filter-value="${opt.value}">
+        ${opt.label}<span class="sidebar-filter-count">${count}</span>
+      </button>`;
+    }).join('');
+    return `<div class="sidebar-group">
+      <div class="sidebar-group-label">${f.label}</div>
+      ${btns}
+    </div>`;
+  }).join('');
+}
+
+// ── Mobile chip rows render ───────────────────────────────────────────────
+function buildMobileChips() {
+  return FILTER_CONFIG.map(f => {
+    const chips = f.options.map(opt => {
+      const active = currentFilters[f.id] === opt.value ? ' active' : '';
+      return `<button class="chip-btn${active}"
+        data-filter-id="${f.id}" data-filter-value="${opt.value}">
+        ${opt.label}
+      </button>`;
+    }).join('');
+    return `<div class="chip-row">${chips}</div>`;
+  }).join('');
+}
+
+function renderFilterUI() {
+  const sidebarEl = document.getElementById('sidebar-filters');
+  if (sidebarEl) sidebarEl.innerHTML = buildSidebarFilters();
+  const mobileEl = document.getElementById('mobile-chips-container');
+  if (mobileEl) mobileEl.innerHTML = buildMobileChips();
+  // Sync sidebar last-updated
+  const sidebarMeta = document.getElementById('last-updated-sidebar');
+  const mainMeta    = document.getElementById('last-updated');
+  if (sidebarMeta && mainMeta) sidebarMeta.textContent = mainMeta.textContent;
+}
 
 // ── Fetch ─────────────────────────────────────────────────────────────────
 async function load() {
@@ -519,11 +598,9 @@ async function load() {
     const resp = await fetch(`/api/signals?time_range=${currentRange}`);
     const data = await resp.json();
     allSignals = data.signals || [];
-    document.getElementById('count-all').textContent  = data.count;
-    document.getElementById('count-opp').textContent  = data.opportunity_count;
-    document.getElementById('count-risk').textContent = data.risk_count;
     document.getElementById('last-updated').textContent =
       `${rangeLabel(currentRange)} · ${data.count} 条`;
+    renderFilterUI();
     render();
   } catch (e) {
     document.getElementById('cards-container').innerHTML =
@@ -537,9 +614,9 @@ function rangeLabel(r) {
 
 // ── Render ────────────────────────────────────────────────────────────────
 function render() {
-  const filtered = currentCat === 'all'
-    ? allSignals
-    : allSignals.filter(s => s.category === currentCat);
+  const filtered = allSignals.filter(s =>
+    FILTER_CONFIG.every(f => f.match(s, currentFilters[f.id]))
+  );
 
   const hdr = document.getElementById('section-header-row');
   if (!filtered.length) {
@@ -550,8 +627,9 @@ function render() {
   }
 
   hdr.style.display = 'flex';
+  const typeFilter = currentFilters['type'];
   document.getElementById('section-label-text').textContent =
-    currentCat === 'opportunity' ? '机会提醒' : currentCat === 'risk' ? '市场风控' : '所有信号';
+    typeFilter === 'opportunity' ? '机会提醒' : typeFilter === 'risk' ? '市场风控' : '所有信号';
   document.getElementById('section-count-text').textContent = filtered.length + ' 条';
 
   document.getElementById('cards-container').innerHTML =
@@ -1187,22 +1265,27 @@ function cardDividend(s) {
 }
 
 // ── Event Bindings ────────────────────────────────────────────────────────
-document.querySelectorAll('.range-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    currentRange = btn.dataset.range;
+// Unified event delegation for range + filter buttons
+document.addEventListener('click', e => {
+  // Time range (mobile range-btn or sidebar sidebar-time-btn)
+  const rangeBtn = e.target.closest('[data-range]');
+  if (rangeBtn) {
+    currentRange = rangeBtn.dataset.range;
+    document.querySelectorAll('[data-range]').forEach(b => {
+      b.classList.toggle('active', b.dataset.range === currentRange);
+    });
     load();
-  });
-});
+    return;
+  }
 
-document.querySelectorAll('.cat-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    currentCat = btn.dataset.cat;
+  // Filter buttons (sidebar or mobile chips)
+  const filterBtn = e.target.closest('[data-filter-id]');
+  if (filterBtn) {
+    currentFilters[filterBtn.dataset.filterId] = filterBtn.dataset.filterValue;
+    renderFilterUI();
     render();
-  });
+    return;
+  }
 });
 
 // ── Init ──────────────────────────────────────────────────────────────────
