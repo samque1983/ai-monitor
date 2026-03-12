@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from datetime import date as _date
 from typing import List, Optional, Tuple
 from src.flex_client import PositionRecord
+from src.risk_utils import CASH_LIKE_TICKERS
 
 
 @dataclass
@@ -31,6 +32,7 @@ _INTENT_MAP = {
     "Naked Put": "income", "Cash-Secured Put": "income",
     "Naked Call": "income", "Covered Call": "income",
     "Bull Put Spread": "income", "Bear Call Spread": "income",
+    "Ratio Put Spread": "income", "Ratio Call Spread": "income",
     "Iron Condor": "income", "Iron Butterfly": "income",
     "PMCC": "income",
     "Protective Put": "hedge", "Collar": "mixed",
@@ -52,7 +54,65 @@ class OptionStrategyRecognizer:
         by_underlying = self._group_by_underlying(positions)
         result = []
         for underlying, pos_list in by_underlying.items():
-            result.extend(self._recognize_underlying(underlying, pos_list))
+            consolidated = self._consolidate_positions(pos_list)
+            result.extend(self._recognize_underlying(underlying, consolidated))
+        return result
+
+    def _consolidate_positions(self, positions: List[PositionRecord]) -> List[PositionRecord]:
+        """Merge multiple lots of the same contract into one PositionRecord.
+
+        Two-step process:
+        1. Deduplicate exact rows (same contract key + same position size = Flex XML duplicate).
+        2. Sum remaining distinct lots of the same contract into one record.
+        """
+        def _contract_key(p: PositionRecord):
+            if p.asset_category == "OPT":
+                return (p.asset_category, p.underlying_symbol, p.put_call,
+                        p.strike, p.expiry)
+            return (p.asset_category, p.symbol)
+
+        # Step 1: deduplicate rows that are identical in every meaningful field
+        seen: dict = {}
+        deduped = []
+        for p in positions:
+            dedup_key = (_contract_key(p), p.position, p.cost_basis_price, p.mark_price)
+            if dedup_key not in seen:
+                seen[dedup_key] = True
+                deduped.append(p)
+
+        # Step 2: merge remaining distinct lots (same contract, different position sizes)
+        groups: dict = {}
+        for p in deduped:
+            groups.setdefault(_contract_key(p), []).append(p)
+
+        result = []
+        for recs in groups.values():
+            if len(recs) == 1:
+                result.append(recs[0])
+                continue
+            total_pos = sum(r.position for r in recs)
+            total_pnl = sum(r.unrealized_pnl for r in recs)
+            total_abs = sum(abs(r.position) for r in recs)
+            if total_abs > 0:
+                def _wavg(attr, _recs=recs, _tab=total_abs):
+                    return sum(getattr(r, attr) * abs(r.position) for r in _recs) / _tab
+                cost = _wavg("cost_basis_price")
+                mark = _wavg("mark_price")
+                delta = _wavg("delta")
+                gamma = _wavg("gamma")
+                theta = _wavg("theta")
+                vega  = _wavg("vega")
+            else:
+                cost = mark = delta = gamma = theta = vega = 0.0
+            r0 = recs[0]
+            result.append(PositionRecord(
+                symbol=r0.symbol, asset_category=r0.asset_category,
+                put_call=r0.put_call, strike=r0.strike, expiry=r0.expiry,
+                multiplier=r0.multiplier, position=total_pos,
+                cost_basis_price=cost, mark_price=mark, unrealized_pnl=total_pnl,
+                delta=delta, gamma=gamma, theta=theta, vega=vega,
+                underlying_symbol=r0.underlying_symbol, currency=r0.currency,
+            ))
         return result
 
     def _group_by_underlying(self, positions: List[PositionRecord]) -> dict:
@@ -185,20 +245,25 @@ class OptionStrategyRecognizer:
             stk = stocks[0]
             return _sg("Protective Put", [stk, long_puts[0]], stk)
 
-        # Bull Put Spread: SP (high) + LP (low) — greedy: match SP with highest LP below it
+        # Bull Put Spread / Ratio Put Spread: SP (high) + LP (low)
         if len(short_puts) == 1 and long_puts and not calls:
             sp = short_puts[0]
-            # Pick the long put with highest strike still below SP
             candidates = [p for p in long_puts if p.strike < sp.strike]
             if candidates:
                 lp = max(candidates, key=lambda x: x.strike)
-                return _sg("Bull Put Spread", [sp, lp])
+                if abs(sp.position) == abs(lp.position):
+                    return _sg("Bull Put Spread", [sp, lp])
+                else:
+                    return _sg("Ratio Put Spread", [sp, lp])
 
-        # Bear Call Spread: SC (low) + LC (high)
+        # Bear Call Spread / Ratio Call Spread: SC (low) + LC (high)
         if len(short_calls) == 1 and len(long_calls) == 1 and not puts:
             sc, lc = short_calls[0], long_calls[0]
             if sc.strike < lc.strike:
-                return _sg("Bear Call Spread", [sc, lc])
+                if abs(sc.position) == abs(lc.position):
+                    return _sg("Bear Call Spread", [sc, lc])
+                else:
+                    return _sg("Ratio Call Spread", [sc, lc])
 
         # Bull Call Spread: LC (low) + SC (high)
         if len(long_calls) == 1 and len(short_calls) == 1 and not puts:
@@ -293,7 +358,10 @@ class OptionStrategyRecognizer:
     def _compute_metrics(self, sg: StrategyGroup) -> None:
         """Compute net Greeks, max_profit/loss, breakevens, DTE, net_pnl, net_credit."""
         all_opts = sg.legs + sg.modifiers
-        if sg.stock_leg:
+        # Cash-like ETFs (SGOV, BIL, etc.) have no directional equity exposure
+        if sg.underlying in CASH_LIKE_TICKERS:
+            sg.net_delta = 0.0
+        elif sg.stock_leg:
             all_opts_only = [p for p in all_opts if p.asset_category == "OPT"]
             sg.net_delta = sg.stock_leg.position + sum(
                 p.delta * p.position * p.multiplier for p in all_opts_only)
@@ -338,6 +406,21 @@ class OptionStrategyRecognizer:
             sg.max_loss = (width - credit_per_contract) * mult * contracts
             short_p = next(p for p in opt_legs if p.position < 0)
             sg.breakevens = [short_p.strike - credit_per_contract]
+
+        elif stype in ("Ratio Put Spread", "Ratio Call Spread"):
+            short_leg = next(p for p in opt_legs if p.position < 0)
+            long_leg  = next(p for p in opt_legs if p.position > 0)
+            short_qty = abs(short_leg.position)
+            long_qty  = abs(long_leg.position)
+            # Net credit/debit already in sg.net_credit
+            sg.max_profit = sg.net_credit if sg.net_credit > 0 else None
+            # Below the long strike, extra short exposure = (short_qty - long_qty) uncovered
+            uncovered = short_qty - long_qty
+            sg.max_loss = None if uncovered > 0 else abs(sg.net_credit)
+            if stype == "Ratio Put Spread":
+                sg.breakevens = [short_leg.strike - sg.net_credit / short_qty / mult]
+            else:
+                sg.breakevens = [short_leg.strike + sg.net_credit / short_qty / mult]
 
         elif stype in ("Bull Call Spread", "Bear Put Spread"):
             strikes = sorted(p.strike for p in opt_legs)

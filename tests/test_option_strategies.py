@@ -197,6 +197,62 @@ def test_leaps_not_consumed_as_modifier():
     assert groups[0].strategy_type == "Diagonal Spread"
 
 
+def test_consolidate_deduplicates_flex_duplicates():
+    """Identical rows (same contract + same position) are deduplicated, not doubled."""
+    # IBKR Flex often returns each position twice with identical data
+    sp1 = _opt("AVGO  P260", "P", 260, -6, underlying="AVGO")
+    sp2 = _opt("AVGO  P260", "P", 260, -6, underlying="AVGO")  # exact duplicate
+    lp1 = _opt("AVGO  P125", "P", 125,  6, underlying="AVGO")
+    lp2 = _opt("AVGO  P125", "P", 125,  6, underlying="AVGO")  # exact duplicate
+    groups = OptionStrategyRecognizer().recognize([sp1, sp2, lp1, lp2])
+    assert len(groups) == 1
+    g = groups[0]
+    assert g.strategy_type == "Bull Put Spread"
+    short_leg = next(p for p in g.legs if p.position < 0)
+    long_leg  = next(p for p in g.legs if p.position > 0)
+    assert short_leg.position == -6   # not -12
+    assert long_leg.position == 6     # not 12
+
+
+def test_ratio_put_spread_multi_lot():
+    """Different-sized lots of short put + different-quantity long put → Ratio Put Spread."""
+    # Short entered in two lots (-6 and -2), long in one lot (+6); Flex duplicates each
+    sp1 = _opt("AVGO  P260", "P", 260, -6, underlying="AVGO")
+    sp2 = _opt("AVGO  P260", "P", 260, -6, underlying="AVGO")  # duplicate of sp1
+    sp3 = _opt("AVGO  P260", "P", 260, -2, underlying="AVGO")  # separate lot
+    sp4 = _opt("AVGO  P260", "P", 260, -2, underlying="AVGO")  # duplicate of sp3
+    lp1 = _opt("AVGO  P125", "P", 125,  6, underlying="AVGO")
+    lp2 = _opt("AVGO  P125", "P", 125,  6, underlying="AVGO")  # duplicate of lp1
+    groups = OptionStrategyRecognizer().recognize([sp1, sp2, sp3, sp4, lp1, lp2])
+    assert len(groups) == 1
+    g = groups[0]
+    assert g.strategy_type == "Ratio Put Spread"
+    short_leg = next(p for p in g.legs if p.position < 0)
+    long_leg  = next(p for p in g.legs if p.position > 0)
+    assert short_leg.position == -8   # -6 + -2 (after dedup)
+    assert long_leg.position == 6     # 6 (after dedup)
+
+
+def test_ratio_put_spread_equal_becomes_bull_put():
+    """Equal quantities after consolidation → Bull Put Spread (not Ratio)."""
+    sp1 = _opt("AAPL  P180", "P", 180, -3)
+    sp2 = _opt("AAPL  P180", "P", 180, -2)
+    sp3 = _opt("AAPL  P180", "P", 180, -3)  # duplicate of sp1
+    sp4 = _opt("AAPL  P180", "P", 180, -2)  # duplicate of sp2
+    lp1 = _opt("AAPL  P170", "P", 170,  4)
+    lp2 = _opt("AAPL  P170", "P", 170,  1)
+    lp3 = _opt("AAPL  P170", "P", 170,  4)  # duplicate of lp1
+    lp4 = _opt("AAPL  P170", "P", 170,  1)  # duplicate of lp2
+    groups = OptionStrategyRecognizer().recognize([sp1, sp2, sp3, sp4, lp1, lp2, lp3, lp4])
+    assert len(groups) == 1
+    g = groups[0]
+    assert g.strategy_type == "Bull Put Spread"
+    short_leg = next(p for p in g.legs if p.position < 0)
+    long_leg  = next(p for p in g.legs if p.position > 0)
+    assert short_leg.position == -5   # -3 + -2 (after dedup)
+    assert long_leg.position == 5     # +4 + +1 (after dedup)
+
+
 def test_leaps_standalone_not_modifier():
     """Standalone LEAPS put (can't be paired) stays as its own strategy, not a modifier."""
     from datetime import date, timedelta

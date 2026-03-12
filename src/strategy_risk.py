@@ -261,6 +261,7 @@ class StrategyRiskEngine:
                     sg.stock_leg.mark_price if sg.stock_leg else
                     next((p.strike for p in sg.legs if p.asset_category == "OPT"), 100)
                 ) for sg in strategies
+                if sg.underlying not in CASH_LIKE_TICKERS
             )
             if abs(net_delta_dollars) > nlv * 0.80:
                 alerts.append(StrategyRiskAlert(

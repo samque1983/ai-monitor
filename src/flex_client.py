@@ -66,7 +66,19 @@ class FlexClient:
         return root.findtext("ReferenceCode") or ""
 
     def _get_statement(self, ref_code: str) -> str:
-        resp = requests.get(GET_URL, params={"t": self._token, "q": ref_code, "v": "3"})
+        import time
+        import xml.etree.ElementTree as _ET
+        for attempt in range(10):
+            resp = requests.get(GET_URL, params={"t": self._token, "q": ref_code, "v": "3"})
+            try:
+                root = _ET.fromstring(resp.text)
+                status = root.findtext("Status") or ""
+                if status == "Warn":
+                    time.sleep(5)
+                    continue
+            except Exception:
+                pass
+            return resp.text
         return resp.text
 
     def _parse(self, xml_text: str) -> Tuple[List[PositionRecord], AccountSummary]:
@@ -74,6 +86,9 @@ class FlexClient:
         positions = []
         for pos in root.iter("OpenPosition"):
             a = pos.attrib
+            # Skip LOT-level rows; SUMMARY rows already carry the total position.
+            if a.get("levelOfDetail", "SUMMARY") == "LOT":
+                continue
             positions.append(PositionRecord(
                 symbol=a.get("symbol", ""),
                 asset_category=a.get("assetCategory", ""),
@@ -101,14 +116,29 @@ class FlexClient:
         cushion = float(a.get("cushion") or 0)
         if cushion == 0 and net_liq > 0:
             cushion = excess_liq / net_liq
+
+        # Fallback: estimate NLV from ChangeInPositionValues (BASE_SUMMARY rows)
+        # when AccountInformation doesn't include financial fields.
         if net_liq == 0:
             import logging as _logging
-            _logging.getLogger(__name__).warning(
-                "AccountInformation missing financial fields (netLiquidation=0). "
-                "Edit your Flex Query: Account Information section → enable "
-                "Net Liquidation, Excess Liquidity, Cushion, Available Funds, "
-                "Initial Margin Req, Maintenance Margin Req."
+            estimated_nlv = sum(
+                float(el.get("endOfPeriodValue") or 0)
+                for el in root.iter("ChangeInPositionValue")
+                if el.get("currency") == "BASE_SUMMARY"
             )
+            if estimated_nlv > 0:
+                net_liq = estimated_nlv
+                _logging.getLogger(__name__).warning(
+                    "AccountInformation missing financial fields; "
+                    "NLV estimated from ChangeInPositionValues (excludes cash). "
+                    "Add 'Net Asset Value' section to your Flex Query for accurate data."
+                )
+            else:
+                _logging.getLogger(__name__).warning(
+                    "AccountInformation missing financial fields (netLiquidation=0). "
+                    "Add 'Net Asset Value' section to your Flex Query."
+                )
+
         account = AccountSummary(
             net_liquidation=net_liq,
             gross_position_value=float(a.get("grossPositionValue") or 0),
