@@ -448,6 +448,7 @@ def scan_dividend_buy_signal(
                     quality_breakdown=record.get("quality_breakdown"),
                     analysis_text=record.get("analysis_text") or "",
                     sgov_yield=record.get("sgov_yield"),
+                    health_rationale=record.get("health_rationale"),
                 )
 
                 # Step 7: 尝试添加期权策略（仅美国市场）

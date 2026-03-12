@@ -304,6 +304,26 @@ def test_get_yield_percentile_returns_result_type():
     assert result.hist_max >= result.p90
 
 
+def test_save_and_get_pool_includes_health_rationale(tmp_path):
+    """health_rationale is persisted and returned in get_pool_records."""
+    from src.dividend_store import DividendStore
+    from src.data_engine import TickerData
+    store = DividendStore(str(tmp_path / "test.db"))
+    td = TickerData(
+        ticker="KMB", name="Kimberly-Clark", market="US",
+        last_price=130.0, ma200=None, ma50w=None, rsi14=None,
+        iv_rank=None, iv_momentum=None, prev_close=130.0,
+        earnings_date=None, days_to_earnings=None,
+        dividend_quality_score=77.0, consecutive_years=11,
+        dividend_growth_5y=7.0, payout_ratio=55.0, payout_type="LLM",
+        health_rationale="KMB负净资产结构，FCF派息率约55%，实际安全",
+    )
+    store.save_pool([td], version="2026-03-12")
+    records = store.get_pool_records()
+    assert len(records) == 1
+    assert records[0]["health_rationale"] == "KMB负净资产结构，FCF派息率约55%，实际安全"
+
+
 def test_save_and_get_health_assessment(tmp_path):
     """Health assessment round-trips through analysis_cache with :health key."""
     from src.dividend_store import DividendStore

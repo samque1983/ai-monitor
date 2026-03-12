@@ -53,6 +53,7 @@ class TickerData:
     sgov_adjusted_apy: Optional[float] = None   # option_apy + sgov_yield
     recommended_strategy: Optional[str] = None  # "sell_put" | "spot"
     recommended_reason: Optional[str] = None    # one-sentence Chinese reason
+    health_rationale: Optional[str] = None      # LLM health assessment explanation
 
 
 @dataclass
