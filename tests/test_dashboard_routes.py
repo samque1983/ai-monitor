@@ -69,3 +69,14 @@ def test_chat_page_has_nav_and_input():
     assert "AI 领航" in resp.text
     assert "/dashboard" in resp.text
     assert "chat-input" in resp.text
+
+def test_watchlist_page_returns_200():
+    client = get_client()
+    resp = client.get("/watchlist")
+    assert resp.status_code == 200
+
+def test_watchlist_page_has_nav():
+    client = get_client()
+    resp = client.get("/watchlist")
+    assert "自选池" in resp.text
+    assert "/dashboard" in resp.text

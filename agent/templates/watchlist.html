@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>自选池 — AI 领航员</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:opsz,wght@9..40,300..600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --bg: #080808; --surface: #101010; --surface-2: #181818;
+  --border: rgba(255,255,255,0.08); --border-2: rgba(255,255,255,0.05);
+  --text: #ececec; --text-2: rgba(236,236,236,0.60); --text-3: rgba(236,236,236,0.38);
+  --red: #ff453a; --amber: #ffb340; --green: #34c759; --blue: #0a84ff;
+  --r4: 4px; --r8: 8px; --r12: 12px;
+}
+html, body { height: 100%; }
+body {
+  font-family: "DM Sans", -apple-system, sans-serif;
+  background: var(--bg); color: var(--text);
+  font-size: 14px; line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+.page-title {
+  font-family: "Instrument Serif", Georgia, serif; font-style: italic;
+  font-size: clamp(24px, 6vw, 34px); font-weight: 400;
+  color: var(--text); line-height: 1.1; margin-bottom: 4px;
+}
+.page-desc { font-size: 13px; color: var(--text-3); margin-bottom: 24px; }
+.section-eyebrow {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--text-3); margin-bottom: 10px;
+  display: flex; align-items: center; gap: 8px;
+}
+.section-eyebrow::after { content: ''; flex: 1; height: 1px; background: var(--border-2); }
+.ticker-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--r8); margin-bottom: 6px;
+}
+.ticker-name { font-family: "DM Mono", monospace; font-size: 14px; font-weight: 600; letter-spacing: 0.03em; flex: 1; }
+.empty-state {
+  text-align: center; padding: 60px 20px;
+  color: var(--text-3); font-size: 13px; line-height: 1.8;
+}
+.rule-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 9px 14px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--r8); margin-bottom: 6px;
+  font-size: 13px;
+}
+.rule-label { color: var(--text-2); }
+.rule-on  { font-family: "DM Mono", monospace; font-size: 11px; color: var(--green); }
+.rule-off { font-family: "DM Mono", monospace; font-size: 11px; color: var(--text-3); }
+</style>
+</head>
+<body>
+<div class="app-shell">
+  {% include "_nav.html" %}
+  <main class="main-content" style="padding: 24px 16px;">
+
+    <div class="page-title">自选池</div>
+    <div class="page-desc">管理关注标的 · 查看扫描规则</div>
+
+    <div class="section-eyebrow">当前关注</div>
+    {% if tickers %}
+      {% for ticker in tickers %}
+      <div class="ticker-row">
+        <span class="ticker-name">{{ ticker }}</span>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty-state">暂无自选标的。<br>可通过钉钉机器人或 API 添加。</div>
+    {% endif %}
+
+    <div class="section-eyebrow" style="margin-top: 24px;">激活扫描规则</div>
+    <div class="rule-row"><span class="rule-label">IV 低点 (Sell Put)</span><span class="rule-on">开启</span></div>
+    <div class="rule-row"><span class="rule-label">MA200 突破</span><span class="rule-on">开启</span></div>
+    <div class="rule-row"><span class="rule-label">LEAPS 机会</span><span class="rule-on">开启</span></div>
+    <div class="rule-row"><span class="rule-label">IV 飙升预警</span><span class="rule-on">开启</span></div>
+    <div class="rule-row"><span class="rule-label">IV 动量</span><span class="rule-on">开启</span></div>
+    <div class="rule-row"><span class="rule-label">分红信号</span><span class="rule-off">关闭</span></div>
+
+  </main>
+</div>
+</body>
+</html>
