@@ -314,21 +314,20 @@ body {
 .entry-banner-range { color: var(--text-3); opacity: 0.7; font-size: 11px; }
 
 /* ── Dividend card groups ── */
-.dc-group { border-bottom: 1px solid var(--border-2); padding-bottom: 6px; margin-bottom: 1px; }
-.dc-group:last-child { border-bottom: none; }
+.dc-group { padding-bottom: 2px; }
+.dc-group + .dc-group { border-top: 1px solid var(--border); }
 
-/* Group title */
+/* Group title — full-width background band */
 .dc-group-title {
-  display: flex; align-items: center; gap: 6px;
-  font-size: 12px; font-weight: 600; color: var(--text-2);
-  padding: 8px 0 5px; letter-spacing: 0.04em;
+  display: flex; align-items: center; gap: 7px;
+  font-size: 11px; font-weight: 700; color: var(--text-2);
+  padding: 7px 16px 6px; margin: 0 -16px 4px;
+  background: rgba(255,255,255,0.04);
+  letter-spacing: 0.06em; text-transform: uppercase;
 }
 .dc-group-title::before {
   content: ''; width: 3px; height: 3px; border-radius: 50%;
   background: currentColor; flex-shrink: 0;
-}
-.dc-group-title::after {
-  content: ''; flex: 1; height: 1px; background: var(--border-2);
 }
 
 /* Analysis collapse */
