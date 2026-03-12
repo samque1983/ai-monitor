@@ -288,6 +288,7 @@ def upload_to_cloud(
     ib_account_id: str,
     cloud_url: str,
     cloud_api_key: str,
+    verify_ssl: bool = True,
 ) -> dict:
     """POST positions + account summary to cloud endpoint."""
     payload = {
@@ -297,11 +298,16 @@ def upload_to_cloud(
         "account_summary": asdict(account),
     }
     logger.info(f"Uploading {len(positions)} positions to {cloud_url}…")
+    if not verify_ssl:
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        logger.warning("SSL verification disabled (VERIFY_SSL=false)")
     resp = requests.post(
         cloud_url,
         json=payload,
         headers={"X-API-Key": cloud_api_key, "Content-Type": "application/json"},
         timeout=120,
+        verify=verify_ssl,
     )
     resp.raise_for_status()
     return resp.json()
@@ -327,8 +333,9 @@ def main():
     positions, account = fetch_from_gateway(host, port, client_id, ib_account)
     logger.info(f"Fetched {len(positions)} positions")
 
+    verify_ssl = os.environ.get("VERIFY_SSL", "true").lower() != "false"
     result = upload_to_cloud(positions, account, account_key, ib_account,
-                             cloud_url, cloud_key)
+                             cloud_url, cloud_key, verify_ssl=verify_ssl)
     print(f"\nReport generated: {result.get('report_date')} — "
           f"{result.get('alerts', {}).get('red', 0)} red / "
           f"{result.get('alerts', {}).get('yellow', 0)} yellow alerts")
