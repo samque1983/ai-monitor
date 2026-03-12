@@ -85,6 +85,21 @@ defensive  = 50  (fixed)
 overall    = stability*0.4 + health*0.4 + defensive*0.2  [capped 0-100]
 ```
 
+### Health Score — LLM override (anomalous companies)
+
+Triggered when either condition holds:
+- `debt_to_equity > 200` — negative book equity from buybacks/M&A
+- `payout_ratio > 100` AND `sector NOT IN {Energy, Utilities, Real Estate}`
+
+LLM call returns `{"health_score": float, "fcf_payout_est": float, "rationale": str}`. Overrides:
+- `health_score` ← LLM value (0–100)
+- `effective_payout_ratio` ← `fcf_payout_est`
+- `payout_type` ← `"LLM"`
+- `health_rationale` ← rationale string (shown in dashboard tooltip)
+
+Cached in `analysis_cache` table with key `"{ticker}:health"` (7-day TTL).
+Falls back to rule-based if LLM unavailable or call fails.
+
 Risk flags: `HIGH_PAYOUT_RISK` when `payout_ratio > 80`.
 
 ### Utility functions
