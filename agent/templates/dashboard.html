@@ -66,10 +66,9 @@ body {
   color: var(--text); line-height: 1.1; margin-bottom: 20px;
 }
 
-/* ── Main content padding ── */
+/* ── Main content padding (bottom handled by _nav.html) ── */
 .main-content {
-  padding: 28px 16px 64px;
-  padding-bottom: max(64px, env(safe-area-inset-bottom, 64px));
+  padding: 28px 16px 0;
 }
 
 /* ── Mobile time row ── */
@@ -114,13 +113,14 @@ body {
   #mobile-chips-container { display: none; }
   .page-eyebrow { display: none; }
 
-  .main-content { padding: 40px 40px 72px; max-width: 960px; }
+  .main-content { padding-top: 40px; padding-left: 40px; padding-right: 40px; max-width: 960px; }
 }
 
 @media (min-width: 480px) and (max-width: 1023px) {
   .main-content {
-    padding: 40px 24px 72px;
-    padding-bottom: max(72px, env(safe-area-inset-bottom, 72px));
+    padding-top: 40px;
+    padding-left: 24px;
+    padding-right: 24px;
   }
 }
 

@@ -16,7 +16,7 @@
 }
 
 /* ── APP SHELL ── */
-.app-shell { display: flex; min-height: 100vh; }
+.app-shell { display: flex; min-height: 100vh; flex-direction: column; }
 
 /* ── SIDEBAR ── */
 .sidebar {
@@ -127,7 +127,7 @@
   position: fixed; bottom: 0; left: 0; right: 0;
   height: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px));
   padding-bottom: env(safe-area-inset-bottom, 0px);
-  background: rgba(8,8,8,0.92);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
   backdrop-filter: saturate(180%) blur(20px);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   border-top: 1px solid var(--border);
@@ -166,6 +166,7 @@
 
 /* ── DESKTOP OVERRIDES ── */
 @media (min-width: 1024px) {
+  .app-shell { flex-direction: row; }
   .sidebar { display: flex; }
   .main-content {
     margin-left: var(--sidebar-w);
@@ -215,7 +216,6 @@
     </a>
   </nav>
   <div class="sidebar-footer">
-    <div class="footer-status"><div class="status-dot"></div><span class="footer-label">实时连接</span></div>
     <div class="footer-time" id="nav-clock">--:--:--</div>
     <div class="footer-date" id="nav-date">----/--/--</div>
   </div>

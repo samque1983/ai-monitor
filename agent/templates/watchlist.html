@@ -10,10 +10,10 @@
 <style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 :root {
-  --bg: #080808; --surface: #101010; --surface-2: #181818;
-  --border: rgba(255,255,255,0.08); --border-2: rgba(255,255,255,0.05);
-  --text: #ececec; --text-2: rgba(236,236,236,0.60); --text-3: rgba(236,236,236,0.38);
-  --red: #ff453a; --amber: #ffb340; --green: #34c759; --blue: #0a84ff;
+  --bg:        #111118; --surface: #1c1c2a; --surface-2: #262636;
+  --border:    rgba(255,255,255,0.12); --border-2: rgba(255,255,255,0.09);
+  --text:      #f0f0f8; --text-2: rgba(210,210,230,0.88); --text-3: rgba(210,210,230,0.75);
+  --red: #f84960; --amber: #f7a600; --green: #02c076; --blue: #2e86de;
   --r4: 4px; --r8: 8px; --r12: 12px;
 }
 html, body { height: 100%; }
@@ -54,6 +54,17 @@ body {
 .rule-label { color: var(--text-2); }
 .rule-on  { font-family: "DM Mono", monospace; font-size: 11px; color: var(--green); }
 .rule-off { font-family: "DM Mono", monospace; font-size: 11px; color: var(--text-3); }
+.todo-block {
+  background: rgba(247,166,0,0.06); border: 1px dashed rgba(247,166,0,0.25);
+  border-radius: var(--r8); padding: 14px 16px; margin-bottom: 6px;
+}
+.todo-label {
+  font-family: "DM Mono", monospace; font-size: 10px; font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--amber); margin-bottom: 6px;
+}
+.todo-desc { font-size: 13px; color: var(--text-3); line-height: 1.6; }
+.ticker-del { font-family: "DM Mono", monospace; font-size: 11px; color: var(--text-3); cursor: not-allowed; opacity: 0.5; }
 </style>
 </head>
 <body>
@@ -69,19 +80,32 @@ body {
       {% for ticker in tickers %}
       <div class="ticker-row">
         <span class="ticker-name">{{ ticker }}</span>
+        <span class="ticker-del">移除 ·</span>
       </div>
       {% endfor %}
     {% else %}
-      <div class="empty-state">暂无自选标的。<br>可通过钉钉机器人或 API 添加。</div>
+      <div class="empty-state">暂无自选标的。<br>可通过钉钉机器人发送「添加 AAPL」或调用 API 添加。</div>
     {% endif %}
 
+    <!-- 添加标的 — 待实现 -->
+    <div class="todo-block" style="margin-top: 10px;">
+      <div class="todo-label">待实现 · 网页添加标的</div>
+      <div class="todo-desc">输入 ticker 直接添加到自选池。目前可通过钉钉机器人（「添加 AAPL」）或 <code style="font-size:11px">/api/watchlist</code> 接口操作。</div>
+    </div>
+
     <div class="section-eyebrow" style="margin-top: 24px;">激活扫描规则</div>
-    <div class="rule-row"><span class="rule-label">IV 低点 (Sell Put)</span><span class="rule-on">开启</span></div>
+    <div class="rule-row"><span class="rule-label">IV 高点 + 接近目标价 (Sell Put)</span><span class="rule-on">开启</span></div>
     <div class="rule-row"><span class="rule-label">MA200 突破</span><span class="rule-on">开启</span></div>
     <div class="rule-row"><span class="rule-label">LEAPS 机会</span><span class="rule-on">开启</span></div>
     <div class="rule-row"><span class="rule-label">IV 飙升预警</span><span class="rule-on">开启</span></div>
     <div class="rule-row"><span class="rule-label">IV 动量</span><span class="rule-on">开启</span></div>
     <div class="rule-row"><span class="rule-label">分红信号</span><span class="rule-off">关闭</span></div>
+
+    <!-- 规则开关 — 待实现 -->
+    <div class="todo-block" style="margin-top: 10px;">
+      <div class="todo-label">待实现 · 规则开关</div>
+      <div class="todo-desc">网页直接开启/关闭各扫描规则。当前规则配置在 <code style="font-size:11px">config.yaml</code> 中修改。</div>
+    </div>
 
   </main>
 </div>
