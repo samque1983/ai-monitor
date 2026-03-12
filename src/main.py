@@ -178,6 +178,7 @@ def _build_agent_payload(
             "needs_reeval": s.needs_reeval,
             "quality_breakdown": td.quality_breakdown,
             "analysis_text": td.analysis_text or "",
+            "health_rationale": td.health_rationale or "",
         })
 
     return signals
