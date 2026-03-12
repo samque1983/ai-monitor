@@ -352,7 +352,7 @@ body {
 
 /* Arrow */
 .toggle-arrow {
-  font-size: 13px; color: var(--text-2);
+  font-size: 15px; color: var(--text-2);
   transition: transform 0.22s ease; flex-shrink: 0; margin-left: 10px;
   line-height: 1; display: inline-block;
 }
@@ -366,10 +366,15 @@ body {
 
 /* Quality breakdown */
 .stab-info-btn {
-  cursor: pointer; font-size: 10px; opacity: 0.55; margin-left: 4px;
+  cursor: pointer; font-size: 11px; color: var(--text-3);
+  margin-left: 6px; padding: 1px 7px;
+  border: 1px solid var(--border); border-radius: var(--r4);
+  background: var(--surface-2);
+  display: inline-block; line-height: 1.6;
+  transition: color 0.15s, border-color 0.15s;
   -webkit-tap-highlight-color: transparent;
 }
-.stab-info-btn:hover { opacity: 1; }
+.stab-info-btn:hover { color: var(--text); border-color: rgba(255,255,255,0.22); }
 .stability-detail {
   margin-top: 6px; padding: 10px; background: var(--surface-2);
   border-radius: var(--r8); border: 1px solid var(--border);
@@ -1133,7 +1138,7 @@ function cardDividend(s) {
     const qLbl    = qs >= 80 ? '优' : qs >= 65 ? '良' : '差';
     const qSty    = qs >= 80 ? 'color:var(--green)' : qs >= 65 ? 'color:var(--amber)' : 'color:var(--red)';
     const stabHtml = p.quality_breakdown
-      ? `<span class="stab-info-btn" onclick="toggleDetail(this)" style="font-size:12px;opacity:1;color:var(--text-3)">▾</span>
+      ? `<span class="stab-info-btn" onclick="toggleDetail(this)">▾</span>
          <div class="stability-detail">${qualityBreakdownHtml(p.quality_breakdown)}</div>`
       : '';
     return `<div class="card-row">
