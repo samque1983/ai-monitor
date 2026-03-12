@@ -1131,17 +1131,19 @@ function cardDividend(s) {
   // Payout risk row
   const payoutRiskRow = (() => {
     if (p.payout_ratio == null) return '';
-    const pr      = p.payout_ratio;
-    const pt      = p.payout_type || 'GAAP';
-    const riskLbl = pr > 100 ? '极高' : pr > 80 ? '偏高' : pr > 60 ? '中等' : '低';
-    const riskSty = pr > 100 ? 'color:var(--red)' : pr > 80 ? 'color:var(--amber)' : pr > 60 ? 'color:var(--amber)' : 'color:var(--green)';
-    const tooltip = pt === 'FCF' ? '能源/公用/REIT 使用自由现金流派息率' : '轻资产行业使用 GAAP 净利润';
+    const pr       = p.payout_ratio;
+    const pt       = p.payout_type || 'GAAP';
+    const riskLbl  = pr > 100 ? '极高' : pr > 80 ? '偏高' : pr > 60 ? '中等' : '低';
+    const riskSty  = pr > 100 ? 'color:var(--red)' : pr > 80 ? 'color:var(--amber)' : pr > 60 ? 'color:var(--amber)' : 'color:var(--green)';
+    const rationale = p.health_rationale;
+    const tooltip   = rationale
+      ? rationale
+      : pt === 'FCF' ? '能源/公用/REIT 使用自由现金流派息率'
+      : pt === 'LLM' ? 'LLM综合评估：GAAP指标受负净资产或摊销影响，已校正'
+      : '轻资产行业使用 GAAP 净利润派息率';
     return `<div class="card-row">
       <span class="row-label">派息切割风险</span>
-      <span class="row-value" style="${riskSty}">${riskLbl} · ${pt} ${pr}%
-        <span class="stab-info-btn" onclick="toggleDetail(this)">ℹ</span>
-        <div style="display:none;font-size:11px;color:var(--text-3);margin-top:4px;font-family:'DM Sans',sans-serif">${tooltip}</div>
-      </span>
+      <span class="row-value" style="${riskSty}">${riskLbl} · ${pt} ${pr.toFixed(1)}%<span class="stab-info-btn" onclick="toggleDetail(this)">?</span><div style="display:none;font-size:11px;color:var(--text-3);margin-top:4px;font-family:'DM Sans',sans-serif;line-height:1.5">${tooltip}</div></span>
     </div>`;
   })();
 

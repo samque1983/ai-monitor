@@ -573,6 +573,22 @@ def test_analysis_text_prompt_includes_business_structure(tmp_path):
 
 # ── Task 1: Anomaly Detection + health_rationale field ──────────────────────
 
+# ── Task 5: Dashboard UI — ? Button + Rationale Tooltip ─────────────────────
+
+def test_payout_risk_row_uses_question_mark_button():
+    """Dashboard payoutRiskRow uses ? button (not ℹ) for tooltip trigger."""
+    import re
+    html_path = "agent/static/dashboard.html"
+    with open(html_path) as f:
+        content = f.read()
+    # Find the payoutRiskRow JS block
+    block_match = re.search(r'const payoutRiskRow[\s\S]{0,2000}?return `[\s\S]{0,500}?`;\s*\}\)\(\);', content)
+    assert block_match, "payoutRiskRow block not found"
+    block = block_match.group(0)
+    assert "?" in block, "payoutRiskRow should use ? button"
+    assert "ℹ" not in block, "payoutRiskRow should not use ℹ (replaced by ?)"
+
+
 # ── Task 3: LLM Health Assessment + Score Override ──────────────────────────
 
 def test_llm_health_assessment_overrides_rule_score():
