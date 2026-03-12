@@ -34,8 +34,6 @@ body {
   line-height: 1.5;
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
-  padding: 28px 16px 64px;
-  padding-bottom: max(64px, env(safe-area-inset-bottom, 64px));
 }
 /* ── Animations ── */
 @keyframes fadeUp {
@@ -98,6 +96,7 @@ body {
   background: var(--surface); font-size: 13px; font-family: "DM Sans", sans-serif;
   color: var(--text-3); cursor: pointer;
   -webkit-tap-highlight-color: transparent; outline: none;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 .range-btn.active, .cat-btn.active, .chip-btn.active {
   background: var(--surface-2); color: var(--text);
@@ -123,8 +122,6 @@ body {
 
 /* ── Desktop sidebar ── */
 @media (min-width: 1024px) {
-  body { padding: 0; }
-
   .sidebar {
     display: flex; flex-direction: column;
     width: 220px; flex-shrink: 0;
@@ -198,8 +195,6 @@ body {
   .sidebar-time-btn:hover { background: var(--surface-2); color: var(--text-2); }
   .sidebar-time-btn.active { color: var(--text); background: var(--surface-2); }
 
-  .main-content { padding: 40px 40px 72px; }
-
   /* 2-column card grid on desktop */
   .card-grid {
     display: grid;
@@ -211,10 +206,16 @@ body {
   /* Mobile-only elements hidden on desktop */
   .mobile-time-row { display: none; }
   #mobile-chips-container { display: none; }
+  .page-eyebrow { display: none; }
+
+  .main-content { padding: 40px 40px 72px; max-width: 960px; }
 }
 
 @media (min-width: 480px) and (max-width: 1023px) {
-  .main-content { padding: 40px 24px 72px; }
+  .main-content {
+    padding: 40px 24px 72px;
+    padding-bottom: max(72px, env(safe-area-inset-bottom, 72px));
+  }
 }
 
 /* ── Section divider ── */
