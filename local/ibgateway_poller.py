@@ -9,6 +9,7 @@ Usage:
     cp .env.example .env   # fill in your values
     python ibgateway_poller.py
 """
+import math
 import os
 import sys
 import time
@@ -50,6 +51,75 @@ def _valid_greek(val) -> bool:
         return abs(f) < 1e10
     except (TypeError, ValueError):
         return False
+
+
+# ── Black-Scholes math (stdlib only) ──────────────────────────────────────────
+
+def _norm_cdf(x: float) -> float:
+    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+
+
+def _norm_pdf(x: float) -> float:
+    return math.exp(-0.5 * x * x) / math.sqrt(2.0 * math.pi)
+
+
+def _bs_price(S: float, K: float, T: float, r: float, sigma: float,
+              is_call: bool) -> float:
+    """Black-Scholes option price."""
+    if T <= 0 or sigma <= 0:
+        intrinsic = max(0.0, (S - K) if is_call else (K - S))
+        return intrinsic
+    sqrtT = math.sqrt(T)
+    d1 = (math.log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * sqrtT)
+    d2 = d1 - sigma * sqrtT
+    if is_call:
+        return S * _norm_cdf(d1) - K * math.exp(-r * T) * _norm_cdf(d2)
+    else:
+        return K * math.exp(-r * T) * _norm_cdf(-d2) - S * _norm_cdf(-d1)
+
+
+def _bs_greeks(S: float, K: float, T: float, r: float, sigma: float,
+               is_call: bool) -> dict:
+    """Compute delta, gamma, theta, vega via Black-Scholes."""
+    if T <= 0 or sigma <= 0 or S <= 0:
+        delta = 1.0 if (is_call and S > K) else (-1.0 if (not is_call and S < K) else 0.0)
+        return {"delta": delta, "gamma": 0.0, "theta": 0.0, "vega": 0.0}
+    sqrtT = math.sqrt(T)
+    d1 = (math.log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * sqrtT)
+    d2 = d1 - sigma * sqrtT
+    pdf_d1 = _norm_pdf(d1)
+    gamma = pdf_d1 / (S * sigma * sqrtT)
+    vega  = S * pdf_d1 * sqrtT / 100.0  # per 1% vol move
+    if is_call:
+        delta = _norm_cdf(d1)
+        theta = (-(S * pdf_d1 * sigma) / (2 * sqrtT)
+                 - r * K * math.exp(-r * T) * _norm_cdf(d2)) / 365.0
+    else:
+        delta = _norm_cdf(d1) - 1.0
+        theta = (-(S * pdf_d1 * sigma) / (2 * sqrtT)
+                 + r * K * math.exp(-r * T) * _norm_cdf(-d2)) / 365.0
+    return {"delta": delta, "gamma": gamma, "theta": theta, "vega": vega}
+
+
+def _implied_vol(market_price: float, S: float, K: float, T: float,
+                 r: float, is_call: bool) -> Optional[float]:
+    """Bisection IV solver. Returns None if it can't converge."""
+    if T <= 0 or S <= 0 or K <= 0:
+        return None
+    intrinsic = max(0.0, (S - K) if is_call else (K - S))
+    if market_price <= intrinsic + 1e-8:
+        return None
+    lo, hi = 1e-4, 5.0
+    for _ in range(60):
+        mid = (lo + hi) / 2.0
+        price = _bs_price(S, K, T, r, mid, is_call)
+        if abs(price - market_price) < 1e-5:
+            return mid
+        if price < market_price:
+            lo = mid
+        else:
+            hi = mid
+    return (lo + hi) / 2.0
 
 
 @dataclass
@@ -111,6 +181,10 @@ class IBPoller(EWrapper, EClient):
         self._opt_req_map: Dict[int, PositionData] = {}  # reqId → PositionData
         self._greeks_done = threading.Event()
         self._next_req_id = 2000  # start above any system reqIds
+        # updatePortfolio data — populated alongside reqAccountUpdates
+        self._portfolio_mark: Dict[int, float] = {}    # conId → mark price
+        self._portfolio_pnl:  Dict[int, float] = {}    # conId → unrealizedPNL
+        self._underlying_prices: Dict[str, float] = {} # symbol → stock price
 
     # ── EWrapper callbacks ────────────────────────────────────────────────────
 
@@ -178,6 +252,23 @@ class IBPoller(EWrapper, EClient):
                     f"cushion={self.account.cushion*100:.1f}%")
         self._account_done.set()
 
+    def updatePortfolio(
+        self, contract: Contract, position: float,
+        marketPrice: float, marketValue: float,
+        averageCost: float, unrealizedPNL: float,
+        realizedPNL: float, accountName: str,
+    ):
+        """Called for each position with IB's internal mark price + P&L."""
+        # ibapi sentinel for unavailable price
+        if marketPrice is None or abs(marketPrice) > 1e9:
+            return
+        con_id = contract.conId
+        if contract.secType == "STK":
+            self._underlying_prices[contract.symbol] = float(marketPrice)
+        elif contract.secType == "OPT":
+            self._portfolio_mark[con_id] = float(marketPrice)
+            self._portfolio_pnl[con_id]  = float(unrealizedPNL) if unrealizedPNL else 0.0
+
     def tickOptionComputation(
         self, reqId: TickerId, tickType: int, tickAttrib: int,
         impliedVol: float, delta: float, optPrice: float,
@@ -233,6 +324,73 @@ class IBPoller(EWrapper, EClient):
             self.reqMktData(req_id, contract, "", False, False, [])
         logger.info(f"Requesting Greeks for {len(self._opt_contracts)} options…")
 
+    def _apply_bs_greeks(self) -> None:
+        """Fill delta/gamma/theta/vega + mark_price from updatePortfolio data
+        using Black-Scholes.  Called after positions + account are done.
+        reqMktData results (if available) will overwrite these values later.
+        """
+        r = 0.05  # risk-free rate assumption
+        filled = 0
+        for contract, pos_data in self._opt_contracts:
+            con_id = contract.conId
+
+            # Populate mark_price + unrealized_pnl
+            if con_id in self._portfolio_mark:
+                pos_data.mark_price = self._portfolio_mark[con_id]
+            if con_id in self._portfolio_pnl:
+                pos_data.unrealized_pnl = self._portfolio_pnl[con_id]
+
+            # Skip if already has real Greeks
+            if pos_data.delta != 0.0:
+                continue
+
+            mark = pos_data.mark_price
+            if not mark or mark <= 0:
+                continue
+
+            S = self._underlying_prices.get(pos_data.underlying_symbol)
+            if not S or S <= 0:
+                continue
+
+            K = pos_data.strike
+            if not K or K <= 0:
+                continue
+
+            dte = self._dte_days(pos_data.expiry)
+            if dte is None:
+                continue
+            T = max(dte, 0.5) / 365.0  # at least half a day to avoid singularity
+
+            is_call = pos_data.put_call == "C"
+            iv = _implied_vol(mark, S, K, T, r, is_call)
+            if iv is None:
+                # Fall back to a rough delta estimate without IV
+                intrinsic = max(0.0, (S - K) if is_call else (K - S))
+                pos_data.delta = (0.5 if mark > intrinsic * 1.5
+                                  else (0.8 if is_call else -0.8))
+                continue
+
+            g = _bs_greeks(S, K, T, r, iv, is_call)
+            pos_data.delta = g["delta"]
+            pos_data.gamma = g["gamma"]
+            pos_data.theta = g["theta"]
+            pos_data.vega  = g["vega"]
+            filled += 1
+
+        logger.info(f"BS Greeks filled for {filled} options "
+                    f"(underlying prices available: {len(self._underlying_prices)})")
+
+    @staticmethod
+    def _dte_days(expiry_str: str) -> Optional[int]:
+        if not expiry_str or len(expiry_str) != 8:
+            return None
+        try:
+            from datetime import date as _date
+            exp = _date(int(expiry_str[:4]), int(expiry_str[4:6]), int(expiry_str[6:]))
+            return max(0, (exp - _date.today()).days)
+        except ValueError:
+            return None
+
 
 def fetch_from_gateway(
     host: str, port: int, client_id: int, ib_account_id: str,
@@ -272,7 +430,11 @@ def fetch_from_gateway(
         poller.disconnect()
         raise RuntimeError("Timeout waiting for positions from IB Gateway")
 
-    # Step 2: fetch Greeks for option positions (non-blocking on failure)
+    # Step 2: compute BS Greeks from updatePortfolio data (fills all options,
+    #         including HK/SEHK which don't respond to reqMktData after close)
+    poller._apply_bs_greeks()
+
+    # Step 3: fetch real Greeks via reqMktData (overwrites BS values for US options)
     poller.request_greeks()
     greeks_ok = poller._greeks_done.wait(timeout=greeks_timeout)
 
