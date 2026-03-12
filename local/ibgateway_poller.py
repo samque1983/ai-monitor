@@ -184,9 +184,9 @@ class IBPoller(EWrapper, EClient):
         pvDividend: float, gamma: float, vega: float,
         theta: float, undPrice: float,
     ):
-        """Called with option model Greeks. tickType 13 = MODEL_OPTION."""
-        # Only use model-computed Greeks (tickType 13); skip bid/ask/last Greeks
-        if tickType != 13:
+        """Called with option model Greeks. tickType 13 = live, 86 = delayed."""
+        # Accept both live MODEL_OPTION (13) and delayed MODEL_OPTION (86)
+        if tickType not in (13, 86):
             return
         if reqId not in self._opt_req_map:
             return
@@ -212,7 +212,21 @@ class IBPoller(EWrapper, EClient):
         if not self._opt_contracts:
             self._greeks_done.set()
             return
+        # Fall back to delayed/frozen data when live subscription unavailable.
+        # Type 4 = delayed-frozen: live if subscribed, delayed during hours,
+        # frozen (last close price) after market close.
+        self.reqMarketDataType(4)
+
         for contract, pos_data in self._opt_contracts:
+            # Ensure exchange is set — ibapi position() often leaves it empty
+            # while primaryExchange carries the real value (e.g. SEHK for HK options)
+            if not contract.exchange:
+                if contract.primaryExchange:
+                    contract.exchange = contract.primaryExchange
+                elif contract.currency == "HKD":
+                    contract.exchange = "SEHK"
+                else:
+                    contract.exchange = "SMART"
             req_id = self._next_req_id
             self._next_req_id += 1
             self._opt_req_map[req_id] = pos_data
