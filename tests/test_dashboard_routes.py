@@ -57,3 +57,15 @@ def test_risk_report_page_returns_html():
     assert resp.status_code == 200
     assert "风险报告" in resp.text
     assert "/dashboard" in resp.text
+
+def test_chat_page_returns_200():
+    client = get_client()
+    resp = client.get("/chat")
+    assert resp.status_code == 200
+
+def test_chat_page_has_nav_and_input():
+    client = get_client()
+    resp = client.get("/chat")
+    assert "AI 领航" in resp.text
+    assert "/dashboard" in resp.text
+    assert "chat-input" in resp.text
