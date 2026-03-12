@@ -3,7 +3,7 @@ import json
 import logging
 import os
 from contextlib import asynccontextmanager
-from typing import List, Any
+from typing import List, Any, Optional
 
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
@@ -103,6 +103,104 @@ async def get_scan_results():
     if not row:
         return {"scan_date": None, "results": []}
     return {"scan_date": row["scan_date"], "results": json.loads(row["results_json"])}
+
+
+# ── Positions upload + risk pipeline ──────────────────────────────────────────
+
+class PositionPayload(BaseModel):
+    symbol: str
+    asset_category: str
+    put_call: str = ""
+    strike: float = 0.0
+    expiry: str = ""
+    multiplier: float = 100.0
+    position: float
+    cost_basis_price: float = 0.0
+    mark_price: float = 0.0
+    unrealized_pnl: float = 0.0
+    delta: float = 0.0
+    gamma: float = 0.0
+    theta: float = 0.0
+    vega: float = 0.0
+    underlying_symbol: str = ""
+    currency: str = "USD"
+
+
+class AccountSummaryPayload(BaseModel):
+    net_liquidation: float = 0.0
+    gross_position_value: float = 0.0
+    init_margin_req: float = 0.0
+    maint_margin_req: float = 0.0
+    excess_liquidity: float = 0.0
+    available_funds: float = 0.0
+    cushion: float = 0.0
+
+
+class PositionsUploadPayload(BaseModel):
+    account_key: str
+    ib_account_id: str = ""
+    positions: List[PositionPayload]
+    account_summary: AccountSummaryPayload
+
+
+@app.post("/api/positions")
+async def upload_positions(payload: PositionsUploadPayload, request: Request):
+    """Receive positions from local IB Gateway poller, run risk pipeline, store HTML."""
+    api_key = config.get("POSITIONS_API_KEY")
+    if api_key and request.headers.get("X-API-Key") != api_key:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+
+    from src.flex_client import PositionRecord, AccountSummary
+    from src.risk_pipeline import run_pipeline
+
+    positions = [
+        PositionRecord(
+            symbol=p.symbol, asset_category=p.asset_category,
+            put_call=p.put_call, strike=p.strike, expiry=p.expiry,
+            multiplier=p.multiplier, position=p.position,
+            cost_basis_price=p.cost_basis_price, mark_price=p.mark_price,
+            unrealized_pnl=p.unrealized_pnl, delta=p.delta, gamma=p.gamma,
+            theta=p.theta, vega=p.vega,
+            underlying_symbol=p.underlying_symbol, currency=p.currency,
+        )
+        for p in payload.positions
+    ]
+    account_summary = AccountSummary(
+        net_liquidation=payload.account_summary.net_liquidation,
+        gross_position_value=payload.account_summary.gross_position_value,
+        init_margin_req=payload.account_summary.init_margin_req,
+        maint_margin_req=payload.account_summary.maint_margin_req,
+        excess_liquidity=payload.account_summary.excess_liquidity,
+        available_funds=payload.account_summary.available_funds,
+        cushion=payload.account_summary.cushion,
+    )
+
+    try:
+        llm_cfg = config.get_llm_config()
+    except ValueError:
+        llm_cfg = {}
+
+    report, html = run_pipeline(
+        positions=positions,
+        account_summary=account_summary,
+        account_key=payload.account_key,
+        account_name=payload.account_key,
+        llm_cfg=llm_cfg,
+    )
+
+    db = _get_db()
+    db.save_risk_report(payload.account_key, report.report_date, html)
+
+    red    = sum(1 for a in report.alerts if a.severity == "red")
+    yellow = sum(1 for a in report.alerts if a.severity == "yellow")
+    logger.info(f"Risk report saved: {payload.account_key} {report.report_date} "
+                f"— {red} red / {yellow} yellow")
+
+    return {
+        "status": "ok",
+        "report_date": report.report_date,
+        "alerts": {"red": red, "yellow": yellow},
+    }
 
 
 @app.post("/api/scan_results")
