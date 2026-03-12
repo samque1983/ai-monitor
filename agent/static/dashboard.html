@@ -178,6 +178,18 @@ body {
 .pct-low  { color: var(--red);   background: rgba(255,69,58,0.10);  border-color: rgba(255,69,58,0.22); }
 .pct-acc  { color: var(--text-3); background: var(--surface-2); border-color: var(--border); }
 
+/* ── Entry banner (入场时机 between card-head and card-body) ── */
+.entry-banner {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 16px; border-top: 1px solid var(--border-2);
+  background: rgba(255,255,255,0.02);
+  font-size: 12px;
+}
+.entry-banner-label { color: var(--text-3); flex-shrink: 0; }
+.entry-banner-bar   { font-family: "DM Mono", monospace; letter-spacing: 1px; font-size: 13px; }
+.entry-banner-pct   { font-family: "DM Mono", monospace; font-size: 13px; font-weight: 500; }
+.entry-banner-range { color: var(--text-3); opacity: 0.7; font-size: 11px; }
+
 /* ── Dividend card groups ── */
 .dc-group { border-bottom: 1px solid var(--border-2); padding-bottom: 6px; margin-bottom: 1px; }
 .dc-group:last-child { border-bottom: none; }
@@ -822,31 +834,6 @@ function buildStrategySection(s) {
     + (estPrice != null ? '<div class="strategy-row"><span class="strategy-row-label">参考买入价</span><span class="strategy-row-value highlight">$' + estPrice.toFixed(2) + '</span></div>' : '')
     + (fwdDiv != null ? '<div class="strategy-row"><span class="strategy-row-label">年化股息</span><span class="strategy-row-value">$' + fwdDiv.toFixed(2) + '/股</span></div>' : '')
     + '<div class="strategy-row"><span class="strategy-row-label">当前股息率</span><span class="strategy-row-value highlight">' + curYield.toFixed(2) + '%</span></div>'
-    + (function() {
-      var pct     = Math.round(p.yield_percentile || 0);
-      var p10     = p.yield_p10 != null ? p.yield_p10 : null;
-      var p90     = p.yield_p90 != null ? p.yield_p90 : null;
-      var histMax = p.yield_hist_max != null ? p.yield_hist_max : null;
-
-      if (p10 == null || p90 == null) {
-        return '<div class="strategy-row"><span class="strategy-row-label">历史分位</span><span class="strategy-row-value">' + pct + '%</span></div>';
-      }
-
-      var color = pct >= 70 ? 'var(--green)' : (pct < 30 ? 'var(--orange)' : 'inherit');
-      var bar   = buildPercentileBar(pct);
-      var range = p10.toFixed(1) + '–' + p90.toFixed(1) + '%';
-      var tip   = histMax != null
-        ? '历史最高 ' + histMax.toFixed(1) + '%（含黑天鹅期，已剔除极值计算分位）'
-        : '';
-
-      return '<div class="strategy-row" style="align-items:baseline">'
-        + '<span class="strategy-row-label">入场时机</span>'
-        + '<span class="strategy-row-value" style="color:' + color + ';font-family:var(--mono);letter-spacing:1px">' + bar + '</span>'
-        + '<span class="strategy-row-value" style="color:' + color + ';margin-left:6px">' + pct + '%</span>'
-        + '<span class="strategy-row-label" style="opacity:0.55;margin-left:6px">(正常区间 ' + range + ')</span>'
-        + (tip ? '<span style="opacity:0.55;cursor:help;margin-left:4px" title="' + tip + '">ℹ</span>' : '')
-        + '</div>';
-    })();
 
   // Sell Put panel
   var spPanel = '';
@@ -973,6 +960,33 @@ function cardDividend(s) {
   const earningsStr = p.earnings_date
     ? `${p.earnings_date} (${p.days_to_earnings}天)` : 'N/A';
 
+  // Entry banner: 入场时机 progress bar between card-head and card-body
+  const entryBanner = (() => {
+    const pct     = Math.round(p.yield_percentile || 0);
+    const p10     = p.yield_p10 != null ? p.yield_p10 : null;
+    const p90     = p.yield_p90 != null ? p.yield_p90 : null;
+    const histMax = p.yield_hist_max != null ? p.yield_hist_max : null;
+    if (p10 == null || p90 == null) {
+      return `<div class="entry-banner">
+        <span class="entry-banner-label">历史分位</span>
+        <span class="entry-banner-pct">${pct}%</span>
+      </div>`;
+    }
+    const color = pct >= 70 ? 'var(--green)' : (pct < 30 ? 'var(--orange)' : 'inherit');
+    const bar   = buildPercentileBar(pct);
+    const range = p10.toFixed(1) + '–' + p90.toFixed(1) + '%';
+    const tip   = histMax != null
+      ? `历史最高 ${histMax.toFixed(1)}%（含黑天鹅期，已剔除极值计算分位）`
+      : '';
+    return `<div class="entry-banner">
+      <span class="entry-banner-label">入场时机</span>
+      <span class="entry-banner-bar" style="color:${color}">${bar}</span>
+      <span class="entry-banner-pct" style="color:${color}">${pct}%</span>
+      <span class="entry-banner-range">(正常区间 ${range})</span>
+      ${tip ? `<span style="opacity:0.55;cursor:help;margin-left:4px" title="${tip}">ℹ</span>` : ''}
+    </div>`;
+  })();
+
   return `<div class="card card--amber">
     <div class="card-head" style="background:rgba(255,179,64,0.04)">
       <div class="card-head-left">
@@ -982,6 +996,7 @@ function cardDividend(s) {
       </div>
       <div class="card-kpi kpi-amber">${p.current_yield}%<small>股息率</small></div>
     </div>
+    ${entryBanner}
     <div class="card-body">
 
       <div class="dc-group">
