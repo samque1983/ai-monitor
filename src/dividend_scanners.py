@@ -274,6 +274,7 @@ def scan_dividend_pool_weekly(
                 max_yield_5y=max_yield_5y,
                 quality_breakdown=quality_score_result.quality_breakdown,
                 analysis_text=quality_score_result.analysis_text or "",
+                health_rationale=quality_score_result.health_rationale,
                 data_version_date=str(date.today()),
                 sgov_yield=sgov_yield if classify_market(ticker) == "US" else None,
             )
