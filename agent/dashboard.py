@@ -2,6 +2,7 @@
 import json
 import os
 import time
+from collections import defaultdict
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, Request
@@ -15,6 +16,25 @@ from agent.deps import get_db
 router = APIRouter()
 
 _TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
+
+# ── IP rate limiter: 10 requests / 60s per IP ──────────────────────────────
+_rate_store: dict = defaultdict(list)
+_RATE_LIMIT = 10
+_RATE_WINDOW = 60  # seconds
+
+
+def _check_rate_limit(request: Request) -> bool:
+    """Return True if request is allowed, False if rate limit exceeded."""
+    ip = request.headers.get("X-Forwarded-For", request.client.host if request.client else "unknown")
+    ip = ip.split(",")[0].strip()
+    now = time.time()
+    timestamps = _rate_store[ip]
+    # Drop entries outside the window
+    _rate_store[ip] = [t for t in timestamps if now - t < _RATE_WINDOW]
+    if len(_rate_store[ip]) >= _RATE_LIMIT:
+        return False
+    _rate_store[ip].append(now)
+    return True
 templates = Jinja2Templates(directory=_TEMPLATES_DIR)
 
 
@@ -234,8 +254,13 @@ def _infer_cards(message: str, db: AgentDB) -> list:
 
 
 @router.post("/api/chat")
-async def chat_api(req: ChatRequest, db: AgentDB = Depends(get_db)):
+async def chat_api(req: ChatRequest, request: Request, db: AgentDB = Depends(get_db)):
     """Web chat endpoint — calls ClaudeAgent.process()."""
+    if not _check_rate_limit(request):
+        return JSONResponse(
+            {"reply": "请求过于频繁，请稍后再试。", "cards": [], "profile_updated": False},
+            status_code=429,
+        )
     from agent.main import claude_agent
     if claude_agent is None:
         return JSONResponse({"reply": "AI 领航员尚未初始化，请稍候。", "cards": [], "profile_updated": False})
