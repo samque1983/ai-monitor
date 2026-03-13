@@ -51,14 +51,33 @@ STRATEGY_REGISTRY = [
 ]
 
 
-def _get_default_tickers() -> list:
-    """Fetch default ticker list from the scan universe CSV. Returns [] on failure."""
+def _get_default_universe() -> list:
+    """Fetch full universe rows from the scan CSV. Returns [] on failure.
+
+    Each row: {ticker, name, group, role, floor, strike, note}
+    """
     try:
-        from src.data_loader import fetch_universe
-        from agent import config as agent_config
-        csv_url = agent_config.get("CSV_URL") or "https://docs.google.com/spreadsheets/d/1O_txXYVAcDp0syjexAcowRRdrNX4gyrFzrGqNgh9dfw/export?format=csv"
-        tickers, _ = fetch_universe(csv_url)
-        return tickers
+        import io
+        import requests as _req
+        import pandas as pd
+        url = "https://docs.google.com/spreadsheets/d/1O_txXYVAcDp0syjexAcowRRdrNX4gyrFzrGqNgh9dfw/export?format=csv"
+        resp = _req.get(url, timeout=15, verify=False)
+        resp.encoding = "utf-8"
+        df = pd.read_csv(io.StringIO(resp.text))
+        df["代码"] = df["代码"].astype(str).str.strip()
+        df = df[df["代码"].notna() & (df["代码"] != "") & (df["代码"] != "nan")]
+        rows = []
+        for _, r in df.iterrows():
+            rows.append({
+                "ticker": r["代码"],
+                "name": r.get("标的", ""),
+                "group": r.get("梯队", ""),
+                "role": r.get("角色", ""),
+                "floor": str(r.get("Floor (大底)", "") or "").strip(),
+                "strike": str(r.get("Strike (黄金位)", "") or "").strip(),
+                "note": str(r.get("V1.9 战术特征", "") or "").strip(),
+            })
+        return rows
     except Exception:
         return []
 
@@ -70,9 +89,11 @@ async def watchlist_page(request: Request, db: AgentDB = Depends(get_db)):
 
     # Fallback to default universe when watchlist is empty
     is_default = False
+    default_rows = []
     if not tickers:
-        tickers = _get_default_tickers()
-        is_default = bool(tickers)
+        default_rows = _get_default_universe()
+        is_default = bool(default_rows)
+        tickers = [r["ticker"] for r in default_rows]
 
     # Build strategy tag index: ticker -> list of strategy names
     strategy_tag_index: dict = {}
@@ -97,6 +118,7 @@ async def watchlist_page(request: Request, db: AgentDB = Depends(get_db)):
         "ticker_rows": ticker_rows,
         "strategy_cards": strategy_cards,
         "is_default": is_default,
+        "default_rows": default_rows,
     })
 
 
