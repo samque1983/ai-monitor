@@ -562,7 +562,9 @@ class MarketDataProvider:
         """
         获取股息历史数据
 
-        从 yfinance 获取过去 N 年的股息记录。
+        路由规则：
+        - HK/CN: AKShare（完整） → yfinance（fallback）
+        - US: yfinance only（AKShare 不支持）
 
         参数:
         - ticker: 股票代码
@@ -571,14 +573,25 @@ class MarketDataProvider:
         返回:
         - List[Dict]: [{date: datetime.date, amount: float}, ...] 按时间升序
         - None: 无数据或发生错误
-
-        注意:
-        - 自动过滤到 cutoff_date = datetime.now() - timedelta(days=years * 365)
-        - years < 1 时触发警告并返回 None
         """
         if years < 1:
             logger.warning(f"Invalid years parameter: {years}. Must be >= 1.")
             return None
+
+        market = classify_market(ticker)
+        if self._akshare and market in ("CN", "HK"):
+            result = self._akshare.get_dividend_history(ticker, years)
+            if result:
+                logger.debug(f"{ticker}: dividend history via AKShare ({len(result)} records)")
+                return result
+            logger.debug(f"{ticker}: AKShare dividend history empty, falling back to yfinance")
+
+        if self._polygon and market == "US":
+            result = self._polygon.get_dividend_history(ticker, years)
+            if result:
+                logger.debug(f"{ticker}: dividend history via Polygon ({len(result)} records)")
+                return result
+            logger.debug(f"{ticker}: Polygon dividend history empty, falling back to yfinance")
 
         try:
             yticker = yf.Ticker(ticker, session=self._yf_session)

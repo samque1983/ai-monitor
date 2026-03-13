@@ -1,7 +1,7 @@
 # src/providers/base.py
 """Base provider interface for market data sources."""
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 import pandas as pd
 
 
@@ -22,4 +22,8 @@ class BaseProvider(ABC):
 
     def get_fundamentals(self, ticker: str) -> Optional[Dict[str, Any]]:
         """Fetch fundamental data. Returns None if unsupported."""
+        return None
+
+    def get_dividend_history(self, ticker: str, years: int = 5) -> Optional[List[Dict[str, Any]]]:
+        """Fetch dividend history. Returns None if unsupported."""
         return None

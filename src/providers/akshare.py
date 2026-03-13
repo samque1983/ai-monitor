@@ -1,8 +1,9 @@
 # src/providers/akshare.py
 """AKShare data provider for CN/HK/US markets."""
 import logging
+import re
 from datetime import date, timedelta
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 import pandas as pd
 
 from src.providers.base import BaseProvider
@@ -163,6 +164,109 @@ class AkshareProvider(BaseProvider):
             "debt_to_equity": None,
             "dividend_yield": None,
         }
+
+    def get_dividend_history(self, ticker: str, years: int = 5) -> Optional[List[Dict[str, Any]]]:
+        """Fetch dividend history for HK and CN stocks.
+
+        HK: uses stock_hk_dividend_payout_em; parses 分红方案 text for per-share amount.
+        CN: uses stock_dividend_cninfo; 派息比例 / 10 = per-share amount in RMB.
+        US: returns None (yfinance handles it).
+
+        Returns list of {date: datetime.date, amount: float} sorted ascending, or None.
+        """
+        if not self.enabled or ak is None:
+            return None
+        market = classify_market(ticker)
+        if market == "HK":
+            return self._hk_dividend_history(ticker, years)
+        if market == "CN":
+            return self._cn_dividend_history(ticker, years)
+        return None  # US: not supported
+
+    def _parse_hk_dividend_amount(self, text: str) -> Optional[float]:
+        """Parse per-share dividend amount from 分红方案 text.
+
+        Handles formats like:
+          '每股派息0.45港元'
+          '每股末期股息港币0.16元'
+          '每股派发末期股息港币1.70元'
+        Strategy: find all decimal numbers; take the first one > 0.
+        """
+        if not text or not isinstance(text, str):
+            return None
+        matches = re.findall(r'\d+\.\d+|\d+', text)
+        for m in matches:
+            val = float(m)
+            if val > 0:
+                return val
+        return None
+
+    def _hk_dividend_history(self, ticker: str, years: int) -> Optional[List[Dict[str, Any]]]:
+        symbol = self._normalize_hk(ticker)
+        try:
+            df = ak.stock_hk_dividend_payout_em(symbol=symbol)
+            if df is None or df.empty or "除净日" not in df.columns:
+                return None
+            cutoff = date.today() - timedelta(days=years * 365)
+            result = []
+            for _, row in df.iterrows():
+                ex_date = row.get("除净日")
+                if ex_date is None or (hasattr(ex_date, '__class__') and ex_date != ex_date):
+                    continue  # NaT / NaN
+                if isinstance(ex_date, str):
+                    try:
+                        ex_date = date.fromisoformat(ex_date)
+                    except ValueError:
+                        continue
+                if ex_date < cutoff:
+                    continue
+                amount = self._parse_hk_dividend_amount(str(row.get("分红方案", "")))
+                if amount is None or amount <= 0:
+                    continue
+                result.append({"date": ex_date, "amount": round(amount, 6)})
+            if not result:
+                return None
+            result.sort(key=lambda r: r["date"])
+            return result
+        except Exception as e:
+            logger.warning(f"AKShare HK dividend history failed for {ticker}: {e}")
+            return None
+
+    def _cn_dividend_history(self, ticker: str, years: int) -> Optional[List[Dict[str, Any]]]:
+        symbol = self._normalize_cn(ticker)
+        try:
+            df = ak.stock_dividend_cninfo(symbol=symbol)
+            if df is None or df.empty or "除权日" not in df.columns:
+                return None
+            cutoff = date.today() - timedelta(days=years * 365)
+            result = []
+            for _, row in df.iterrows():
+                ex_date = row.get("除权日")
+                if ex_date is None or (hasattr(ex_date, '__class__') and ex_date != ex_date):
+                    continue
+                if isinstance(ex_date, str):
+                    try:
+                        ex_date = date.fromisoformat(ex_date)
+                    except ValueError:
+                        continue
+                if ex_date < cutoff:
+                    continue
+                payout = row.get("派息比例")
+                try:
+                    payout = float(payout)
+                except (TypeError, ValueError):
+                    continue
+                if payout <= 0:
+                    continue
+                amount = round(payout / 10, 6)  # 派息比例 = per 10 shares
+                result.append({"date": ex_date, "amount": amount})
+            if not result:
+                return None
+            result.sort(key=lambda r: r["date"])
+            return result
+        except Exception as e:
+            logger.warning(f"AKShare CN dividend history failed for {ticker}: {e}")
+            return None
 
     def get_options_chain(self, ticker: str, dte_min: int = 45, dte_max: int = 60) -> pd.DataFrame:
         """Fetch put options. CN: ETF options only. US: via AKShare fallback."""

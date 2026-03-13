@@ -5,7 +5,7 @@ import time
 import requests
 import pandas as pd
 from datetime import date, timedelta
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 
 from src.providers.base import BaseProvider
 
@@ -109,4 +109,40 @@ class PolygonProvider(BaseProvider):
             }
         except Exception as e:
             logger.warning(f"Polygon fundamentals failed for {ticker}: {e}")
+            return None
+
+    def get_dividend_history(self, ticker: str, years: int = 5) -> Optional[List[Dict[str, Any]]]:
+        """Fetch dividend history from Polygon /v3/reference/dividends.
+
+        Returns [{date: datetime.date, amount: float}, ...] sorted ascending, or None.
+        """
+        try:
+            from_date = date.today() - timedelta(days=years * 365)
+            data = self._get(
+                "/v3/reference/dividends",
+                {"ticker": ticker, "ex_dividend_date.gte": from_date.isoformat(), "limit": 1000},
+            )
+            results = data.get("results")
+            if not results:
+                return None
+            records = []
+            for item in results:
+                ex_date_str = item.get("ex_dividend_date")
+                cash = item.get("cash_amount")
+                if not ex_date_str or cash is None:
+                    continue
+                try:
+                    ex_date = date.fromisoformat(ex_date_str)
+                    amount = float(cash)
+                except (ValueError, TypeError):
+                    continue
+                if amount <= 0:
+                    continue
+                records.append({"date": ex_date, "amount": amount})
+            if not records:
+                return None
+            records.sort(key=lambda r: r["date"])
+            return records
+        except Exception as e:
+            logger.warning(f"Polygon dividend history failed for {ticker}: {e}")
             return None

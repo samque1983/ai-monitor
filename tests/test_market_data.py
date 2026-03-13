@@ -283,6 +283,99 @@ class TestGetDividendHistory:
         # Verify last entry exact amount as per spec
         assert result[-1]["amount"] == 0.63
 
+    def test_hk_dividend_history_uses_akshare_first(self):
+        """HK: AKShare is tried before yfinance."""
+        import datetime as _dt
+        from unittest.mock import MagicMock, patch
+        mock_akshare = MagicMock()
+        mock_akshare.get_dividend_history.return_value = [
+            {"date": _dt.date(2024, 5, 10), "amount": 0.45},
+        ]
+        provider = MarketDataProvider()
+        provider._akshare = mock_akshare
+        with patch("src.market_data.yf.Ticker") as MockTicker:
+            result = provider.get_dividend_history("0267.HK", years=5)
+        mock_akshare.get_dividend_history.assert_called_once_with("0267.HK", 5)
+        MockTicker.assert_not_called()
+        assert result == [{"date": _dt.date(2024, 5, 10), "amount": 0.45}]
+
+    def test_hk_dividend_history_falls_back_to_yfinance(self):
+        """HK: falls back to yfinance if AKShare returns None."""
+        import datetime as _dt
+        from unittest.mock import MagicMock, patch
+        import pandas as pd
+        mock_akshare = MagicMock()
+        mock_akshare.get_dividend_history.return_value = None
+        provider = MarketDataProvider()
+        provider._akshare = mock_akshare
+        mock_dividends = pd.Series({pd.Timestamp("2024-05-10"): 0.45})
+        with patch("src.market_data.yf.Ticker") as MockTicker:
+            MockTicker.return_value.dividends = mock_dividends
+            result = provider.get_dividend_history("0267.HK", years=5)
+        assert result is not None
+        assert result[0]["amount"] == pytest.approx(0.45)
+
+    def test_cn_dividend_history_uses_akshare_first(self):
+        """CN: AKShare is tried before yfinance."""
+        import datetime as _dt
+        from unittest.mock import MagicMock, patch
+        mock_akshare = MagicMock()
+        mock_akshare.get_dividend_history.return_value = [
+            {"date": _dt.date(2024, 6, 10), "amount": 2.5},
+        ]
+        provider = MarketDataProvider()
+        provider._akshare = mock_akshare
+        with patch("src.market_data.yf.Ticker") as MockTicker:
+            result = provider.get_dividend_history("600519.SS", years=5)
+        mock_akshare.get_dividend_history.assert_called_once_with("600519.SS", 5)
+        MockTicker.assert_not_called()
+        assert result[0]["amount"] == pytest.approx(2.5)
+
+    def test_us_dividend_history_uses_polygon_first(self):
+        """US: Polygon is tried before yfinance."""
+        import datetime as _dt
+        from unittest.mock import MagicMock, patch
+        mock_polygon = MagicMock()
+        mock_polygon.get_dividend_history.return_value = [
+            {"date": _dt.date(2024, 2, 9), "amount": 0.61},
+        ]
+        provider = MarketDataProvider()
+        provider._polygon = mock_polygon
+        with patch("src.market_data.yf.Ticker") as MockTicker:
+            result = provider.get_dividend_history("AAPL", years=5)
+        mock_polygon.get_dividend_history.assert_called_once_with("AAPL", 5)
+        MockTicker.assert_not_called()
+        assert result == [{"date": _dt.date(2024, 2, 9), "amount": 0.61}]
+
+    def test_us_dividend_history_falls_back_to_yfinance(self):
+        """US: falls back to yfinance if Polygon returns None."""
+        import pandas as pd
+        from unittest.mock import MagicMock, patch
+        mock_polygon = MagicMock()
+        mock_polygon.get_dividend_history.return_value = None
+        provider = MarketDataProvider()
+        provider._polygon = mock_polygon
+        mock_dividends = pd.Series({pd.Timestamp("2024-02-09"): 0.61})
+        with patch("src.market_data.yf.Ticker") as MockTicker:
+            MockTicker.return_value.dividends = mock_dividends
+            result = provider.get_dividend_history("AAPL", years=5)
+        assert result is not None
+        assert result[0]["amount"] == pytest.approx(0.61)
+
+    def test_us_dividend_history_skips_akshare(self):
+        """US: AKShare is not called; Polygon/yfinance handles it."""
+        import pandas as pd
+        from unittest.mock import MagicMock, patch
+        mock_akshare = MagicMock()
+        provider = MarketDataProvider()
+        provider._akshare = mock_akshare
+        mock_dividends = pd.Series({pd.Timestamp("2024-02-09"): 0.61})
+        with patch("src.market_data.yf.Ticker") as MockTicker:
+            MockTicker.return_value.dividends = mock_dividends
+            result = provider.get_dividend_history("AAPL", years=5)
+        mock_akshare.get_dividend_history.assert_not_called()
+        assert result is not None
+
 
 class TestGetFundamentals:
     @patch("src.market_data.yf.Ticker")
@@ -732,6 +825,61 @@ def test_polygon_provider_get_fundamentals_returns_none_on_failure():
         with patch("src.providers.polygon.time.sleep"):
             result = provider.get_fundamentals("AAPL")
 
+    assert result is None
+
+
+def _polygon_dividends_response():
+    """Fake Polygon /v3/reference/dividends response."""
+    return {
+        "results": [
+            {"cash_amount": 0.25, "ex_dividend_date": "2024-11-08"},
+            {"cash_amount": 0.25, "ex_dividend_date": "2024-08-09"},
+            {"cash_amount": 0.24, "ex_dividend_date": "2024-05-10"},
+        ],
+        "status": "OK",
+    }
+
+
+def test_polygon_provider_get_dividend_history_returns_list():
+    """Polygon /v3/reference/dividends → sorted [{date, amount}] list."""
+    from src.providers.polygon import PolygonProvider
+    from datetime import date as _date
+    provider = PolygonProvider(api_key="test-key")
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = _polygon_dividends_response()
+    with patch("src.providers.polygon.requests.get", return_value=mock_resp):
+        with patch("src.providers.polygon.time.sleep"):
+            result = provider.get_dividend_history("AAPL", years=5)
+    assert result is not None
+    assert len(result) == 3
+    # sorted ascending by date
+    assert result[0]["date"] == _date(2024, 5, 10)
+    assert result[0]["amount"] == pytest.approx(0.24)
+    assert result[-1]["date"] == _date(2024, 11, 8)
+    assert result[-1]["amount"] == pytest.approx(0.25)
+
+
+def test_polygon_provider_get_dividend_history_empty_returns_none():
+    """Empty results from Polygon returns None."""
+    from src.providers.polygon import PolygonProvider
+    provider = PolygonProvider(api_key="test-key")
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"results": [], "status": "OK"}
+    with patch("src.providers.polygon.requests.get", return_value=mock_resp):
+        with patch("src.providers.polygon.time.sleep"):
+            result = provider.get_dividend_history("AAPL", years=5)
+    assert result is None
+
+
+def test_polygon_provider_get_dividend_history_error_returns_none():
+    """Network error returns None."""
+    from src.providers.polygon import PolygonProvider
+    provider = PolygonProvider(api_key="test-key")
+    with patch("src.providers.polygon.requests.get", side_effect=Exception("timeout")):
+        with patch("src.providers.polygon.time.sleep"):
+            result = provider.get_dividend_history("AAPL", years=5)
     assert result is None
 
 

@@ -219,3 +219,143 @@ def test_options_chain_api_error_returns_empty():
         mock_ak.option_finance_board.side_effect = Exception("API down")
         df = p.get_options_chain("510050.SS")
     assert df.empty
+
+
+# ── dividend history ──────────────────────────────────────────────────────────
+
+import datetime as _dt
+
+MOCK_HK_DIVIDEND = pd.DataFrame({
+    "最新公告日期": [_dt.date(2024, 4, 1), _dt.date(2023, 4, 3), _dt.date(2022, 4, 4)],
+    "财政年度":     ["2023",              "2022",              "2021"],
+    "分红方案":     ["每股派息0.45港元",  "每股派息0.38港元",  "每股派息0.30港元"],
+    "分配类型":     ["末期息",            "末期息",            "末期息"],
+    "除净日":       [_dt.date(2024, 5, 10), _dt.date(2023, 5, 12), _dt.date(2022, 5, 6)],
+    "截至过户日":   [None, None, None],
+    "发放日":       [None, None, None],
+})
+
+MOCK_CN_DIVIDEND = pd.DataFrame({
+    "实施方案公告日期": [_dt.date(2024, 6, 1), _dt.date(2023, 6, 2), _dt.date(2022, 6, 3)],
+    "分红类型":     ["现金分红", "现金分红", "现金分红"],
+    "送股比例":     [0.0, 0.0, 0.0],
+    "转增比例":     [0.0, 0.0, 0.0],
+    "派息比例":     [25.0, 20.0, 18.0],  # per 10 shares → /10 = per share
+    "股权登记日":   [None, None, None],
+    "除权日":       [_dt.date(2024, 6, 10), _dt.date(2023, 6, 9), _dt.date(2022, 6, 8)],
+    "派息日":       [None, None, None],
+    "股份到账日":   [None, None, None],
+    "实施方案分红说明": ["", "", ""],
+    "报告时间":     ["2024", "2023", "2022"],
+})
+
+
+def test_hk_dividend_history():
+    """HK: parse 分红方案 text, use 除净日 as date."""
+    p = AkshareProvider(enabled=True)
+    with patch("src.providers.akshare.ak") as mock_ak:
+        mock_ak.stock_hk_dividend_payout_em.return_value = MOCK_HK_DIVIDEND.copy()
+        result = p.get_dividend_history("0267.HK", years=5)
+    assert result is not None
+    assert len(result) == 3
+    assert result[0]["date"] == _dt.date(2022, 5, 6)   # sorted ascending
+    assert result[0]["amount"] == pytest.approx(0.30)
+    assert result[-1]["amount"] == pytest.approx(0.45)
+    call_kwargs = mock_ak.stock_hk_dividend_payout_em.call_args
+    symbol_used = call_kwargs.kwargs.get("symbol") or call_kwargs.args[0]
+    assert symbol_used == "00267"
+
+
+def test_cn_dividend_history():
+    """CN: 派息比例 / 10 gives per-share amount, use 除权日 as date."""
+    p = AkshareProvider(enabled=True)
+    with patch("src.providers.akshare.ak") as mock_ak:
+        mock_ak.stock_dividend_cninfo.return_value = MOCK_CN_DIVIDEND.copy()
+        result = p.get_dividend_history("600519.SS", years=5)
+    assert result is not None
+    assert len(result) == 3
+    assert result[0]["date"] == _dt.date(2022, 6, 8)   # ascending
+    assert result[0]["amount"] == pytest.approx(1.8)   # 18.0 / 10
+    assert result[-1]["amount"] == pytest.approx(2.5)  # 25.0 / 10
+    call_kwargs = mock_ak.stock_dividend_cninfo.call_args
+    symbol_used = call_kwargs.kwargs.get("symbol") or call_kwargs.args[0]
+    assert symbol_used == "600519"
+
+
+def test_hk_dividend_history_years_filter():
+    """Only records within years window are returned."""
+    p = AkshareProvider(enabled=True)
+    with patch("src.providers.akshare.ak") as mock_ak:
+        with patch("src.providers.akshare.date") as mock_date:
+            mock_date.today.return_value = _dt.date(2024, 12, 1)
+            mock_ak.stock_hk_dividend_payout_em.return_value = MOCK_HK_DIVIDEND.copy()
+            result = p.get_dividend_history("0267.HK", years=2)
+    assert result is not None
+    assert len(result) == 2
+
+
+def test_hk_dividend_text_parsing_variants():
+    """Various 分红方案 text formats are parsed correctly."""
+    p = AkshareProvider(enabled=True)
+    variants = pd.DataFrame({
+        "分红方案": [
+            "每股末期股息港币0.16元",
+            "每股派发末期股息港币1.70元",
+            "每股派息2.00港元",
+        ],
+        "除净日": [
+            _dt.date(2024, 5, 1),
+            _dt.date(2023, 5, 1),
+            _dt.date(2022, 5, 1),
+        ],
+    })
+    with patch("src.providers.akshare.ak") as mock_ak:
+        mock_ak.stock_hk_dividend_payout_em.return_value = variants
+        result = p.get_dividend_history("0267.HK", years=5)
+    assert result is not None
+    amounts = [r["amount"] for r in result]
+    assert pytest.approx(0.16) in amounts
+    assert pytest.approx(1.70) in amounts
+    assert pytest.approx(2.00) in amounts
+
+
+def test_us_dividend_history_returns_none():
+    """AKShare does not provide US dividend history — return None."""
+    p = AkshareProvider(enabled=True)
+    result = p.get_dividend_history("AAPL", years=5)
+    assert result is None
+
+
+def test_dividend_history_api_error_returns_none():
+    p = AkshareProvider(enabled=True)
+    with patch("src.providers.akshare.ak") as mock_ak:
+        mock_ak.stock_hk_dividend_payout_em.side_effect = Exception("timeout")
+        result = p.get_dividend_history("0267.HK", years=5)
+    assert result is None
+
+
+def test_dividend_history_disabled_returns_none():
+    p = AkshareProvider(enabled=False)
+    result = p.get_dividend_history("0267.HK", years=5)
+    assert result is None
+
+
+def test_dividend_history_empty_df_returns_none():
+    """Empty API response returns None."""
+    p = AkshareProvider(enabled=True)
+    with patch("src.providers.akshare.ak") as mock_ak:
+        mock_ak.stock_hk_dividend_payout_em.return_value = pd.DataFrame()
+        result = p.get_dividend_history("0267.HK", years=5)
+    assert result is None
+
+
+def test_cn_dividend_zero_payout_skipped():
+    """Rows with 派息比例=0 are skipped."""
+    p = AkshareProvider(enabled=True)
+    df = MOCK_CN_DIVIDEND.copy()
+    df.loc[1, "派息比例"] = 0.0
+    with patch("src.providers.akshare.ak") as mock_ak:
+        mock_ak.stock_dividend_cninfo.return_value = df
+        result = p.get_dividend_history("600519.SS", years=5)
+    assert result is not None
+    assert len(result) == 2
