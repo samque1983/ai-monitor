@@ -83,6 +83,49 @@ class AgentDB:
         )
         self.conn.commit()
 
+    def add_to_watchlist(self, user_id: str, ticker: str) -> List[str]:
+        """Add ticker to watchlist (dedup, uppercase). Creates user if needed. Returns updated list."""
+        ticker = ticker.upper().strip()
+        user = self.get_user(user_id)
+        if not user:
+            self.save_user(user_id)
+            user = self.get_user(user_id)
+        tickers = json.loads(user["watchlist_json"]) if user.get("watchlist_json") else []
+        if ticker not in tickers:
+            tickers.append(ticker)
+            self.update_watchlist(user_id, tickers)
+        return tickers
+
+    def remove_from_watchlist(self, user_id: str, ticker: str) -> List[str]:
+        """Remove ticker from watchlist. No-op if not present. Returns updated list."""
+        ticker = ticker.upper().strip()
+        user = self.get_user(user_id)
+        if not user:
+            return []
+        tickers = json.loads(user["watchlist_json"]) if user.get("watchlist_json") else []
+        tickers = [t for t in tickers if t != ticker]
+        self.update_watchlist(user_id, tickers)
+        return tickers
+
+    def get_strategy_pool(self, signal_type: str) -> List[Dict]:
+        """Return all signals of given signal_type from the latest scan_date."""
+        row = self.conn.execute(
+            "SELECT MAX(scan_date) as latest FROM signals WHERE signal_type=?",
+            (signal_type,)
+        ).fetchone()
+        if not row or not row["latest"]:
+            return []
+        rows = self.conn.execute(
+            "SELECT ticker, payload FROM signals WHERE signal_type=? AND scan_date=?",
+            (signal_type, row["latest"])
+        ).fetchall()
+        result = []
+        for r in rows:
+            entry = {"ticker": r["ticker"]}
+            entry.update(json.loads(r["payload"]))
+            result.append(entry)
+        return result
+
     def save_scan_results(self, scan_date: str, results: List[Dict]):
         self.conn.execute(
             "INSERT OR REPLACE INTO scan_results VALUES (?,?,?)",
