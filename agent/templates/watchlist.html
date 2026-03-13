@@ -10,11 +10,12 @@
 <style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 :root {
-  --bg:        #111118; --surface: #1c1c2a; --surface-2: #262636;
-  --border:    rgba(255,255,255,0.12); --border-2: rgba(255,255,255,0.09);
-  --text:      #f0f0f8; --text-2: rgba(210,210,230,0.88); --text-3: rgba(210,210,230,0.75);
+  --bg: #111118; --surface: #1c1c2a; --surface-2: #262636;
+  --border: rgba(255,255,255,0.12); --border-2: rgba(255,255,255,0.09);
+  --text: #f0f0f8; --text-2: rgba(210,210,230,0.88); --text-3: rgba(210,210,230,0.75);
   --red: #f84960; --amber: #f7a600; --green: #02c076; --blue: #2e86de;
   --r4: 4px; --r8: 8px; --r12: 12px;
+  --amber-dim: rgba(255,179,64,0.12);
 }
 html, body { height: 100%; }
 body {
@@ -35,79 +36,184 @@ body {
   display: flex; align-items: center; gap: 8px;
 }
 .section-eyebrow::after { content: ''; flex: 1; height: 1px; background: var(--border-2); }
+
+/* Add row */
+.add-row { display: flex; gap: 8px; margin-bottom: 16px; }
+.add-input {
+  flex: 1; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r8); padding: 9px 14px;
+  font-family: "DM Mono", monospace; font-size: 14px; color: var(--text);
+  outline: none; text-transform: uppercase;
+  transition: border-color 0.15s;
+}
+.add-input::placeholder { color: var(--text-3); text-transform: none; font-family: "DM Sans", sans-serif; }
+.add-input:focus { border-color: var(--amber); }
+.add-btn {
+  background: var(--amber-dim); border: 1px solid rgba(255,179,64,0.3);
+  color: var(--amber); border-radius: var(--r8); padding: 9px 16px;
+  font-family: "DM Sans", sans-serif; font-size: 13px; font-weight: 500;
+  cursor: pointer; white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+.add-btn:hover { background: rgba(255,179,64,0.2); border-color: rgba(255,179,64,0.5); }
+
+/* Ticker rows */
 .ticker-row {
   display: flex; align-items: center; gap: 10px;
   padding: 10px 14px; background: var(--surface);
   border: 1px solid var(--border); border-radius: var(--r8); margin-bottom: 6px;
+  animation: fadeUp 0.3s ease both;
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 .ticker-name { font-family: "DM Mono", monospace; font-size: 14px; font-weight: 600; letter-spacing: 0.03em; flex: 1; }
+.ticker-tags { display: flex; gap: 5px; flex-wrap: wrap; }
+.ticker-tag {
+  font-family: "DM Mono", monospace; font-size: 10px; font-weight: 600;
+  letter-spacing: 0.06em; padding: 2px 7px; border-radius: 10px;
+  background: var(--amber-dim); color: var(--amber);
+  border: 1px solid rgba(255,179,64,0.25);
+}
+.ticker-del {
+  font-family: "DM Mono", monospace; font-size: 11px; color: var(--text-3);
+  cursor: pointer; padding: 4px 6px; border-radius: var(--r4);
+  border: none; background: transparent;
+  transition: color 0.15s, background 0.15s;
+}
+.ticker-del:hover { color: var(--red); background: rgba(248,73,96,0.08); }
 .empty-state {
-  text-align: center; padding: 60px 20px;
+  text-align: center; padding: 40px 20px;
   color: var(--text-3); font-size: 13px; line-height: 1.8;
 }
-.rule-row {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 9px 14px; background: var(--surface);
-  border: 1px solid var(--border); border-radius: var(--r8); margin-bottom: 6px;
-  font-size: 13px;
+
+/* Strategy cards */
+.strategy-card {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 16px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--r12); margin-bottom: 8px;
+  text-decoration: none; color: inherit;
+  transition: background 0.15s, border-color 0.15s;
 }
-.rule-label { color: var(--text-2); }
-.rule-on  { font-family: "DM Mono", monospace; font-size: 11px; color: var(--green); }
-.rule-off { font-family: "DM Mono", monospace; font-size: 11px; color: var(--text-3); }
-.todo-block {
-  background: rgba(247,166,0,0.06); border: 1px dashed rgba(247,166,0,0.25);
-  border-radius: var(--r8); padding: 14px 16px; margin-bottom: 6px;
+.strategy-card:hover { background: var(--surface-2); border-color: rgba(255,255,255,0.18); }
+.strategy-icon {
+  width: 36px; height: 36px; border-radius: var(--r8);
+  background: var(--amber-dim); display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
 }
-.todo-label {
-  font-family: "DM Mono", monospace; font-size: 10px; font-weight: 700;
-  letter-spacing: 0.08em; text-transform: uppercase;
-  color: var(--amber); margin-bottom: 6px;
-}
-.todo-desc { font-size: 13px; color: var(--text-3); line-height: 1.6; }
-.ticker-del { font-family: "DM Mono", monospace; font-size: 11px; color: var(--text-3); cursor: not-allowed; opacity: 0.5; }
+.strategy-body { flex: 1; min-width: 0; }
+.strategy-name { font-size: 14px; font-weight: 500; color: var(--text); }
+.strategy-desc { font-size: 12px; color: var(--text-3); margin-top: 2px; line-height: 1.4; }
+.strategy-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0; }
+.strategy-count { font-family: "DM Mono", monospace; font-size: 18px; font-weight: 500; color: var(--text-2); }
+.strategy-count-label { font-family: "DM Mono", monospace; font-size: 10px; color: var(--text-3); }
+.strategy-arrow { color: var(--text-3); margin-left: 8px; flex-shrink: 0; }
 </style>
 </head>
 <body>
 <div class="app-shell">
   {% include "_nav.html" %}
-  <main class="main-content" style="padding: 24px 16px;">
+  <main class="main-content" style="padding: 24px 16px; max-width: 720px;">
 
     <div class="page-title">自选池</div>
-    <div class="page-desc">管理关注标的 · 查看扫描规则</div>
+    <div class="page-desc">管理关注标的 · 查看策略覆盖</div>
 
-    <div class="section-eyebrow">当前关注</div>
-    {% if tickers %}
-      {% for ticker in tickers %}
-      <div class="ticker-row">
-        <span class="ticker-name">{{ ticker }}</span>
-        <span class="ticker-del">移除 ·</span>
+    <!-- Add ticker -->
+    <div class="add-row">
+      <input class="add-input" id="ticker-input" placeholder="输入 ticker，如 AAPL" maxlength="12">
+      <button class="add-btn" onclick="addTicker()">+ 添加</button>
+    </div>
+
+    <div class="section-eyebrow">我的自选</div>
+    <div id="ticker-list">
+      {% if ticker_rows %}
+        {% for row in ticker_rows %}
+        <div class="ticker-row" id="row-{{ row.ticker }}" style="animation-delay: {{ loop.index0 * 60 }}ms">
+          <span class="ticker-name">{{ row.ticker }}</span>
+          <div class="ticker-tags">
+            {% for tag in row.tags %}
+            <span class="ticker-tag">{{ tag }}</span>
+            {% endfor %}
+          </div>
+          <button class="ticker-del" onclick="removeTicker('{{ row.ticker }}')" title="移除">✕</button>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="empty-state" id="empty-msg">暂无自选标的，在上方输入 ticker 添加。</div>
+      {% endif %}
+    </div>
+
+    <!-- Strategy discovery -->
+    <div class="section-eyebrow" style="margin-top: 32px;">策略发现</div>
+    {% for card in strategy_cards %}
+    <a class="strategy-card" href="{{ card.url }}">
+      <div class="strategy-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+        </svg>
       </div>
-      {% endfor %}
-    {% else %}
-      <div class="empty-state">暂无自选标的。<br>可通过钉钉机器人发送「添加 AAPL」或调用 API 添加。</div>
-    {% endif %}
-
-    <!-- 添加标的 — 待实现 -->
-    <div class="todo-block" style="margin-top: 10px;">
-      <div class="todo-label">待实现 · 网页添加标的</div>
-      <div class="todo-desc">输入 ticker 直接添加到自选池。目前可通过钉钉机器人（「添加 AAPL」）或 <code style="font-size:11px">/api/watchlist</code> 接口操作。</div>
-    </div>
-
-    <div class="section-eyebrow" style="margin-top: 24px;">激活扫描规则</div>
-    <div class="rule-row"><span class="rule-label">IV 高点 + 接近目标价 (Sell Put)</span><span class="rule-on">开启</span></div>
-    <div class="rule-row"><span class="rule-label">MA200 突破</span><span class="rule-on">开启</span></div>
-    <div class="rule-row"><span class="rule-label">LEAPS 机会</span><span class="rule-on">开启</span></div>
-    <div class="rule-row"><span class="rule-label">IV 飙升预警</span><span class="rule-on">开启</span></div>
-    <div class="rule-row"><span class="rule-label">IV 动量</span><span class="rule-on">开启</span></div>
-    <div class="rule-row"><span class="rule-label">分红信号</span><span class="rule-off">关闭</span></div>
-
-    <!-- 规则开关 — 待实现 -->
-    <div class="todo-block" style="margin-top: 10px;">
-      <div class="todo-label">待实现 · 规则开关</div>
-      <div class="todo-desc">网页直接开启/关闭各扫描规则。当前规则配置在 <code style="font-size:11px">config.yaml</code> 中修改。</div>
-    </div>
+      <div class="strategy-body">
+        <div class="strategy-name">{{ card.name }}</div>
+        <div class="strategy-desc">{{ card.description }}</div>
+      </div>
+      <div class="strategy-meta">
+        <span class="strategy-count">{{ card.count }}</span>
+        <span class="strategy-count-label">只标的</span>
+      </div>
+      <svg class="strategy-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="9 18 15 12 9 6"/>
+      </svg>
+    </a>
+    {% endfor %}
 
   </main>
 </div>
+
+<script>
+async function addTicker() {
+  const input = document.getElementById('ticker-input');
+  const ticker = input.value.trim().toUpperCase();
+  if (!ticker) return;
+  const resp = await fetch('/api/watchlist/add', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ticker})
+  });
+  if (!resp.ok) return;
+  const {tickers} = await resp.json();
+  input.value = '';
+  renderTickerList(tickers);
+}
+
+async function removeTicker(ticker) {
+  const resp = await fetch('/api/watchlist/remove', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ticker})
+  });
+  if (!resp.ok) return;
+  const {tickers} = await resp.json();
+  renderTickerList(tickers);
+}
+
+function renderTickerList(tickers) {
+  const list = document.getElementById('ticker-list');
+  if (!tickers.length) {
+    list.innerHTML = '<div class="empty-state" id="empty-msg">暂无自选标的，在上方输入 ticker 添加。</div>';
+    return;
+  }
+  list.innerHTML = tickers.map((t, i) => `
+    <div class="ticker-row" id="row-${t}" style="animation-delay:${i*60}ms">
+      <span class="ticker-name">${t}</span>
+      <div class="ticker-tags"></div>
+      <button class="ticker-del" onclick="removeTicker('${t}')" title="移除">✕</button>
+    </div>`).join('');
+}
+
+document.getElementById('ticker-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') addTicker();
+});
+</script>
 </body>
 </html>

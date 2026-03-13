@@ -110,3 +110,16 @@ def test_watchlist_remove_nonexistent_ticker():
     resp = client.post("/api/watchlist/remove", json={"ticker": "ZZZZ"})
     assert resp.status_code == 200
     assert isinstance(resp.json()["tickers"], list)
+
+
+def test_watchlist_page_shows_strategy_section():
+    client = get_client()
+    resp = client.get("/watchlist")
+    assert resp.status_code == 200
+    assert "策略发现" in resp.text
+
+
+def test_watchlist_page_shows_add_input():
+    client = get_client()
+    resp = client.get("/watchlist")
+    assert "ticker-input" in resp.text

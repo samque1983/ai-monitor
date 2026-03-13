@@ -40,13 +40,44 @@ async def chat_page(request: Request):
     })
 
 
+STRATEGY_REGISTRY = [
+    {
+        "slug": "dividend",
+        "name": "高股息价值股",
+        "description": "筛选连续派息 5 年以上、股息率处于历史高位的价值型标的",
+        "signal_type": "dividend",
+        "url": "/strategy/dividend",
+    },
+]
+
+
 @router.get("/watchlist")
 async def watchlist_page(request: Request, db: AgentDB = Depends(get_db)):
     user = db.get_user("ALICE")
     tickers = json.loads(user["watchlist_json"]) if user and user.get("watchlist_json") else []
+
+    # Build strategy tag index: ticker -> list of strategy names
+    strategy_tag_index: dict = {}
+    for strategy in STRATEGY_REGISTRY:
+        pool = db.get_strategy_pool(strategy["signal_type"])
+        for item in pool:
+            t = item["ticker"]
+            strategy_tag_index.setdefault(t, []).append(strategy["name"])
+
+    ticker_rows = [
+        {"ticker": t, "tags": strategy_tag_index.get(t, [])}
+        for t in tickers
+    ]
+
+    strategy_cards = []
+    for strategy in STRATEGY_REGISTRY:
+        pool = db.get_strategy_pool(strategy["signal_type"])
+        strategy_cards.append({**strategy, "count": len(pool)})
+
     return templates.TemplateResponse(request, "watchlist.html", {
         "active_page": "watchlist",
-        "tickers": tickers,
+        "ticker_rows": ticker_rows,
+        "strategy_cards": strategy_cards,
     })
 
 
