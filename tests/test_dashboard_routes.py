@@ -123,3 +123,28 @@ def test_watchlist_page_shows_add_input():
     client = get_client()
     resp = client.get("/watchlist")
     assert "ticker-input" in resp.text
+
+
+def test_strategy_dividend_page_returns_200():
+    client = get_client()
+    resp = client.get("/strategy/dividend")
+    assert resp.status_code == 200
+
+
+def test_strategy_dividend_page_has_strategy_name():
+    client = get_client()
+    resp = client.get("/strategy/dividend")
+    assert "高股息" in resp.text
+
+
+def test_strategy_dividend_page_has_nav():
+    client = get_client()
+    resp = client.get("/strategy/dividend")
+    assert "/dashboard" in resp.text
+    assert "/watchlist" in resp.text
+
+
+def test_strategy_dividend_page_handles_empty_pool():
+    client = get_client()
+    resp = client.get("/strategy/dividend")
+    assert resp.status_code == 200

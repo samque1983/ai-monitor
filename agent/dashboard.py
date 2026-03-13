@@ -81,6 +81,15 @@ async def watchlist_page(request: Request, db: AgentDB = Depends(get_db)):
     })
 
 
+@router.get("/strategy/dividend")
+async def strategy_dividend_page(request: Request, db: AgentDB = Depends(get_db)):
+    pool = db.get_strategy_pool("dividend")
+    return templates.TemplateResponse(request, "strategy_dividend.html", {
+        "active_page": "watchlist",
+        "pool": pool,
+    })
+
+
 @router.get("/api/risk-report/latest")
 async def get_risk_report(
     account: str = "ALICE",

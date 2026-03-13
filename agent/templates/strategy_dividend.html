@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>高股息价值股策略 — AI 领航员</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:opsz,wght@9..40,300..600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --bg: #111118; --surface: #1c1c2a; --surface-2: #262636;
+  --border: rgba(255,255,255,0.12); --border-2: rgba(255,255,255,0.09);
+  --text: #f0f0f8; --text-2: rgba(210,210,230,0.88); --text-3: rgba(210,210,230,0.75);
+  --red: #f84960; --amber: #f7a600; --green: #02c076; --blue: #2e86de;
+  --r4: 4px; --r8: 8px; --r12: 12px;
+  --amber-dim: rgba(255,179,64,0.12);
+}
+html, body { height: 100%; }
+body {
+  font-family: "DM Sans", -apple-system, sans-serif;
+  background: var(--bg); color: var(--text);
+  font-size: 14px; line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+.back-link {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 13px; color: var(--text-3); text-decoration: none;
+  margin-bottom: 16px;
+  transition: color 0.15s;
+}
+.back-link:hover { color: var(--text); }
+.page-title {
+  font-family: "Instrument Serif", Georgia, serif; font-style: italic;
+  font-size: clamp(24px, 6vw, 34px); font-weight: 400;
+  color: var(--text); line-height: 1.1; margin-bottom: 4px;
+}
+.page-desc { font-size: 13px; color: var(--text-3); margin-bottom: 24px; }
+.section-eyebrow {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--text-3); margin-bottom: 10px;
+  display: flex; align-items: center; gap: 8px;
+}
+.section-eyebrow::after { content: ''; flex: 1; height: 1px; background: var(--border-2); }
+
+/* Doc card */
+.doc-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r12); padding: 20px; margin-bottom: 24px;
+}
+.doc-criteria { display: flex; flex-direction: column; gap: 8px; }
+.criterion {
+  display: flex; align-items: flex-start; gap: 10px;
+  font-size: 13px; color: var(--text-2); line-height: 1.5;
+}
+.criterion-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--amber); margin-top: 6px; flex-shrink: 0;
+}
+.doc-note {
+  font-size: 12px; color: var(--text-3); margin-top: 14px;
+  padding-top: 14px; border-top: 1px solid var(--border-2);
+  line-height: 1.6;
+}
+
+/* Pool table — desktop */
+.pool-table {
+  width: 100%; border-collapse: collapse; display: none;
+}
+.pool-table th {
+  font-family: "DM Mono", monospace; font-size: 10px; font-weight: 600;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-3); padding: 8px 12px; text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+.pool-table th:not(:first-child) { text-align: right; }
+.pool-table td {
+  padding: 10px 12px; font-size: 13px; color: var(--text-2);
+  border-bottom: 1px solid var(--border-2);
+}
+.pool-table td:not(:first-child) { text-align: right; font-family: "DM Mono", monospace; }
+.pool-table tr:last-child td { border-bottom: none; }
+.pool-table tbody tr:hover td { background: var(--surface-2); }
+.ticker-cell { font-family: "DM Mono", monospace; font-size: 14px; font-weight: 600; color: var(--text); }
+.yield-val { color: var(--green); }
+.payout-badge {
+  font-family: "DM Mono", monospace; font-size: 10px; font-weight: 600;
+  padding: 2px 6px; border-radius: 10px;
+  background: var(--surface-2); color: var(--text-3);
+  border: 1px solid var(--border-2);
+}
+
+/* Pool cards — mobile */
+.pool-cards { display: flex; flex-direction: column; gap: 8px; }
+.pool-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r12); padding: 14px 16px;
+  animation: fadeUp 0.3s ease both;
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.pool-card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.pool-card-ticker { font-family: "DM Mono", monospace; font-size: 16px; font-weight: 600; flex: 1; }
+.pool-card-yield { font-family: "DM Mono", monospace; font-size: 18px; font-weight: 500; color: var(--green); }
+.pool-card-metrics { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.metric-label { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); }
+.metric-value { font-family: "DM Mono", monospace; font-size: 13px; color: var(--text-2); margin-top: 2px; }
+.empty-state {
+  text-align: center; padding: 40px 20px;
+  color: var(--text-3); font-size: 13px; line-height: 1.8;
+}
+
+@media (min-width: 640px) {
+  .pool-table { display: table; }
+  .pool-cards { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="app-shell">
+  {% include "_nav.html" %}
+  <main class="main-content" style="padding: 24px 16px; max-width: 720px;">
+
+    <a class="back-link" href="/watchlist">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      自选池
+    </a>
+
+    <div class="page-title">高股息价值股</div>
+    <div class="page-desc">连续派息 · 股息率历史高位 · 质量评分筛选</div>
+
+    <!-- Strategy description -->
+    <div class="section-eyebrow">策略逻辑</div>
+    <div class="doc-card">
+      <div class="doc-criteria">
+        <div class="criterion"><span class="criterion-dot"></span><span>连续派息 ≥ 5 年，5 年股息增长率 ≥ 0%（排除削减股息的标的）</span></div>
+        <div class="criterion"><span class="criterion-dot"></span><span>当前股息率 ≥ 2%，派息率 ≤ 100%（FCF 或 GAAP 盈利支撑）</span></div>
+        <div class="criterion"><span class="criterion-dot"></span><span>LLM 质量评分 ≥ 70 分（综合 ROE、负债率、FCF 稳定性、行业竞争力）</span></div>
+        <div class="criterion"><span class="criterion-dot"></span><span>每日监控买入时机：当前股息率 ≥ 4% 或处于 5 年历史分位数 ≥ 90%</span></div>
+        <div class="criterion"><span class="criterion-dot"></span><span>美股标的：评估 Sell Put 策略增强收益（综合年化 = 期权收益 + 股息率）</span></div>
+      </div>
+      <div class="doc-note">
+        股票池每周刷新一次。买入信号每日扫描，以价格低位（高股息率）为核心触发条件。<br>
+        此处展示当日触发买入信号的标的，非完整股票池。
+      </div>
+    </div>
+
+    <!-- Current pool -->
+    <div class="section-eyebrow">当前买入信号池（{{ pool | length }} 只）</div>
+
+    {% if pool %}
+      <!-- Desktop table -->
+      <table class="pool-table">
+        <thead>
+          <tr>
+            <th>标的</th>
+            <th>当前股息率</th>
+            <th>最新价</th>
+            <th>质量分</th>
+            <th>派息率</th>
+            <th>类型</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in pool %}
+          <tr>
+            <td class="ticker-cell">{{ item.ticker }}</td>
+            <td><span class="yield-val">{{ "%.1f"|format(item.current_yield) }}%</span></td>
+            <td>{{ "%.2f"|format(item.last_price) if item.last_price else "—" }}</td>
+            <td>{{ item.quality_score | int if item.quality_score else "—" }}</td>
+            <td>{{ "%.0f"|format(item.payout_ratio) ~ "%" if item.payout_ratio else "—" }}</td>
+            <td><span class="payout-badge">{{ item.payout_type or "GAAP" }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <!-- Mobile cards -->
+      <div class="pool-cards">
+        {% for item in pool %}
+        <div class="pool-card" style="animation-delay: {{ loop.index0 * 60 }}ms">
+          <div class="pool-card-header">
+            <span class="pool-card-ticker">{{ item.ticker }}</span>
+            <span class="pool-card-yield">{{ "%.1f"|format(item.current_yield) }}%</span>
+          </div>
+          <div class="pool-card-metrics">
+            <div>
+              <div class="metric-label">最新价</div>
+              <div class="metric-value">{{ "%.2f"|format(item.last_price) if item.last_price else "—" }}</div>
+            </div>
+            <div>
+              <div class="metric-label">质量分</div>
+              <div class="metric-value">{{ item.quality_score | int if item.quality_score else "—" }}</div>
+            </div>
+            <div>
+              <div class="metric-label">派息率</div>
+              <div class="metric-value">{{ "%.0f"|format(item.payout_ratio) ~ "%" if item.payout_ratio else "—" }}</div>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+    {% else %}
+      <div class="empty-state">暂无买入信号。<br>当股息率处于历史高位时，标的将出现在此处。</div>
+    {% endif %}
+
+  </main>
+</div>
+</body>
+</html>
