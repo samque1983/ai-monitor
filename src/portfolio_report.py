@@ -213,7 +213,8 @@ def _render_group_header(group_name: str, display_name: str,
     <span style="font-size:12px; color:{pnl_color}; font-family:'SF Mono',monospace;">PnL {pnl_str}</span>
     <span style="font-size:12px; color:{theta_color}; font-family:'SF Mono',monospace;">Θ {_e(theta_str)}</span>
     <span style="font-size:12px; color:#ff453a; font-family:'SF Mono',monospace;">MaxLoss {_e(loss_str)}</span>
-    <span style="font-size:12px; color:#8e8e93; font-family:'SF Mono',monospace;">{_e(delta_str)}</span>
+    <span style="font-size:12px; color:#8e8e93; font-family:'SF Mono',monospace; cursor:help;"
+          title="Delta Exposure：每 $1 市场波动对组合的影响金额。正值 = 净多头，市场上涨获益；负值 = 净空头，市场下跌获益。">{_e(delta_str)}</span>
   </div>
   {f'<div style="font-size:12px; color:#8e8e93; margin-top:5px;">{_e(subtitle)}</div>' if subtitle else ''}
 </div>"""
