@@ -427,6 +427,9 @@ def scan_dividend_buy_signal(
                     _earnings_date = provider.get_earnings_date(ticker)
                     if _earnings_date:
                         _days_to_earnings = (_earnings_date - date.today()).days
+                        if _days_to_earnings < 0:
+                            _days_to_earnings = None
+                            _earnings_date = None
                 except Exception:
                     pass
 

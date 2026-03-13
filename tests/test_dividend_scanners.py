@@ -347,6 +347,48 @@ class TestScanDividendBuySignal:
 
         store.close()
 
+    def test_past_earnings_date_set_to_none(self, tmp_path):
+        """财报日已过（负数days_to_earnings）时，应设为None，不显示负数"""
+        db_path = str(tmp_path / "test_dividend.db")
+        store = DividendStore(db_path)
+
+        ticker = "AAPL"
+        for date_str, div_yield in [
+            ("2021-03-01", 3.0), ("2022-03-01", 4.0), ("2023-03-01", 5.0),
+            ("2024-03-01", 6.0), ("2025-03-01", 7.0),
+        ]:
+            store.save_dividend_history(
+                ticker=ticker, date=date.fromisoformat(date_str),
+                dividend_yield=div_yield, annual_dividend=div_yield * 0.5, price=50.0,
+            )
+
+        mock_provider = MagicMock()
+        mock_provider.get_price_data.return_value = pd.DataFrame(
+            {"Close": [46.0]}, index=pd.to_datetime(["2026-03-14"])
+        )
+        mock_provider.get_dividend_history.return_value = [
+            {"date": "2025-12-15", "amount": 0.875},
+            {"date": "2025-09-15", "amount": 0.875},
+            {"date": "2025-06-15", "amount": 0.875},
+            {"date": "2025-03-15", "amount": 0.875},
+        ]
+        # 财报日已过（过去的日期）
+        past_earnings = date.today() - timedelta(days=5)
+        mock_provider.get_earnings_date.return_value = past_earnings
+
+        config = {"dividend_scanners": {"min_yield": 4.0, "min_yield_percentile": 90}}
+        pool = [{"ticker": ticker, "forward_dividend_rate": None, "max_yield_5y": None,
+                 "data_version_date": str(date.today())}]
+
+        results = scan_dividend_buy_signal(pool=pool, provider=mock_provider, store=store, config=config)
+
+        assert len(results) == 1
+        td = results[0].ticker_data
+        assert td.earnings_date is None, f"Past earnings_date should be None, got {td.earnings_date}"
+        assert td.days_to_earnings is None, f"Past days_to_earnings should be None, got {td.days_to_earnings}"
+
+        store.close()
+
 
 class TestScanDividendSellPut:
     """测试高股息Sell Put期权策略扫描器"""
