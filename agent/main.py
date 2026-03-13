@@ -75,7 +75,7 @@ async def dingtalk_webhook(request: Request):
         return JSONResponse({"ok": True})
 
     try:
-        reply = claude_agent.process(msg["user_id"], msg["text"])
+        reply, _ = claude_agent.process(msg["user_id"], msg["text"])
         send_reply(msg["session_webhook"], reply)
     except Exception as e:
         logger.error(f"Webhook processing error: {e}")
