@@ -122,9 +122,15 @@ scan_dividend_pool_weekly(
 ) -> List[TickerData]
 ```
 
+**dividend_yield 数据源**:
+- US: yfinance `trailingAnnualDividendYield`（优先）或 `dividendYield`，已处理小数/百分比单位
+- CN: `stock_individual_spot_xq(symbol="SH600036")` → `股息率(TTM)` （雪球实时行情）
+- HK: `dividend_yield = None`（雪球不支持港股，待后续补充）
+
 **Filter rules** (all must pass):
 | Rule | Default |
 |------|---------|
+| `dividend_yield >= 2%` | hard filter (CN/HK 通过雪球 TTM 保证准确) |
 | `consecutive_years >= min_consecutive_years` | 5 |
 | `payout_ratio <= max_payout_ratio` | 100 (hard exclude) |
 | `quality_score >= min_quality_score` | 70 |
@@ -153,6 +159,10 @@ scan_dividend_buy_signal(
     config: dict,
 ) -> List[DividendBuySignal]
 ```
+
+**annual_dividend 计算规则**:
+- **US**: `sum(yfinance dividends, last 365 days)` — 季度派息，yfinance 数据完整
+- **CN/HK**: `fundamentals.dividend_yield / 100 * last_price` — 使用雪球 TTM 股息率推算。原因：yfinance 在 365 天窗口内可能只捕获到中期派息（interim），导致年度金额严重偏低（如招商银行实际 7.6%，yfinance 原始计算仅 1.4%）
 
 **Trigger condition**: `current_yield >= min_yield AND yield_percentile >= min_yield_percentile`
 

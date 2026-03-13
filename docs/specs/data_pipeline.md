@@ -200,9 +200,10 @@ New providers extend `BaseProvider` and override only the methods they support.
 
 **AkshareProvider** (`src/providers/akshare.py`)
 - `get_price_data(ticker, period) → pd.DataFrame` — daily adjusted OHLCV for CN/HK/US via `ak.stock_zh_a_hist` / `ak.stock_hk_hist` / `ak.stock_us_hist`
-- `get_fundamentals(ticker) → Optional[Dict]` — CN: name/industry/dividend_yield via `stock_individual_info_em` + `stock_zh_a_lg_indicator`; HK: name/industry via `stock_hk_company_profile_em`; US: returns None (not supported)
+- `get_fundamentals(ticker) → Optional[Dict]` — CN: name/industry via `stock_individual_info_em`; dividend_yield (TTM) via `stock_individual_spot_xq` (雪球实时行情, symbol `SH600036`/`SZ000001`); HK: name/industry via `stock_hk_company_profile_em`; US: returns None (not supported)
 - `get_options_chain(ticker, dte_min, dte_max) → pd.DataFrame` — CN ETF options (50ETF/300ETF/科创50) via `option_finance_board`; US via `option_current_em` (best-effort)
-- Ticker normalization: `600519.SS` → `600519`; `0700.HK` → `00700` (5-digit pad)
+- Ticker normalization: `600519.SS` → `600519` (East Money); `600036.SS` → `SH600036` (XueQiu); `0700.HK` → `00700` (5-digit pad)
+- **注意**: `stock_zh_a_lg_indicator` 已在 akshare 1.18+ 移除，不可使用
 - No API key required. Activated via: `config.data_sources.akshare.enabled` (default `true`)
 - CN ETF option map: `510050`→`50ETF`, `510300`→`300ETF`, `588000`→`科创50`, `159901`→`深100ETF`
 
