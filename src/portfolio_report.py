@@ -202,9 +202,6 @@ def _render_group_header(group_name: str, display_name: str,
     else:
         loss_str = f"-${max_loss:,.0f} ({stats['max_loss_pct']:.1f}%)"
 
-    delta = stats["net_delta"]
-    delta_str = f"{'+' if delta >= 0 else ''}{delta:.0f}"
-
     return f"""
 <div style="background:rgba(255,255,255,0.03); border-left:3px solid {color};
             border-radius:8px; padding:12px 16px; margin:20px 0 8px;">
@@ -214,9 +211,6 @@ def _render_group_header(group_name: str, display_name: str,
     <span style="font-size:12px; color:{pnl_color}; font-family:'SF Mono',monospace;">盈亏 {pnl_str}</span>
     <span style="font-size:12px; color:{theta_color}; font-family:'SF Mono',monospace;">日Θ {_e(theta_str)}</span>
     <span style="font-size:12px; color:#ff453a; font-family:'SF Mono',monospace;">最大亏损 {_e(loss_str)}</span>
-    <span style="font-size:12px; color:#8e8e93; font-family:'SF Mono',monospace; cursor:help;"
-          title="Delta 敞口：持仓的净方向性敞口（股票数量等量）。正值 = 净多头，市场涨则获益；负值 = 净空头，市场跌则获益。"
-    >Δ敞口 {_e(delta_str)}</span>
   </div>
   {f'<div style="font-size:12px; color:#8e8e93; margin-top:5px;">{_e(subtitle)}</div>' if subtitle else ''}
 </div>"""
