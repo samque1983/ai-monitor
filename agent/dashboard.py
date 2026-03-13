@@ -1,6 +1,7 @@
 # agent/dashboard.py
 import json
 import os
+import time
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, Request
@@ -51,11 +52,19 @@ STRATEGY_REGISTRY = [
 ]
 
 
+_universe_cache: list = []
+_universe_cache_ts: float = 0.0
+_UNIVERSE_TTL = 600  # 10 minutes
+
+
 def _get_default_universe() -> list:
-    """Fetch full universe rows from the scan CSV. Returns [] on failure.
+    """Fetch full universe rows from the scan CSV. Cached for 10 minutes.
 
     Each row: {ticker, name, group, role, floor, strike, note}
     """
+    global _universe_cache, _universe_cache_ts
+    if _universe_cache and time.time() - _universe_cache_ts < _UNIVERSE_TTL:
+        return _universe_cache
     try:
         import io
         import requests as _req
@@ -77,39 +86,35 @@ def _get_default_universe() -> list:
                 "strike": str(r.get("Strike (黄金位)", "") or "").strip(),
                 "note": str(r.get("V1.9 战术特征", "") or "").strip(),
             })
+        _universe_cache = rows
+        _universe_cache_ts = time.time()
         return rows
     except Exception:
-        return []
+        return _universe_cache  # return stale cache on failure rather than []
+
+
+def _build_tag_index(db: AgentDB) -> dict:
+    """Return {ticker: [strategy_name, ...]} from latest scan results."""
+    index: dict = {}
+    for strategy in STRATEGY_REGISTRY:
+        for item in db.get_strategy_pool(strategy["signal_type"]):
+            index.setdefault(item["ticker"], []).append(strategy["name"])
+    return index
 
 
 @router.get("/watchlist")
 async def watchlist_page(request: Request, db: AgentDB = Depends(get_db)):
     user = db.get_user("ALICE")
+    items: list = db._parse_watchlist(user) if user else []
 
-    # Parse enriched watchlist (list of dicts)
-    items: list = []
-    if user:
-        items = db._parse_watchlist(user)
-
-    # Fallback to default universe when watchlist is empty
     is_default = False
-    default_rows = []
+    default_rows: list = []
     if not items:
         default_rows = _get_default_universe()
         is_default = bool(default_rows)
 
-    # Build strategy tag index: ticker -> list of strategy names
-    strategy_tag_index: dict = {}
-    for strategy in STRATEGY_REGISTRY:
-        pool = db.get_strategy_pool(strategy["signal_type"])
-        for pool_item in pool:
-            t = pool_item["ticker"]
-            strategy_tag_index.setdefault(t, []).append(strategy["name"])
-
-    ticker_rows = [
-        {**item, "tags": strategy_tag_index.get(item["ticker"], [])}
-        for item in items
-    ]
+    tag_index = _build_tag_index(db)
+    ticker_rows = [{**item, "tags": tag_index.get(item["ticker"], [])} for item in items]
 
     strategy_cards = []
     for strategy in STRATEGY_REGISTRY:
@@ -178,20 +183,18 @@ class WatchlistMutateRequest(BaseModel):
 @router.post("/api/watchlist/add")
 async def watchlist_add(req: WatchlistMutateRequest, db: AgentDB = Depends(get_db)):
     ticker = req.ticker.upper().strip()
-    # Look up metadata from the default universe CSV
-    universe = _get_default_universe()
-    meta = next((r for r in universe if r["ticker"] == ticker), None)
-    metadata = None
-    if meta:
-        metadata = {k: v for k, v in meta.items() if k != "ticker"}
+    meta = next((r for r in _get_default_universe() if r["ticker"] == ticker), None)
+    metadata = {k: v for k, v in meta.items() if k != "ticker"} if meta else None
     items = db.add_to_watchlist("ALICE", ticker, metadata=metadata)
-    return JSONResponse({"items": items})
+    tag_index = _build_tag_index(db)
+    return JSONResponse({"items": [{**i, "tags": tag_index.get(i["ticker"], [])} for i in items]})
 
 
 @router.post("/api/watchlist/remove")
 async def watchlist_remove(req: WatchlistMutateRequest, db: AgentDB = Depends(get_db)):
     items = db.remove_from_watchlist("ALICE", req.ticker)
-    return JSONResponse({"items": items})
+    tag_index = _build_tag_index(db)
+    return JSONResponse({"items": [{**i, "tags": tag_index.get(i["ticker"], [])} for i in items]})
 
 
 class ChatRequest(BaseModel):

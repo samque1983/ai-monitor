@@ -57,19 +57,12 @@ body {
 }
 .add-btn:hover { background: rgba(255,179,64,0.2); border-color: rgba(255,179,64,0.5); }
 
-/* Ticker rows */
-.ticker-row {
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px 14px; background: var(--surface);
-  border: 1px solid var(--border); border-radius: var(--r8); margin-bottom: 6px;
-  animation: fadeUp 0.3s ease both;
-}
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-.ticker-name { font-family: "DM Mono", monospace; font-size: 14px; font-weight: 600; letter-spacing: 0.03em; flex: 1; }
-.ticker-tags { display: flex; gap: 5px; flex-wrap: wrap; }
+.ticker-name { font-family: "DM Mono", monospace; font-size: 14px; font-weight: 600; letter-spacing: 0.03em; }
+.ticker-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-left: auto; }
 .ticker-tag {
   font-family: "DM Mono", monospace; font-size: 10px; font-weight: 600;
   letter-spacing: 0.06em; padding: 2px 7px; border-radius: 10px;
@@ -187,7 +180,7 @@ body {
             <span class="ticker-name">{{ row.ticker }}</span>
             {% if row.name %}<span class="default-name">{{ row.name }}</span>{% endif %}
             {% if row.role %}<span class="default-role">{{ row.role }}</span>{% endif %}
-            <div class="ticker-tags" style="margin-left:auto">
+            <div class="ticker-tags">
               {% for tag in row.tags %}
               <span class="ticker-tag">{{ tag }}</span>
               {% endfor %}
@@ -284,6 +277,9 @@ function renderTickerList(items) {
     const t = item.ticker;
     const name = item.name ? `<span class="default-name">${esc(item.name)}</span>` : '';
     const role = item.role ? `<span class="default-role">${esc(item.role)}</span>` : '';
+    const tags = (item.tags && item.tags.length)
+      ? item.tags.map(tag => `<span class="ticker-tag">${esc(tag)}</span>`).join('')
+      : '';
     const priceRow = (item.floor || item.strike) ? `
       <div class="default-row-right">
         ${item.floor ? `<span class="default-price-label">大底</span><span class="default-price">${esc(item.floor)}</span>` : ''}
@@ -295,7 +291,7 @@ function renderTickerList(items) {
       <div class="default-row-left">
         <span class="ticker-name">${esc(t)}</span>
         ${name}${role}
-        <div class="ticker-tags" style="margin-left:auto"></div>
+        <div class="ticker-tags">${tags}</div>
         <button class="ticker-del" onclick="removeTicker('${esc(t)}')" title="移除">✕</button>
       </div>
       ${priceRow}
