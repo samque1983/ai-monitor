@@ -265,3 +265,45 @@ def test_render_group_header_naked_warning():
         nlv=150_000, color="#30d158"
     )
     assert "裸仓" in html
+
+
+# ── Task 6: _render_tabbed_summary ───────────────────────────────────────────
+from src.portfolio_report import _render_tabbed_summary
+
+
+def test_tabbed_summary_contains_four_tabs():
+    sgs = [
+        _make_sg("AAPL", "Naked Put", "income", dte=30),
+        _make_sg("TSLA", "Protective Put", "hedge", dte=60),
+    ]
+    html = _render_tabbed_summary(sgs, nlv=100_000)
+    assert 'data-tab="intent"'     in html
+    assert 'data-tab="underlying"' in html
+    assert 'data-tab="category"'   in html
+    assert 'data-tab="dte"'        in html
+
+def test_tabbed_summary_first_tab_active():
+    sgs = [_make_sg()]
+    html = _render_tabbed_summary(sgs, nlv=100_000)
+    # first tab-panel has class active
+    assert 'id="tab-intent"' in html
+    # active class appears before second panel
+    intent_pos = html.index('id="tab-intent"')
+    underlying_pos = html.index('id="tab-underlying"')
+    assert intent_pos < underlying_pos
+
+def test_tabbed_summary_empty_returns_empty():
+    html = _render_tabbed_summary([], nlv=100_000)
+    assert html == ""
+
+def test_tabbed_summary_contains_underlying_name():
+    sgs = [_make_sg("NVDA", "Naked Put", "income", dte=20)]
+    html = _render_tabbed_summary(sgs, nlv=100_000)
+    assert "NVDA" in html
+
+def test_tabbed_summary_js_switch_function():
+    sgs = [_make_sg()]
+    html = _render_tabbed_summary(sgs, nlv=100_000)
+    assert "tab-btn" in html
+    assert "tab-panel" in html
+    assert "classList" in html   # JS is present

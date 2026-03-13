@@ -219,6 +219,99 @@ def _render_group_header(group_name: str, display_name: str,
 </div>"""
 
 
+_TAB_LABELS = [
+    ("intent",     "意图"),
+    ("underlying", "标的"),
+    ("category",   "策略类型"),
+    ("dte",        "到期区间"),
+]
+
+_TAB_COLORS = {
+    "intent":     None,   # uses _INTENT_COLOR per group
+    "underlying": "#0a84ff",
+    "category":   "#ff9f0a",
+    "dte":        None,   # uses per-bucket color
+}
+
+_DTE_COLOR = {"≤30天": "#ff453a", "31–90天": "#ffb340", ">90天": "#30d158", "无到期": "#636366"}
+
+
+def _render_tabbed_summary(strategies: list, nlv: float) -> str:
+    if not strategies:
+        return ""
+
+    groups = _group_strategies(strategies)
+
+    # Tab nav buttons
+    tab_btns = "".join(
+        f'<button class="tab-btn{" active" if i == 0 else ""}" data-tab="{key}">{label}</button>'
+        for i, (key, label) in enumerate(_TAB_LABELS)
+    )
+
+    # Tab panels
+    panels_html = ""
+    for i, (dim_key, _) in enumerate(_TAB_LABELS):
+        active_cls = " active" if i == 0 else ""
+        panel_content = ""
+        for group_name, group_sgs in groups[dim_key].items():
+            if dim_key == "intent":
+                color = _INTENT_COLOR.get(group_name, "#636366")
+                display = _INTENT_LABEL.get(group_name, group_name)
+            elif dim_key == "dte":
+                color = _DTE_COLOR.get(group_name, "#636366")
+                display = group_name
+            else:
+                color = _TAB_COLORS[dim_key]
+                display = group_name
+
+            header_html = _render_group_header(
+                group_name=group_name, display_name=display,
+                strategies=group_sgs, dim=dim_key,
+                nlv=nlv, color=color,
+            )
+            cards_html = "".join(_strategy_card(sg) for sg in group_sgs)
+            panel_content += header_html + cards_html
+
+        panels_html += f'<div class="tab-panel{active_cls}" id="tab-{dim_key}">{panel_content}</div>\n'
+
+    js = """
+<script>
+(function(){
+  var btns = document.querySelectorAll('.strat-tabs .tab-btn');
+  btns.forEach(function(btn){
+    btn.addEventListener('click', function(){
+      btns.forEach(function(b){ b.classList.remove('active'); });
+      btn.classList.add('active');
+      var t = btn.dataset.tab;
+      document.querySelectorAll('.strat-tabs .tab-panel').forEach(function(p){
+        p.classList.toggle('active', p.id === 'tab-' + t);
+      });
+    });
+  });
+})();
+</script>"""
+
+    css = """
+<style>
+.strat-tabs .tab-nav { display:flex; gap:4px; margin-bottom:16px; border-bottom:1px solid #2c2c2e; padding-bottom:0; }
+.strat-tabs .tab-btn { background:none; border:none; color:#8e8e93; padding:8px 14px; cursor:pointer;
+  font-size:13px; font-weight:500; border-bottom:2px solid transparent; margin-bottom:-1px; transition:color .15s,border-color .15s; }
+.strat-tabs .tab-btn:hover { color:#e5e5ea; }
+.strat-tabs .tab-btn.active { color:#0a84ff; border-bottom-color:#0a84ff; }
+.strat-tabs .tab-panel { display:none; }
+.strat-tabs .tab-panel.active { display:block; }
+</style>"""
+
+    return f"""
+{css}
+<h2>策略汇总</h2>
+<div class="strat-tabs">
+  <div class="tab-nav">{tab_btns}</div>
+  {panels_html}
+</div>
+{js}"""
+
+
 _CSS = """
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
