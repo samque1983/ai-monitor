@@ -509,13 +509,8 @@ def _generate_strategy_report(report) -> str:
     yellow_html = _render_alerts(yellows, _LEVEL_COLOR["yellow"], _LEVEL_BG["yellow"], _LEVEL_BORDER["yellow"])
     watch_html = _render_alerts(watches, _LEVEL_COLOR["watch"], _LEVEL_BG["watch"], _LEVEL_BORDER["watch"])
 
-    # Strategy cards (collapsible summary)
-    strategy_cards_html = ""
-    if report.strategies:
-        cards = "".join(_strategy_card(sg) for sg in report.strategies)
-        strategy_cards_html = f"""
-<h2>策略汇总</h2>
-{cards}"""
+    # Strategy cards — tabbed multi-dimension summary
+    strategy_cards_html = _render_tabbed_summary(report.strategies, report.net_liquidation)
 
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">

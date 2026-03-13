@@ -307,3 +307,34 @@ def test_tabbed_summary_js_switch_function():
     assert "tab-btn" in html
     assert "tab-panel" in html
     assert "classList" in html   # JS is present
+
+
+# ── Task 7: integration — tabbed summary wired into generate_html_report ─────
+def _make_report_with_strategies():
+    """Report with real StrategyGroup objects."""
+    from src.option_strategies import StrategyGroup
+    sg1 = _make_sg("AAPL", "Naked Put",      "income",      dte=25, net_pnl=400, net_theta=35, max_loss=3000)
+    sg2 = _make_sg("TSLA", "Iron Condor",    "income",      dte=50, net_pnl=200, net_theta=28, max_loss=2000)
+    sg3 = _make_sg("SPY",  "Protective Put", "hedge",       dte=80, net_pnl=-50, net_theta=-8, max_loss=800)
+
+    report = _make_report()    # existing helper from top of file
+    report.strategies = [sg1, sg2, sg3]
+    return report
+
+def test_html_report_with_strategies_has_tabs():
+    html = generate_html_report(_make_report_with_strategies())
+    assert 'data-tab="intent"'     in html
+    assert 'data-tab="underlying"' in html
+    assert 'tab-panel'             in html
+
+def test_html_report_with_strategies_shows_underlyings():
+    html = generate_html_report(_make_report_with_strategies())
+    assert "AAPL" in html
+    assert "TSLA" in html
+    assert "SPY"  in html
+
+def test_html_report_no_strategies_no_tabs():
+    report = _make_report()
+    report.strategies = []
+    html = generate_html_report(report)
+    assert 'class="strat-tabs"' not in html
