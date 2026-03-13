@@ -51,10 +51,28 @@ STRATEGY_REGISTRY = [
 ]
 
 
+def _get_default_tickers() -> list:
+    """Fetch default ticker list from the scan universe CSV. Returns [] on failure."""
+    try:
+        from src.data_loader import fetch_universe
+        from agent import config as agent_config
+        csv_url = agent_config.get("CSV_URL") or "https://docs.google.com/spreadsheets/d/1O_txXYVAcDp0syjexAcowRRdrNX4gyrFzrGqNgh9dfw/export?format=csv"
+        tickers, _ = fetch_universe(csv_url)
+        return tickers
+    except Exception:
+        return []
+
+
 @router.get("/watchlist")
 async def watchlist_page(request: Request, db: AgentDB = Depends(get_db)):
     user = db.get_user("ALICE")
     tickers = json.loads(user["watchlist_json"]) if user and user.get("watchlist_json") else []
+
+    # Fallback to default universe when watchlist is empty
+    is_default = False
+    if not tickers:
+        tickers = _get_default_tickers()
+        is_default = bool(tickers)
 
     # Build strategy tag index: ticker -> list of strategy names
     strategy_tag_index: dict = {}
@@ -78,6 +96,7 @@ async def watchlist_page(request: Request, db: AgentDB = Depends(get_db)):
         "active_page": "watchlist",
         "ticker_rows": ticker_rows,
         "strategy_cards": strategy_cards,
+        "is_default": is_default,
     })
 
 

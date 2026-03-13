@@ -126,6 +126,11 @@ body {
     </div>
 
     <div class="section-eyebrow">我的自选</div>
+    {% if is_default %}
+    <div style="font-size:12px; color:var(--text-3); background:var(--surface); border:1px solid var(--border-2); border-radius:var(--r8); padding:8px 14px; margin-bottom:10px;">
+      显示默认扫描标的池 · 添加标的后切换为个人自选
+    </div>
+    {% endif %}
     <div id="ticker-list">
       {% if ticker_rows %}
         {% for row in ticker_rows %}
