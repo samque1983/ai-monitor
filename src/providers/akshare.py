@@ -44,6 +44,12 @@ class AkshareProvider(BaseProvider):
         """'600519.SS' → '600519', '000001.SZ' → '000001'."""
         return ticker.replace(".SS", "").replace(".SZ", "")
 
+    def _cn_xq_symbol(self, ticker: str) -> str:
+        """'600036.SS' → 'SH600036', '000001.SZ' → 'SZ000001' (XueQiu format)."""
+        symbol = self._normalize_cn(ticker)
+        prefix = "SH" if ticker.endswith(".SS") else "SZ"
+        return f"{prefix}{symbol}"
+
     def _normalize_hk(self, ticker: str) -> str:
         """'0700.HK' → '00700' (5-digit, leading zeros)."""
         symbol = ticker.replace(".HK", "")
@@ -121,9 +127,12 @@ class AkshareProvider(BaseProvider):
 
         dividend_yield = None
         try:
-            ind_df = ak.stock_zh_a_lg_indicator(stock=symbol)
-            if not ind_df.empty and "股息率" in ind_df.columns:
-                dividend_yield = float(ind_df["股息率"].iloc[-1])
+            xq_symbol = self._cn_xq_symbol(ticker)
+            xq_df = ak.stock_individual_spot_xq(symbol=xq_symbol)
+            xq_info = dict(zip(xq_df.iloc[:, 0], xq_df.iloc[:, 1]))
+            val = xq_info.get("股息率(TTM)")
+            if val is not None:
+                dividend_yield = float(val)
         except Exception:
             pass
 
