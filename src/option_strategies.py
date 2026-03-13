@@ -134,14 +134,31 @@ class OptionStrategyRecognizer:
         for p in opts:
             by_expiry.setdefault(p.expiry, []).append(p)
 
+        # Track remaining long shares per stock (allows multiple CCs against one large position).
+        # Short stocks (position < 0) are not tracked here — they always pass through.
+        remaining_shares: dict = {id(s): s.position for s in stocks if s.position > 0}
+
         claimed_opts = set()
         for expiry, exp_opts in sorted(by_expiry.items()):
-            sg, used = self._match_expiry_group(exp_opts, stocks, underlying)
+            avail_stocks = [s for s in stocks if remaining_shares.get(id(s), 0) > 0]
+            sg, used = self._match_expiry_group(exp_opts, avail_stocks, underlying)
             if sg:
                 strategies.append(sg)
                 claimed_opts.update(id(p) for p in used)
-                if sg.stock_leg:
-                    stocks = [s for s in stocks if s is not sg.stock_leg]
+                if sg.stock_leg and id(sg.stock_leg) in remaining_shares:
+                    short_calls = [p for p in sg.legs if p.asset_category == "OPT"
+                                   and p.put_call == "C" and p.position < 0]
+                    if short_calls:
+                        shares_used = sum(abs(p.position) * p.multiplier for p in short_calls)
+                    else:
+                        # Protective Put, Collar without SC, etc. — consume all remaining shares
+                        shares_used = remaining_shares[id(sg.stock_leg)]
+                    remaining_shares[id(sg.stock_leg)] -= shares_used
+
+        # Keep: long stocks with remaining shares + all short stocks
+        stocks = [s for s in stocks
+                  if (s.position < 0)
+                  or (id(s) in remaining_shares and remaining_shares[id(s)] > 0)]
 
         remaining_opts = [p for p in opts if id(p) not in claimed_opts]
 

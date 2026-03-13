@@ -394,6 +394,22 @@ def test_long_put_max_loss_bounded():
     assert g.max_loss == pytest.approx(400.0)
 
 
+def test_covered_call_multi_expiry_not_naked():
+    """200 shares + 2 short calls at different expiries → 2 Covered Calls, NOT 1 CC + 1 Naked Call.
+    Common scenario: rolling a CC while still holding the old leg.
+    """
+    stk = PositionRecord("AAPL","STK","",0,"",1,200,140.0,150.0,0.0,1.0,0.0,0.0,0.0,"","USD")
+    sc1 = _opt("AAPL C200","C",200,-1,expiry="20260320",cost_basis=3.0)
+    sc2 = _opt("AAPL C205","C",205,-1,expiry="20260417",cost_basis=2.5)
+    groups = OptionStrategyRecognizer().recognize([stk, sc1, sc2])
+    types = [g.strategy_type for g in groups]
+    assert "Naked Call" not in types, f"Short call misidentified as Naked Call: {types}"
+    assert types.count("Covered Call") == 2, f"Expected 2 Covered Calls, got: {types}"
+    for g in groups:
+        if g.strategy_type == "Covered Call":
+            assert g.max_loss is not None, "Covered Call max_loss must be finite"
+
+
 def test_long_stock_max_loss_bounded():
     """Long Stock max_loss = cost_basis × shares (stock floors at $0)."""
     s = PositionRecord("AAPL","STK","",0,"",1,100,140.0,150.0,0.0,1.0,0.0,0.0,0.0,"","USD")
