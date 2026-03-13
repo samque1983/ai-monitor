@@ -504,15 +504,18 @@ class OptionStrategyRecognizer:
                 short_leg = short_legs[0]
                 long_leg  = long_legs[0]
                 diag_contracts = abs(short_leg.position)
+                strike_diff = abs(short_leg.strike - long_leg.strike)
                 if sg.net_credit <= 0:
                     # Net debit paid: max loss = net debit
                     sg.max_loss = abs(sg.net_credit)
                 else:
                     # Net credit received: worst case is spread-width loss minus credit
-                    strike_diff = abs(short_leg.strike - long_leg.strike)
                     sg.max_loss = max(0.0,
                                      (strike_diff - sg.net_credit / diag_contracts / mult)
                                      * mult * diag_contracts)
+                # Max profit is bounded by the spread width + net credit received
+                # (approximation: short expires worthless, long at full intrinsic value)
+                sg.max_profit = max(0.0, strike_diff * mult * diag_contracts + sg.net_credit)
 
         elif stype in ("Long Call", "Long Put", "LEAPS Call", "LEAPS Put",
                        "Straddle", "Strangle"):
@@ -542,7 +545,11 @@ class OptionStrategyRecognizer:
         elif stype == "Collar":
             stk = sg.stock_leg
             lp = next((p for p in opt_legs if p.put_call == "P"), None)
+            sc = next((p for p in opt_legs if p.put_call == "C"), None)
             if stk and lp:
                 basis = stk.cost_basis_price if stk.cost_basis_price > 0 else stk.mark_price
                 # Max loss = downside below put strike minus net premium received
                 sg.max_loss = max(0.0, (basis - lp.strike) * abs(stk.position) - sg.net_credit)
+                # Max profit = capped at short call strike
+                if sc:
+                    sg.max_profit = max(0.0, (sc.strike - basis) * abs(stk.position) + sg.net_credit)

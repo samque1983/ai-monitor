@@ -459,6 +459,38 @@ def test_collar_max_loss_bounded():
     assert g.max_loss == pytest.approx(800.0)
 
 
+def test_collar_max_profit_bounded():
+    """Collar max_profit = (sc_strike - basis) * shares + net_credit (capped upside).
+    100 shares @ 150 basis, sell call @ 160 (premium 4.0), buy put @ 140 (premium 2.0)
+    net_credit = 200; max_profit = (160 - 150)*100 + 200 = 1200
+    """
+    s  = PositionRecord("AAPL","STK","",0,"",1,100,150.0,155.0,0.0,1.0,0.0,0.0,0.0,"","USD")
+    sc = _opt("AAPL  C160","C",160,-1,cost_basis=4.0,multiplier=100)
+    lp = _opt("AAPL  P140","P",140, 1,cost_basis=2.0,multiplier=100)
+    groups = OptionStrategyRecognizer().recognize([s, sc, lp])
+    g = groups[0]
+    assert g.strategy_type == "Collar"
+    assert g.max_profit is not None, "Collar max_profit must be finite (capped at short call strike)"
+    assert g.max_profit == pytest.approx(1200.0)
+
+
+def test_pmcc_max_profit_bounded():
+    """PMCC max_profit should be bounded by spread width.
+    short call @ 250, long LEAPS call @ 140 → strike_diff = 110
+    net_credit = 3*100 - 10*100 = -700 (debit)
+    max_profit = 110*100 + (-700) = 10300
+    """
+    near_exp = (date.today() + timedelta(days=60)).strftime("%Y%m%d")
+    far_exp  = (date.today() + timedelta(days=400)).strftime("%Y%m%d")
+    sc = _opt("AAPL  C250", "C", 250, -1, expiry=near_exp, cost_basis=3.0, multiplier=100)
+    lc = _opt("AAPL  C140", "C", 140,  1, expiry=far_exp,  cost_basis=10.0, multiplier=100)
+    groups = OptionStrategyRecognizer().recognize([sc, lc])
+    g = groups[0]
+    assert g.strategy_type == "PMCC"
+    assert g.max_profit is not None, "PMCC max_profit must be finite (bounded by spread width)"
+    assert g.max_profit == pytest.approx(10300.0)
+
+
 def test_covered_call_zero_cost_basis_uses_mark_price():
     """Covered Call with cost_basis=0 should fall back to mark_price to avoid negative max_loss."""
     stk = PositionRecord(

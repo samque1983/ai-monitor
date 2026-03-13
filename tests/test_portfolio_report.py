@@ -254,7 +254,8 @@ def test_render_group_header_contains_key_data():
     assert "收租"   in html
     assert "1,240"  in html or "1240" in html
     assert "48"     in html
-    assert "6,200"  in html or "6200" in html
+    # max_loss no longer shown in group header (misleading for mixed strategy groups)
+    assert "最大亏损" not in html
     assert "靠卖出" in html   # subtitle present
 
 def test_render_group_header_naked_warning():
@@ -264,7 +265,8 @@ def test_render_group_header_naked_warning():
         strategies=sgs, dim="intent",
         nlv=150_000, color="#30d158"
     )
-    assert "裸Call" in html or "裸 Call" in html
+    # naked warning appears in subtitle text
+    assert "裸 Call" in html or "裸Call" in html or "无上限" in html
 
 
 # ── Task 6: _render_tabbed_summary ───────────────────────────────────────────

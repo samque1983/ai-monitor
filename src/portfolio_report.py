@@ -196,12 +196,6 @@ def _render_group_header(group_name: str, display_name: str,
     theta_str = f"{theta_sign}${theta:,.0f}/天"
     theta_color = "#30d158" if theta >= 0 else "#ff453a"
 
-    max_loss = stats["total_max_loss"]
-    if stats["has_naked"]:
-        loss_str = f"-${max_loss:,.0f} + ∞ (裸Call)"
-    else:
-        loss_str = f"-${max_loss:,.0f} ({stats['max_loss_pct']:.1f}%)"
-
     return f"""
 <div style="background:rgba(255,255,255,0.03); border-left:3px solid {color};
             border-radius:8px; padding:12px 16px; margin:20px 0 8px;">
@@ -210,7 +204,6 @@ def _render_group_header(group_name: str, display_name: str,
     <span style="font-size:12px; color:#636366;">{stats['count']} 个策略</span>
     <span style="font-size:12px; color:{pnl_color}; font-family:'SF Mono',monospace;">盈亏 {pnl_str}</span>
     <span style="font-size:12px; color:{theta_color}; font-family:'SF Mono',monospace;">日Θ {_e(theta_str)}</span>
-    <span style="font-size:12px; color:#ff453a; font-family:'SF Mono',monospace;">最大亏损 {_e(loss_str)}</span>
   </div>
   {f'<div style="font-size:12px; color:#8e8e93; margin-top:5px;">{_e(subtitle)}</div>' if subtitle else ''}
 </div>"""
