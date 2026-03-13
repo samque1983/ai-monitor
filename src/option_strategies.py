@@ -502,3 +502,30 @@ class OptionStrategyRecognizer:
             # Max loss = premium paid (net debit). net_credit is negative for long positions.
             sg.max_loss = max(0.0, abs(sg.net_credit))
             sg.max_profit = None  # Unlimited for calls/straddles; leave None for simplicity
+
+        elif stype == "Long Stock":
+            stk = sg.stock_leg
+            if stk:
+                basis = stk.cost_basis_price if stk.cost_basis_price > 0 else stk.mark_price
+                sg.max_loss = basis * abs(stk.position)
+                sg.max_profit = None  # Unlimited upside
+
+        elif stype == "Short Stock":
+            sg.max_loss = None  # Truly unlimited: stock can rise without bound
+
+        elif stype == "Protective Put":
+            stk = sg.stock_leg
+            lp = next((p for p in opt_legs if p.put_call == "P"), None)
+            if stk and lp:
+                basis = stk.cost_basis_price if stk.cost_basis_price > 0 else stk.mark_price
+                # Max loss = downside below put strike + premium paid
+                sg.max_loss = max(0.0, (basis - lp.strike) * abs(stk.position) + abs(sg.net_credit))
+                sg.max_profit = None  # Stock can rise without bound
+
+        elif stype == "Collar":
+            stk = sg.stock_leg
+            lp = next((p for p in opt_legs if p.put_call == "P"), None)
+            if stk and lp:
+                basis = stk.cost_basis_price if stk.cost_basis_price > 0 else stk.mark_price
+                # Max loss = downside below put strike minus net premium received
+                sg.max_loss = max(0.0, (basis - lp.strike) * abs(stk.position) - sg.net_credit)

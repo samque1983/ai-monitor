@@ -394,6 +394,55 @@ def test_long_put_max_loss_bounded():
     assert g.max_loss == pytest.approx(400.0)
 
 
+def test_long_stock_max_loss_bounded():
+    """Long Stock max_loss = cost_basis × shares (stock floors at $0)."""
+    s = PositionRecord("AAPL","STK","",0,"",1,100,140.0,150.0,0.0,1.0,0.0,0.0,0.0,"","USD")
+    groups = OptionStrategyRecognizer().recognize([s])
+    g = groups[0]
+    assert g.strategy_type == "Long Stock"
+    assert g.max_loss is not None, "Long Stock max_loss must be finite"
+    assert g.max_loss == pytest.approx(14000.0)  # 140 * 100
+
+
+def test_short_stock_max_loss_unlimited():
+    """Short Stock max_loss = None (stock can rise without bound)."""
+    s = PositionRecord("AAPL","STK","",0,"",1,-100,140.0,150.0,0.0,-1.0,0.0,0.0,0.0,"","USD")
+    groups = OptionStrategyRecognizer().recognize([s])
+    g = groups[0]
+    assert g.strategy_type == "Short Stock"
+    assert g.max_loss is None, "Short Stock max_loss must be None (unlimited upside risk)"
+
+
+def test_protective_put_max_loss_bounded():
+    """Protective Put: max_loss capped at (basis - put_strike)*shares + premium_paid.
+    100 shares @ 150 basis, long put @ 140, premium 3.0/share → net_credit = -300
+    max_loss = (150 - 140)*100 + 300 = 1300
+    """
+    s = PositionRecord("AAPL","STK","",0,"",1,100,150.0,155.0,0.0,1.0,0.0,0.0,0.0,"","USD")
+    lp = _opt("AAPL  P140","P",140,1,cost_basis=3.0,multiplier=100)
+    groups = OptionStrategyRecognizer().recognize([s, lp])
+    g = groups[0]
+    assert g.strategy_type == "Protective Put"
+    assert g.max_loss is not None, "Protective Put max_loss must be finite"
+    assert g.max_loss == pytest.approx(1300.0)
+
+
+def test_collar_max_loss_bounded():
+    """Collar: max_loss = (basis - put_strike)*shares - net_credit.
+    100 shares @ 150 basis, sell call @ 160 (premium 4.0), buy put @ 140 (premium 2.0)
+    net_credit = 4*100 - 2*100 = 200
+    max_loss = (150 - 140)*100 - 200 = 800
+    """
+    s  = PositionRecord("AAPL","STK","",0,"",1,100,150.0,155.0,0.0,1.0,0.0,0.0,0.0,"","USD")
+    sc = _opt("AAPL  C160","C",160,-1,cost_basis=4.0,multiplier=100)
+    lp = _opt("AAPL  P140","P",140, 1,cost_basis=2.0,multiplier=100)
+    groups = OptionStrategyRecognizer().recognize([s, sc, lp])
+    g = groups[0]
+    assert g.strategy_type == "Collar"
+    assert g.max_loss is not None, "Collar max_loss must be finite"
+    assert g.max_loss == pytest.approx(800.0)
+
+
 def test_covered_call_zero_cost_basis_uses_mark_price():
     """Covered Call with cost_basis=0 should fall back to mark_price to avoid negative max_loss."""
     stk = PositionRecord(
