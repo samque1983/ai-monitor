@@ -62,3 +62,25 @@ def test_html_is_valid_structure():
     assert html.startswith("<!DOCTYPE html>") or "<html" in html
     assert "</html>" in html
     assert "<body" in html
+
+
+# ── Task 1: DTE bucket + strategy category ──────────────────────────────────
+from src.portfolio_report import _dte_bucket, _STRATEGY_CATEGORY
+
+def test_dte_bucket_boundaries():
+    assert _dte_bucket(0)  == "无到期"
+    assert _dte_bucket(1)  == "≤30天"
+    assert _dte_bucket(30) == "≤30天"
+    assert _dte_bucket(31) == "31–90天"
+    assert _dte_bucket(90) == "31–90天"
+    assert _dte_bucket(91) == ">90天"
+
+def test_strategy_category_mapping():
+    assert _STRATEGY_CATEGORY["Naked Put"]       == "裸卖"
+    assert _STRATEGY_CATEGORY["Iron Condor"]     == "综合"
+    assert _STRATEGY_CATEGORY["Bull Put Spread"] == "价差"
+    assert _STRATEGY_CATEGORY["Covered Call"]    == "含股"
+    assert _STRATEGY_CATEGORY["PMCC"]            == "跨期"
+    assert _STRATEGY_CATEGORY["LEAPS Call"]      == "长期"
+    assert _STRATEGY_CATEGORY["Long Put"]        == "单腿"
+    assert _STRATEGY_CATEGORY["Unclassified"]    == "其他"

@@ -26,6 +26,32 @@ _INTENT_LABEL = {
     "unknown": "其他",
 }
 
+_STRATEGY_CATEGORY = {
+    "Naked Put": "裸卖",        "Naked Call": "裸卖",    "Cash-Secured Put": "裸卖",
+    "Bull Put Spread": "价差",  "Bear Call Spread": "价差",
+    "Bull Call Spread": "价差", "Bear Put Spread": "价差",
+    "Ratio Put Spread": "价差", "Ratio Call Spread": "价差",
+    "Iron Condor": "综合",      "Iron Butterfly": "综合",
+    "Straddle": "综合",         "Strangle": "综合",
+    "Covered Call": "含股",     "Protective Put": "含股",
+    "Collar": "含股",           "Long Stock": "含股",    "Short Stock": "含股",
+    "PMCC": "跨期",             "Calendar Spread": "跨期", "Diagonal Spread": "跨期",
+    "LEAPS Call": "长期",       "LEAPS Put": "长期",
+    "Long Call": "单腿",        "Long Put": "单腿",
+    "Unclassified": "其他",
+}
+
+_DTE_BUCKET_ORDER = ["≤30天", "31–90天", ">90天", "无到期"]
+_CATEGORY_ORDER   = ["裸卖", "价差", "综合", "含股", "跨期", "长期", "单腿", "其他"]
+_INTENT_ORDER     = ["income", "hedge", "directional", "speculation", "mixed", "unknown"]
+
+
+def _dte_bucket(dte: int) -> str:
+    if dte == 0:   return "无到期"
+    if dte <= 30:  return "≤30天"
+    if dte <= 90:  return "31–90天"
+    return ">90天"
+
 _CSS = """
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
