@@ -22,7 +22,7 @@ def test_dashboard_returns_html(tmp_path):
     resp = client.get("/dashboard")
     assert resp.status_code == 200
     assert "text/html" in resp.headers["content-type"]
-    assert "量化扫描雷达" in resp.text
+    assert "市场雷达" in resp.text
 
 
 def test_api_signals_returns_json(tmp_path):

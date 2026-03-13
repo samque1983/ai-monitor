@@ -31,7 +31,8 @@ def test_manage_watchlist_add(db_and_tools):
     result = tools.manage_watchlist("add", "NVDA")
     assert "NVDA" in result
     user = db.get_user("user_123")
-    assert "NVDA" in json.loads(user["watchlist_json"])
+    tickers = [item["ticker"] for item in json.loads(user["watchlist_json"])]
+    assert "NVDA" in tickers
 
 def test_manage_watchlist_remove(db_and_tools):
     db, tools = db_and_tools
@@ -40,9 +41,9 @@ def test_manage_watchlist_remove(db_and_tools):
     result = tools.manage_watchlist("remove", "NVDA")
     assert "移除" in result or "removed" in result.lower()
     user = db.get_user("user_123")
-    wl = json.loads(user["watchlist_json"])
-    assert "NVDA" not in wl
-    assert "AAPL" in wl
+    tickers = [item["ticker"] for item in json.loads(user["watchlist_json"])]
+    assert "NVDA" not in tickers
+    assert "AAPL" in tickers
 
 def test_manage_watchlist_list(db_and_tools):
     db, tools = db_and_tools
