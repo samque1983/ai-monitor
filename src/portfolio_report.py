@@ -52,6 +52,46 @@ def _dte_bucket(dte: int) -> str:
     if dte <= 90:  return "31–90天"
     return ">90天"
 
+
+from collections import OrderedDict
+
+def _group_strategies(strategies: list) -> dict:
+    """Group strategies by 4 dimensions. Returns:
+      { 'intent': {group_name: [sg, ...]}, 'underlying': {...},
+        'category': {...}, 'dte': {...} }
+    """
+    result = {"intent": {}, "underlying": {}, "category": {}, "dte": {}}
+    for sg in strategies:
+        # intent
+        key = sg.intent or "unknown"
+        result["intent"].setdefault(key, []).append(sg)
+        # underlying
+        result["underlying"].setdefault(sg.underlying, []).append(sg)
+        # category
+        cat = _STRATEGY_CATEGORY.get(sg.strategy_type, "其他")
+        result["category"].setdefault(cat, []).append(sg)
+        # dte
+        bucket = _dte_bucket(sg.dte)
+        result["dte"].setdefault(bucket, []).append(sg)
+
+    # Sort groups by canonical order
+    def _sort(d, order):
+        ordered = OrderedDict()
+        for k in order:
+            if k in d:
+                ordered[k] = d[k]
+        for k in d:
+            if k not in ordered:
+                ordered[k] = d[k]
+        return ordered
+
+    result["intent"]     = _sort(result["intent"],     _INTENT_ORDER)
+    result["category"]   = _sort(result["category"],   _CATEGORY_ORDER)
+    result["dte"]        = _sort(result["dte"],         _DTE_BUCKET_ORDER)
+    # underlying: sort by underlying name
+    result["underlying"] = OrderedDict(sorted(result["underlying"].items()))
+    return result
+
 _CSS = """
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }

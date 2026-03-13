@@ -84,3 +84,75 @@ def test_strategy_category_mapping():
     assert _STRATEGY_CATEGORY["LEAPS Call"]      == "长期"
     assert _STRATEGY_CATEGORY["Long Put"]        == "单腿"
     assert _STRATEGY_CATEGORY["Unclassified"]    == "其他"
+
+
+# ── Task 2: _group_strategies ────────────────────────────────────────────────
+from src.option_strategies import StrategyGroup
+from src.portfolio_report import _group_strategies
+
+
+def _make_sg(underlying="AAPL", strategy_type="Naked Put", intent="income",
+             dte=45, net_pnl=100.0, net_theta=20.0, net_delta=-0.3,
+             max_loss=500.0, net_vega=0.0, net_gamma=0.0, net_credit=100.0):
+    sg = StrategyGroup(underlying=underlying, strategy_type=strategy_type, intent=intent)
+    sg.dte = dte
+    sg.net_pnl = net_pnl
+    sg.net_theta = net_theta
+    sg.net_delta = net_delta
+    sg.max_loss = max_loss
+    sg.net_vega = net_vega
+    sg.net_gamma = net_gamma
+    sg.net_credit = net_credit
+    return sg
+
+
+def test_group_strategies_intent():
+    sgs = [
+        _make_sg("AAPL", "Naked Put", "income"),
+        _make_sg("TSLA", "Bull Put Spread", "income"),
+        _make_sg("SPY", "Protective Put", "hedge"),
+    ]
+    groups = _group_strategies(sgs)
+    assert "income" in groups["intent"]
+    assert "hedge"  in groups["intent"]
+    assert len(groups["intent"]["income"]) == 2
+    assert len(groups["intent"]["hedge"])  == 1
+
+def test_group_strategies_underlying():
+    sgs = [
+        _make_sg("AAPL", "Naked Put", "income"),
+        _make_sg("AAPL", "Covered Call", "income"),
+        _make_sg("SPY",  "Protective Put", "hedge"),
+    ]
+    groups = _group_strategies(sgs)
+    assert len(groups["underlying"]["AAPL"]) == 2
+    assert len(groups["underlying"]["SPY"])  == 1
+
+def test_group_strategies_category():
+    sgs = [
+        _make_sg("AAPL", "Naked Put", "income"),
+        _make_sg("TSLA", "Iron Condor", "income"),
+    ]
+    groups = _group_strategies(sgs)
+    assert "裸卖" in groups["category"]
+    assert "综合" in groups["category"]
+
+def test_group_strategies_dte():
+    sgs = [
+        _make_sg(dte=15),
+        _make_sg(dte=60),
+        _make_sg(dte=200),
+        _make_sg(dte=0),
+    ]
+    groups = _group_strategies(sgs)
+    assert "≤30天"   in groups["dte"]
+    assert "31–90天" in groups["dte"]
+    assert ">90天"   in groups["dte"]
+    assert "无到期"  in groups["dte"]
+
+def test_group_strategies_empty():
+    groups = _group_strategies([])
+    assert groups["intent"]     == {}
+    assert groups["underlying"] == {}
+    assert groups["category"]   == {}
+    assert groups["dte"]        == {}
