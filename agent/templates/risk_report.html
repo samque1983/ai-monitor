@@ -100,6 +100,14 @@ async function loadReport(date) {
   let content = bodyMatch ? bodyMatch[1] : html;
   let styles = styleMatch ? styleMatch.join('\n') : '';
   container.innerHTML = styles + content;
+
+  // innerHTML does not execute <script> tags — re-run them manually
+  container.querySelectorAll('script').forEach(old => {
+    const s = document.createElement('script');
+    s.textContent = old.textContent;
+    document.body.appendChild(s);
+    old.remove();
+  });
 }
 
 function loadReportByDate() {
