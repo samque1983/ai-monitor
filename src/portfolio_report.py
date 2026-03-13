@@ -117,6 +117,69 @@ def _group_stats(strategies: list, nlv: float) -> dict:
         "has_naked": has_naked,
     }
 
+
+_CATEGORY_DESC = {
+    "裸卖": "卖出裸期权赚取全额权利金，风险无上限，最怕大幅波动",
+    "价差": "买卖双腿对冲，风险收益均有上限，资金效率较高",
+    "综合": "多腿组合策略，在区间震荡中赚取时间价值",
+    "含股": "股票结合期权，降低持仓成本或锁定收益区间",
+    "跨期": "利用不同到期日的时间价值差套利",
+    "长期": "LEAPS 长期期权，低杠杆博弈方向或作为对冲",
+    "单腿": "单腿买入期权，最大亏损 = 已付权利金",
+    "其他": "未分类策略，请手动核查",
+}
+
+_DTE_DESC = {
+    "≤30天":   "临近到期，Theta 加速衰减，Gamma 风险上升，需密切关注",
+    "31–90天": "中期策略，有充裕时间管理和调整",
+    ">90天":   "长线布局，无需频繁操作，Vega 敞口是主要风险",
+    "无到期":  "股票仓位或永续持仓，主要风险来自 Delta 方向",
+}
+
+
+def _group_subtitle(group_name: str, stats: dict, dim: str, nlv: float) -> str:
+    """Generate plain-language description for a strategy group header."""
+    parts = []
+
+    if dim == "intent":
+        theta = stats["total_theta"]
+        delta = stats["net_delta"]
+        if group_name == "income":
+            if theta > 0:
+                parts.append(f"靠卖出期权赚时间价值，每天自动进账 ${theta:.0f}，最怕突然大幅波动")
+            else:
+                parts.append("收租策略但 Theta 为负，检查是否持有过多保护腿")
+        elif group_name == "hedge":
+            parts.append(f"花钱买保险，每天付出 ${abs(theta):.0f} Theta，下行风险已设上限")
+        elif group_name == "directional":
+            direction = "多头" if delta >= 0 else "空头"
+            parts.append(f"净{direction}敞口，标的涨跌影响方向性盈亏")
+        elif group_name == "speculation":
+            parts.append("买入期权博弈，最大亏损 = 已付权利金，到期作废则全损")
+        elif group_name == "mixed":
+            parts.append("兼具多种目的（如 Collar），需整体评估 Delta 和 Theta 的平衡")
+        else:
+            parts.append("未分类策略，请手动核查")
+
+    elif dim == "underlying":
+        delta = stats["net_delta"]
+        direction = "多头" if delta >= 0 else "空头"
+        parts.append(f"净{direction}敞口，共 {stats['count']} 个策略")
+
+    elif dim == "category":
+        parts.append(_CATEGORY_DESC.get(group_name, ""))
+
+    elif dim == "dte":
+        parts.append(_DTE_DESC.get(group_name, ""))
+
+    # Append warnings
+    if stats["max_loss_pct"] > 10.0:
+        parts.append(f"⚠ 风险集中，占净资产 {stats['max_loss_pct']:.1f}%")
+    if stats["has_naked"]:
+        parts.append("⚠ 含裸仓，理论亏损无上限")
+
+    return "，".join(p for p in parts if p)
+
 _CSS = """
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }

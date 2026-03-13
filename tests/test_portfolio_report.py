@@ -189,3 +189,52 @@ def test_group_stats_empty():
     stats = _group_stats([], nlv=100_000)
     assert stats["count"] == 0
     assert stats["total_pnl"] == 0.0
+
+
+# ── Task 4: _group_subtitle ──────────────────────────────────────────────────
+from src.portfolio_report import _group_subtitle
+
+
+def _stats(count=2, pnl=100, theta=30, delta=-0.5,
+           max_loss=1000, max_loss_pct=1.0, has_naked=False):
+    return dict(count=count, total_pnl=pnl, total_theta=theta,
+                net_delta=delta, total_max_loss=max_loss,
+                max_loss_pct=max_loss_pct, has_naked=has_naked)
+
+# intent tab
+def test_subtitle_income_positive_theta():
+    s = _group_subtitle("income", _stats(theta=48), dim="intent", nlv=100_000)
+    assert "每天" in s and "48" in s
+
+def test_subtitle_income_negative_theta():
+    s = _group_subtitle("income", _stats(theta=-5), dim="intent", nlv=100_000)
+    assert "Theta 为负" in s
+
+def test_subtitle_hedge():
+    s = _group_subtitle("hedge", _stats(theta=-12), dim="intent", nlv=100_000)
+    assert "保险" in s
+
+def test_subtitle_directional_long():
+    s = _group_subtitle("directional", _stats(delta=2.0), dim="intent", nlv=100_000)
+    assert "多头" in s
+
+def test_subtitle_directional_short():
+    s = _group_subtitle("directional", _stats(delta=-2.0), dim="intent", nlv=100_000)
+    assert "空头" in s
+
+def test_subtitle_high_risk_concentration():
+    s = _group_subtitle("income", _stats(max_loss_pct=12.0), dim="intent", nlv=100_000)
+    assert "风险集中" in s and "12.0%" in s
+
+def test_subtitle_naked_warning():
+    s = _group_subtitle("income", _stats(has_naked=True), dim="intent", nlv=100_000)
+    assert "裸仓" in s
+
+# dte tab
+def test_subtitle_dte_expiring():
+    s = _group_subtitle("≤30天", _stats(), dim="dte", nlv=100_000)
+    assert "临近" in s or "Gamma" in s
+
+def test_subtitle_dte_long():
+    s = _group_subtitle(">90天", _stats(), dim="dte", nlv=100_000)
+    assert "长线" in s or "Vega" in s
