@@ -80,3 +80,33 @@ def test_watchlist_page_has_nav():
     resp = client.get("/watchlist")
     assert "自选池" in resp.text
     assert "/dashboard" in resp.text
+
+
+def test_watchlist_add_ticker():
+    client = get_client()
+    resp = client.post("/api/watchlist/add", json={"ticker": "AAPL"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "AAPL" in data["tickers"]
+
+
+def test_watchlist_add_ticker_dedup():
+    client = get_client()
+    client.post("/api/watchlist/add", json={"ticker": "AAPL"})
+    resp = client.post("/api/watchlist/add", json={"ticker": "AAPL"})
+    assert resp.json()["tickers"].count("AAPL") == 1
+
+
+def test_watchlist_remove_ticker():
+    client = get_client()
+    client.post("/api/watchlist/add", json={"ticker": "NVDA"})
+    resp = client.post("/api/watchlist/remove", json={"ticker": "NVDA"})
+    assert resp.status_code == 200
+    assert "NVDA" not in resp.json()["tickers"]
+
+
+def test_watchlist_remove_nonexistent_ticker():
+    client = get_client()
+    resp = client.post("/api/watchlist/remove", json={"ticker": "ZZZZ"})
+    assert resp.status_code == 200
+    assert isinstance(resp.json()["tickers"], list)

@@ -87,6 +87,22 @@ async def get_signals(
     })
 
 
+class WatchlistMutateRequest(BaseModel):
+    ticker: str
+
+
+@router.post("/api/watchlist/add")
+async def watchlist_add(req: WatchlistMutateRequest, db: AgentDB = Depends(get_db)):
+    tickers = db.add_to_watchlist("ALICE", req.ticker)
+    return JSONResponse({"tickers": tickers})
+
+
+@router.post("/api/watchlist/remove")
+async def watchlist_remove(req: WatchlistMutateRequest, db: AgentDB = Depends(get_db)):
+    tickers = db.remove_from_watchlist("ALICE", req.ticker)
+    return JSONResponse({"tickers": tickers})
+
+
 class ChatRequest(BaseModel):
     message: str
     user_id: str = "web"
