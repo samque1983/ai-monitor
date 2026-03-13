@@ -115,11 +115,10 @@ MOCK_HK_INFO = pd.DataFrame({
     "value": ["腾讯控股有限公司", "互联网"],
 })
 
-# ak.stock_zh_a_lg_indicator returns DataFrame with columns 股息率, 市盈率 etc.
-MOCK_CN_INDICATOR = pd.DataFrame({
-    "股息率": [2.5],
-    "市盈率": [35.0],
-    "市净率": [12.0],
+# ak.stock_individual_spot_xq returns DataFrame with columns 'item', 'value'
+MOCK_XQ_SPOT = pd.DataFrame({
+    "item":  ["代码", "名称", "现价", "股息(TTM)", "股息率(TTM)", "市盈率(TTM)"],
+    "value": ["SH600519", "贵州茅台", "1800.0", "28.5", "2.5", "30.0"],
 })
 
 
@@ -127,12 +126,19 @@ def test_cn_fundamentals():
     p = AkshareProvider(enabled=True)
     with patch("src.providers.akshare.ak") as mock_ak:
         mock_ak.stock_individual_info_em.return_value = MOCK_CN_INFO.copy()
-        mock_ak.stock_zh_a_lg_indicator.return_value = MOCK_CN_INDICATOR.copy()
+        mock_ak.stock_individual_spot_xq.return_value = MOCK_XQ_SPOT.copy()
         result = p.get_fundamentals("600519.SS")
     assert result is not None
     assert result["company_name"] == "贵州茅台"
     assert result["industry"] == "白酒"
     assert result["dividend_yield"] == pytest.approx(2.5)
+
+
+def test_cn_xq_symbol():
+    p = AkshareProvider(enabled=True)
+    assert p._cn_xq_symbol("600036.SS") == "SH600036"
+    assert p._cn_xq_symbol("000001.SZ") == "SZ000001"
+    assert p._cn_xq_symbol("510050.SS") == "SH510050"
 
 
 def test_hk_fundamentals():

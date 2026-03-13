@@ -26,6 +26,292 @@ _INTENT_LABEL = {
     "unknown": "其他",
 }
 
+_STRATEGY_CATEGORY = {
+    "Naked Put": "裸卖",        "Naked Call": "裸卖",    "Cash-Secured Put": "裸卖",
+    "Bull Put Spread": "价差",  "Bear Call Spread": "价差",
+    "Bull Call Spread": "价差", "Bear Put Spread": "价差",
+    "Ratio Put Spread": "价差", "Ratio Call Spread": "价差",
+    "Iron Condor": "综合",      "Iron Butterfly": "综合",
+    "Straddle": "综合",         "Strangle": "综合",
+    "Covered Call": "含股",     "Protective Put": "含股",
+    "Collar": "含股",           "Long Stock": "含股",    "Short Stock": "含股",
+    "PMCC": "跨期",             "Calendar Spread": "跨期", "Diagonal Spread": "跨期",
+    "LEAPS Call": "长期",       "LEAPS Put": "长期",
+    "Long Call": "单腿",        "Long Put": "单腿",
+    "Unclassified": "其他",
+}
+
+_DTE_BUCKET_ORDER = ["≤30天", "31–90天", ">90天", "无到期"]
+_CATEGORY_ORDER   = ["裸卖", "价差", "综合", "含股", "跨期", "长期", "单腿", "其他"]
+_INTENT_ORDER     = ["income", "hedge", "directional", "speculation", "mixed", "unknown"]
+
+
+def _dte_bucket(dte: int) -> str:
+    if dte == 0:   return "无到期"
+    if dte <= 30:  return "≤30天"
+    if dte <= 90:  return "31–90天"
+    return ">90天"
+
+
+from collections import OrderedDict
+
+def _group_strategies(strategies: list) -> dict:
+    """Group strategies by 4 dimensions. Returns:
+      { 'intent': {group_name: [sg, ...]}, 'underlying': {...},
+        'category': {...}, 'dte': {...} }
+    """
+    result = {"intent": {}, "underlying": {}, "category": {}, "dte": {}}
+    for sg in strategies:
+        # intent
+        key = sg.intent or "unknown"
+        result["intent"].setdefault(key, []).append(sg)
+        # underlying
+        result["underlying"].setdefault(sg.underlying, []).append(sg)
+        # category
+        cat = _STRATEGY_CATEGORY.get(sg.strategy_type, "其他")
+        result["category"].setdefault(cat, []).append(sg)
+        # dte
+        bucket = _dte_bucket(sg.dte)
+        result["dte"].setdefault(bucket, []).append(sg)
+
+    # Sort groups by canonical order
+    def _sort(d, order):
+        ordered = OrderedDict()
+        for k in order:
+            if k in d:
+                ordered[k] = d[k]
+        for k in d:
+            if k not in ordered:
+                ordered[k] = d[k]
+        return ordered
+
+    result["intent"]     = _sort(result["intent"],     _INTENT_ORDER)
+    result["category"]   = _sort(result["category"],   _CATEGORY_ORDER)
+    result["dte"]        = _sort(result["dte"],         _DTE_BUCKET_ORDER)
+    # underlying: sort by underlying name
+    result["underlying"] = OrderedDict(sorted(result["underlying"].items()))
+    return result
+
+
+def _group_stats(strategies: list, nlv: float) -> dict:
+    """Compute aggregate stats for a group of StrategyGroup objects."""
+    if not strategies:
+        return {
+            "count": 0, "total_pnl": 0.0, "total_theta": 0.0,
+            "total_max_loss": 0.0, "max_loss_pct": 0.0,
+            "has_naked": False, "net_delta": 0.0,
+        }
+    total_pnl   = sum(sg.net_pnl   for sg in strategies)
+    total_theta = sum(sg.net_theta  for sg in strategies)
+    net_delta   = sum(sg.net_delta  for sg in strategies)
+    has_naked   = any(sg.max_loss is None for sg in strategies)
+    total_max_loss = sum(sg.max_loss for sg in strategies if sg.max_loss is not None)
+    max_loss_pct   = (total_max_loss / nlv * 100) if nlv > 0 else 0.0
+    return {
+        "count": len(strategies),
+        "total_pnl": total_pnl,
+        "total_theta": total_theta,
+        "net_delta": net_delta,
+        "total_max_loss": total_max_loss,
+        "max_loss_pct": max_loss_pct,
+        "has_naked": has_naked,
+    }
+
+
+_CATEGORY_DESC = {
+    "裸卖": "卖出裸期权赚取全额权利金，风险无上限，最怕大幅波动",
+    "价差": "买卖双腿对冲，风险收益均有上限，资金效率较高",
+    "综合": "多腿组合策略，在区间震荡中赚取时间价值",
+    "含股": "股票结合期权，降低持仓成本或锁定收益区间",
+    "跨期": "利用不同到期日的时间价值差套利",
+    "长期": "LEAPS 长期期权，低杠杆博弈方向或作为对冲",
+    "单腿": "单腿买入期权，最大亏损 = 已付权利金",
+    "其他": "未分类策略，请手动核查",
+}
+
+_DTE_DESC = {
+    "≤30天":   "临近到期，Theta 加速衰减，Gamma 风险上升，需密切关注",
+    "31–90天": "中期策略，有充裕时间管理和调整",
+    ">90天":   "长线布局，无需频繁操作，Vega 敞口是主要风险",
+    "无到期":  "股票仓位或永续持仓，主要风险来自 Delta 方向",
+}
+
+
+def _group_subtitle(group_name: str, stats: dict, dim: str, nlv: float) -> str:
+    """Generate plain-language description for a strategy group header."""
+    parts = []
+
+    if dim == "intent":
+        theta = stats["total_theta"]
+        delta = stats["net_delta"]
+        if group_name == "income":
+            if theta > 0:
+                parts.append(f"靠卖出期权赚时间价值，每天自动进账 ${theta:.0f}，最怕突然大幅波动")
+            else:
+                parts.append("收租策略但 Theta 为负，检查是否持有过多保护腿")
+        elif group_name == "hedge":
+            parts.append(f"花钱买保险，每天付出 ${abs(theta):.0f} Theta，下行风险已设上限")
+        elif group_name == "directional":
+            direction = "多头" if delta >= 0 else "空头"
+            parts.append(f"净{direction}敞口，标的涨跌影响方向性盈亏")
+        elif group_name == "speculation":
+            parts.append("买入期权博弈，最大亏损 = 已付权利金，到期作废则全损")
+        elif group_name == "mixed":
+            parts.append("兼具多种目的（如 Collar），需整体评估 Delta 和 Theta 的平衡")
+        else:
+            parts.append("未分类策略，请手动核查")
+
+    elif dim == "underlying":
+        delta = stats["net_delta"]
+        direction = "多头" if delta >= 0 else "空头"
+        parts.append(f"净{direction}敞口，共 {stats['count']} 个策略")
+
+    elif dim == "category":
+        parts.append(_CATEGORY_DESC.get(group_name, ""))
+
+    elif dim == "dte":
+        parts.append(_DTE_DESC.get(group_name, ""))
+
+    # Append warnings
+    if stats["max_loss_pct"] > 10.0:
+        parts.append(f"⚠ 风险集中，占净资产 {stats['max_loss_pct']:.1f}%")
+    if stats["has_naked"]:
+        parts.append("⚠ 含裸仓，理论亏损无上限")
+
+    return "，".join(p for p in parts if p)
+
+
+def _render_group_header(group_name: str, display_name: str,
+                          strategies: list, dim: str,
+                          nlv: float, color: str) -> str:
+    stats = _group_stats(strategies, nlv)
+    subtitle = _group_subtitle(group_name, stats, dim, nlv)
+
+    pnl = stats["total_pnl"]
+    pnl_color = "#30d158" if pnl >= 0 else "#ff453a"
+    pnl_str = _fmt_dollar(pnl)
+
+    theta = stats["total_theta"]
+    theta_str = f"{'+'  if theta >= 0 else ''}{theta:.0f}/天"
+    theta_color = "#30d158" if theta >= 0 else "#ff453a"
+
+    max_loss = stats["total_max_loss"]
+    if stats["has_naked"]:
+        loss_str = f"-${max_loss:,.0f}+ ⚠裸仓"
+    else:
+        loss_str = f"-${max_loss:,.0f} ({stats['max_loss_pct']:.1f}%)"
+
+    delta = stats["net_delta"]
+    delta_str = f"ΔExp {'+' if delta >= 0 else ''}{delta:.1f}"
+
+    return f"""
+<div style="background:rgba(255,255,255,0.03); border-left:3px solid {color};
+            border-radius:8px; padding:12px 16px; margin:20px 0 8px;">
+  <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+    <span style="font-size:14px; font-weight:700; color:{color};">{_e(display_name)}</span>
+    <span style="font-size:12px; color:#636366;">{stats['count']} 个策略</span>
+    <span style="font-size:12px; color:{pnl_color}; font-family:'SF Mono',monospace;">PnL {pnl_str}</span>
+    <span style="font-size:12px; color:{theta_color}; font-family:'SF Mono',monospace;">Θ {_e(theta_str)}</span>
+    <span style="font-size:12px; color:#ff453a; font-family:'SF Mono',monospace;">MaxLoss {_e(loss_str)}</span>
+    <span style="font-size:12px; color:#8e8e93; font-family:'SF Mono',monospace;">{_e(delta_str)}</span>
+  </div>
+  {f'<div style="font-size:12px; color:#8e8e93; margin-top:5px;">{_e(subtitle)}</div>' if subtitle else ''}
+</div>"""
+
+
+_TAB_LABELS = [
+    ("intent",     "意图"),
+    ("underlying", "标的"),
+    ("category",   "策略类型"),
+    ("dte",        "到期区间"),
+]
+
+_TAB_COLORS = {
+    "intent":     None,   # uses _INTENT_COLOR per group
+    "underlying": "#0a84ff",
+    "category":   "#ff9f0a",
+    "dte":        None,   # uses per-bucket color
+}
+
+_DTE_COLOR = {"≤30天": "#ff453a", "31–90天": "#ffb340", ">90天": "#30d158", "无到期": "#636366"}
+
+
+def _render_tabbed_summary(strategies: list, nlv: float) -> str:
+    if not strategies:
+        return ""
+
+    groups = _group_strategies(strategies)
+
+    # Tab nav buttons
+    tab_btns = "".join(
+        f'<button class="tab-btn{" active" if i == 0 else ""}" data-tab="{key}">{label}</button>'
+        for i, (key, label) in enumerate(_TAB_LABELS)
+    )
+
+    # Tab panels
+    panels_html = ""
+    for i, (dim_key, _) in enumerate(_TAB_LABELS):
+        active_cls = " active" if i == 0 else ""
+        panel_content = ""
+        for group_name, group_sgs in groups[dim_key].items():
+            if dim_key == "intent":
+                color = _INTENT_COLOR.get(group_name, "#636366")
+                display = _INTENT_LABEL.get(group_name, group_name)
+            elif dim_key == "dte":
+                color = _DTE_COLOR.get(group_name, "#636366")
+                display = group_name
+            else:
+                color = _TAB_COLORS[dim_key]
+                display = group_name
+
+            header_html = _render_group_header(
+                group_name=group_name, display_name=display,
+                strategies=group_sgs, dim=dim_key,
+                nlv=nlv, color=color,
+            )
+            cards_html = "".join(_strategy_card(sg) for sg in group_sgs)
+            panel_content += header_html + cards_html
+
+        panels_html += f'<div class="tab-panel{active_cls}" id="tab-{dim_key}">{panel_content}</div>\n'
+
+    js = """
+<script>
+(function(){
+  var btns = document.querySelectorAll('.strat-tabs .tab-btn');
+  btns.forEach(function(btn){
+    btn.addEventListener('click', function(){
+      btns.forEach(function(b){ b.classList.remove('active'); });
+      btn.classList.add('active');
+      var t = btn.dataset.tab;
+      document.querySelectorAll('.strat-tabs .tab-panel').forEach(function(p){
+        p.classList.toggle('active', p.id === 'tab-' + t);
+      });
+    });
+  });
+})();
+</script>"""
+
+    css = """
+<style>
+.strat-tabs .tab-nav { display:flex; gap:4px; margin-bottom:16px; border-bottom:1px solid #2c2c2e; padding-bottom:0; }
+.strat-tabs .tab-btn { background:none; border:none; color:#8e8e93; padding:8px 14px; cursor:pointer;
+  font-size:13px; font-weight:500; border-bottom:2px solid transparent; margin-bottom:-1px; transition:color .15s,border-color .15s; }
+.strat-tabs .tab-btn:hover { color:#e5e5ea; }
+.strat-tabs .tab-btn.active { color:#0a84ff; border-bottom-color:#0a84ff; }
+.strat-tabs .tab-panel { display:none; }
+.strat-tabs .tab-panel.active { display:block; }
+</style>"""
+
+    return f"""
+{css}
+<h2>策略汇总</h2>
+<div class="strat-tabs">
+  <div class="tab-nav">{tab_btns}</div>
+  {panels_html}
+</div>
+{js}"""
+
+
 _CSS = """
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -223,13 +509,8 @@ def _generate_strategy_report(report) -> str:
     yellow_html = _render_alerts(yellows, _LEVEL_COLOR["yellow"], _LEVEL_BG["yellow"], _LEVEL_BORDER["yellow"])
     watch_html = _render_alerts(watches, _LEVEL_COLOR["watch"], _LEVEL_BG["watch"], _LEVEL_BORDER["watch"])
 
-    # Strategy cards (collapsible summary)
-    strategy_cards_html = ""
-    if report.strategies:
-        cards = "".join(_strategy_card(sg) for sg in report.strategies)
-        strategy_cards_html = f"""
-<h2>策略汇总</h2>
-{cards}"""
+    # Strategy cards — tabbed multi-dimension summary
+    strategy_cards_html = _render_tabbed_summary(report.strategies, report.net_liquidation)
 
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
