@@ -82,19 +82,23 @@ def test_watchlist_page_has_nav():
     assert "/dashboard" in resp.text
 
 
+def _tickers(items):
+    return [i["ticker"] for i in items]
+
+
 def test_watchlist_add_ticker():
     client = get_client()
     resp = client.post("/api/watchlist/add", json={"ticker": "AAPL"})
     assert resp.status_code == 200
     data = resp.json()
-    assert "AAPL" in data["tickers"]
+    assert "AAPL" in _tickers(data["items"])
 
 
 def test_watchlist_add_ticker_dedup():
     client = get_client()
     client.post("/api/watchlist/add", json={"ticker": "AAPL"})
     resp = client.post("/api/watchlist/add", json={"ticker": "AAPL"})
-    assert resp.json()["tickers"].count("AAPL") == 1
+    assert _tickers(resp.json()["items"]).count("AAPL") == 1
 
 
 def test_watchlist_remove_ticker():
@@ -102,14 +106,14 @@ def test_watchlist_remove_ticker():
     client.post("/api/watchlist/add", json={"ticker": "NVDA"})
     resp = client.post("/api/watchlist/remove", json={"ticker": "NVDA"})
     assert resp.status_code == 200
-    assert "NVDA" not in resp.json()["tickers"]
+    assert "NVDA" not in _tickers(resp.json()["items"])
 
 
 def test_watchlist_remove_nonexistent_ticker():
     client = get_client()
     resp = client.post("/api/watchlist/remove", json={"ticker": "ZZZZ"})
     assert resp.status_code == 200
-    assert isinstance(resp.json()["tickers"], list)
+    assert isinstance(resp.json()["items"], list)
 
 
 def test_watchlist_page_shows_strategy_section():

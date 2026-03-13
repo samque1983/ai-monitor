@@ -85,27 +85,30 @@ def _get_default_universe() -> list:
 @router.get("/watchlist")
 async def watchlist_page(request: Request, db: AgentDB = Depends(get_db)):
     user = db.get_user("ALICE")
-    tickers = json.loads(user["watchlist_json"]) if user and user.get("watchlist_json") else []
+
+    # Parse enriched watchlist (list of dicts)
+    items: list = []
+    if user:
+        items = db._parse_watchlist(user)
 
     # Fallback to default universe when watchlist is empty
     is_default = False
     default_rows = []
-    if not tickers:
+    if not items:
         default_rows = _get_default_universe()
         is_default = bool(default_rows)
-        tickers = [r["ticker"] for r in default_rows]
 
     # Build strategy tag index: ticker -> list of strategy names
     strategy_tag_index: dict = {}
     for strategy in STRATEGY_REGISTRY:
         pool = db.get_strategy_pool(strategy["signal_type"])
-        for item in pool:
-            t = item["ticker"]
+        for pool_item in pool:
+            t = pool_item["ticker"]
             strategy_tag_index.setdefault(t, []).append(strategy["name"])
 
     ticker_rows = [
-        {"ticker": t, "tags": strategy_tag_index.get(t, [])}
-        for t in tickers
+        {**item, "tags": strategy_tag_index.get(item["ticker"], [])}
+        for item in items
     ]
 
     strategy_cards = []
@@ -174,14 +177,21 @@ class WatchlistMutateRequest(BaseModel):
 
 @router.post("/api/watchlist/add")
 async def watchlist_add(req: WatchlistMutateRequest, db: AgentDB = Depends(get_db)):
-    tickers = db.add_to_watchlist("ALICE", req.ticker)
-    return JSONResponse({"tickers": tickers})
+    ticker = req.ticker.upper().strip()
+    # Look up metadata from the default universe CSV
+    universe = _get_default_universe()
+    meta = next((r for r in universe if r["ticker"] == ticker), None)
+    metadata = None
+    if meta:
+        metadata = {k: v for k, v in meta.items() if k != "ticker"}
+    items = db.add_to_watchlist("ALICE", ticker, metadata=metadata)
+    return JSONResponse({"items": items})
 
 
 @router.post("/api/watchlist/remove")
 async def watchlist_remove(req: WatchlistMutateRequest, db: AgentDB = Depends(get_db)):
-    tickers = db.remove_from_watchlist("ALICE", req.ticker)
-    return JSONResponse({"tickers": tickers})
+    items = db.remove_from_watchlist("ALICE", req.ticker)
+    return JSONResponse({"items": items})
 
 
 class ChatRequest(BaseModel):

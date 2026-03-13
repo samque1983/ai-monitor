@@ -83,29 +83,45 @@ class AgentDB:
         )
         self.conn.commit()
 
-    def add_to_watchlist(self, user_id: str, ticker: str) -> List[str]:
-        """Add ticker to watchlist (dedup, uppercase). Creates user if needed. Returns updated list."""
+    def _parse_watchlist(self, user: dict) -> List[Dict]:
+        """Parse watchlist_json supporting both old (list of str) and new (list of dict) formats."""
+        raw = json.loads(user.get("watchlist_json") or "[]")
+        return [{"ticker": t} if isinstance(t, str) else t for t in raw]
+
+    def add_to_watchlist(self, user_id: str, ticker: str, metadata: Optional[Dict] = None) -> List[Dict]:
+        """Add ticker with optional metadata to watchlist (dedup, uppercase). Returns updated list of dicts."""
         ticker = ticker.upper().strip()
         user = self.get_user(user_id)
         if not user:
             self.save_user(user_id)
             user = self.get_user(user_id)
-        tickers = json.loads(user["watchlist_json"]) if user.get("watchlist_json") else []
-        if ticker not in tickers:
-            tickers.append(ticker)
-            self.update_watchlist(user_id, tickers)
-        return tickers
+        items = self._parse_watchlist(user)
+        if not any(i["ticker"] == ticker for i in items):
+            entry: Dict = {"ticker": ticker}
+            if metadata:
+                entry.update(metadata)
+            items.append(entry)
+            self.conn.execute(
+                "UPDATE users SET watchlist_json=? WHERE user_id=?",
+                (json.dumps(items, ensure_ascii=False), user_id)
+            )
+            self.conn.commit()
+        return items
 
-    def remove_from_watchlist(self, user_id: str, ticker: str) -> List[str]:
-        """Remove ticker from watchlist. No-op if not present. Returns updated list."""
+    def remove_from_watchlist(self, user_id: str, ticker: str) -> List[Dict]:
+        """Remove ticker from watchlist. No-op if not present. Returns updated list of dicts."""
         ticker = ticker.upper().strip()
         user = self.get_user(user_id)
         if not user:
             return []
-        tickers = json.loads(user["watchlist_json"]) if user.get("watchlist_json") else []
-        tickers = [t for t in tickers if t != ticker]
-        self.update_watchlist(user_id, tickers)
-        return tickers
+        items = self._parse_watchlist(user)
+        items = [i for i in items if i["ticker"] != ticker]
+        self.conn.execute(
+            "UPDATE users SET watchlist_json=? WHERE user_id=?",
+            (json.dumps(items, ensure_ascii=False), user_id)
+        )
+        self.conn.commit()
+        return items
 
     def get_strategy_pool(self, signal_type: str) -> List[Dict]:
         """Return all signals of given signal_type from the latest scan_date."""

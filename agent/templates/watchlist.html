@@ -182,14 +182,27 @@ body {
     <div id="ticker-list">
       {% if ticker_rows %}
         {% for row in ticker_rows %}
-        <div class="ticker-row" id="row-{{ row.ticker }}" style="animation-delay: {{ loop.index0 * 60 }}ms">
-          <span class="ticker-name">{{ row.ticker }}</span>
-          <div class="ticker-tags">
-            {% for tag in row.tags %}
-            <span class="ticker-tag">{{ tag }}</span>
-            {% endfor %}
+        <div class="default-row" id="row-{{ row.ticker }}" style="animation-delay: {{ loop.index0 * 60 }}ms">
+          <div class="default-row-left">
+            <span class="ticker-name">{{ row.ticker }}</span>
+            {% if row.name %}<span class="default-name">{{ row.name }}</span>{% endif %}
+            {% if row.role %}<span class="default-role">{{ row.role }}</span>{% endif %}
+            <div class="ticker-tags" style="margin-left:auto">
+              {% for tag in row.tags %}
+              <span class="ticker-tag">{{ tag }}</span>
+              {% endfor %}
+            </div>
+            <button class="ticker-del" onclick="removeTicker('{{ row.ticker }}')" title="移除">✕</button>
           </div>
-          <button class="ticker-del" onclick="removeTicker('{{ row.ticker }}')" title="移除">✕</button>
+          {% if row.floor or row.strike %}
+          <div class="default-row-right">
+            {% if row.floor %}<span class="default-price-label">大底</span><span class="default-price">{{ row.floor }}</span>{% endif %}
+            {% if row.strike %}<span class="default-price-label" style="margin-left:10px">黄金位</span><span class="default-price amber">{{ row.strike }}</span>{% endif %}
+          </div>
+          {% endif %}
+          {% if row.note %}
+          <div class="default-note">{{ row.note }}</div>
+          {% endif %}
         </div>
         {% endfor %}
       {% else %}
@@ -229,15 +242,21 @@ async function addTicker() {
   const input = document.getElementById('ticker-input');
   const ticker = input.value.trim().toUpperCase();
   if (!ticker) return;
+  const btn = document.querySelector('.add-btn');
+  btn.textContent = '分析中…';
+  btn.disabled = true;
   const resp = await fetch('/api/watchlist/add', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({ticker})
   });
+  btn.textContent = '+ 添加';
+  btn.disabled = false;
   if (!resp.ok) return;
-  const {tickers} = await resp.json();
+  const {items} = await resp.json();
   input.value = '';
-  renderTickerList(tickers);
+  renderTickerList(items);
+  showAnalysisHint(ticker);
 }
 
 async function removeTicker(ticker) {
@@ -247,22 +266,54 @@ async function removeTicker(ticker) {
     body: JSON.stringify({ticker})
   });
   if (!resp.ok) return;
-  const {tickers} = await resp.json();
-  renderTickerList(tickers);
+  const {items} = await resp.json();
+  renderTickerList(items);
 }
 
-function renderTickerList(tickers) {
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function renderTickerList(items) {
   const list = document.getElementById('ticker-list');
-  if (!tickers.length) {
+  if (!items || !items.length) {
     list.innerHTML = '<div class="empty-state" id="empty-msg">暂无自选标的，在上方输入 ticker 添加。</div>';
     return;
   }
-  list.innerHTML = tickers.map((t, i) => `
-    <div class="ticker-row" id="row-${t}" style="animation-delay:${i*60}ms">
-      <span class="ticker-name">${t}</span>
-      <div class="ticker-tags"></div>
-      <button class="ticker-del" onclick="removeTicker('${t}')" title="移除">✕</button>
-    </div>`).join('');
+  list.innerHTML = items.map((item, i) => {
+    const t = item.ticker;
+    const name = item.name ? `<span class="default-name">${esc(item.name)}</span>` : '';
+    const role = item.role ? `<span class="default-role">${esc(item.role)}</span>` : '';
+    const priceRow = (item.floor || item.strike) ? `
+      <div class="default-row-right">
+        ${item.floor ? `<span class="default-price-label">大底</span><span class="default-price">${esc(item.floor)}</span>` : ''}
+        ${item.strike ? `<span class="default-price-label" style="margin-left:10px">黄金位</span><span class="default-price amber">${esc(item.strike)}</span>` : ''}
+      </div>` : '';
+    const note = item.note ? `<div class="default-note">${esc(item.note)}</div>` : '';
+    return `
+    <div class="default-row" id="row-${esc(t)}" style="animation-delay:${i*60}ms">
+      <div class="default-row-left">
+        <span class="ticker-name">${esc(t)}</span>
+        ${name}${role}
+        <div class="ticker-tags" style="margin-left:auto"></div>
+        <button class="ticker-del" onclick="removeTicker('${esc(t)}')" title="移除">✕</button>
+      </div>
+      ${priceRow}
+      ${note}
+    </div>`;
+  }).join('');
+}
+
+function showAnalysisHint(ticker) {
+  const existing = document.getElementById('analysis-hint');
+  if (existing) existing.remove();
+  const hint = document.createElement('div');
+  hint.id = 'analysis-hint';
+  hint.style.cssText = 'font-size:12px;color:var(--amber);background:var(--amber-dim);border:1px solid rgba(255,179,64,0.25);border-radius:var(--r8);padding:8px 14px;margin-bottom:12px;animation:fadeUp 0.3s ease both;';
+  hint.textContent = `${ticker} 已加入自选 · AI 将在下次扫描时分析策略信号，刷新可查看最新标签`;
+  const list = document.getElementById('ticker-list');
+  list.parentNode.insertBefore(hint, list);
+  setTimeout(() => hint && hint.remove(), 8000);
 }
 
 document.getElementById('ticker-input').addEventListener('keydown', e => {

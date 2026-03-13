@@ -7,29 +7,41 @@ def db(tmp_path):
     return AgentDB(str(tmp_path / "test.db"))
 
 
+def _tickers(items):
+    return [i["ticker"] for i in items]
+
+
 def test_add_to_watchlist_creates_user_and_adds(db):
     result = db.add_to_watchlist("ALICE", "AAPL")
-    assert "AAPL" in result
+    assert "AAPL" in _tickers(result)
 
 
 def test_add_to_watchlist_dedup(db):
     db.add_to_watchlist("ALICE", "AAPL")
     result = db.add_to_watchlist("ALICE", "AAPL")
-    assert result.count("AAPL") == 1
+    assert _tickers(result).count("AAPL") == 1
 
 
 def test_add_to_watchlist_uppercases(db):
     result = db.add_to_watchlist("ALICE", "aapl")
-    assert "AAPL" in result
-    assert "aapl" not in result
+    assert "AAPL" in _tickers(result)
+    assert "aapl" not in _tickers(result)
+
+
+def test_add_to_watchlist_with_metadata(db):
+    result = db.add_to_watchlist("ALICE", "NVDA", metadata={"name": "英伟达", "role": "AI核心", "floor": "$700"})
+    item = next(i for i in result if i["ticker"] == "NVDA")
+    assert item["name"] == "英伟达"
+    assert item["role"] == "AI核心"
+    assert item["floor"] == "$700"
 
 
 def test_remove_from_watchlist(db):
     db.add_to_watchlist("ALICE", "AAPL")
     db.add_to_watchlist("ALICE", "MSFT")
     result = db.remove_from_watchlist("ALICE", "AAPL")
-    assert "AAPL" not in result
-    assert "MSFT" in result
+    assert "AAPL" not in _tickers(result)
+    assert "MSFT" in _tickers(result)
 
 
 def test_remove_from_watchlist_missing_ticker(db):
