@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
     flex_token_enc   TEXT DEFAULT '',
     flex_query_id    TEXT DEFAULT '',
     watchlist_json   TEXT DEFAULT '[]',
+    profile_json     TEXT DEFAULT '{}',
     created_at       TEXT NOT NULL
 );
 
@@ -56,7 +57,12 @@ class AgentDB:
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
-        self.conn.commit()
+        # Migration: add profile_json column to existing databases
+        try:
+            self.conn.execute("ALTER TABLE users ADD COLUMN profile_json TEXT DEFAULT '{}'")
+            self.conn.commit()
+        except Exception:
+            pass  # column already exists
 
     def save_user(self, user_id: str, dingtalk_webhook: str = ""):
         self.conn.execute(
@@ -75,6 +81,26 @@ class AgentDB:
             "SELECT * FROM users WHERE user_id=?", (user_id,)
         ).fetchone()
         return dict(row) if row else None
+
+    def get_profile(self, user_id: str) -> Dict:
+        """Return parsed profile dict for user, or empty dict."""
+        user = self.get_user(user_id)
+        if not user:
+            return {}
+        try:
+            return json.loads(user.get("profile_json") or "{}")
+        except Exception:
+            return {}
+
+    def update_profile(self, user_id: str, profile: Dict) -> None:
+        """Write profile dict for user."""
+        if not self.get_user(user_id):
+            self.save_user(user_id)
+        self.conn.execute(
+            "UPDATE users SET profile_json=? WHERE user_id=?",
+            (json.dumps(profile, ensure_ascii=False), user_id),
+        )
+        self.conn.commit()
 
     def update_watchlist(self, user_id: str, tickers: List[str]):
         self.conn.execute(

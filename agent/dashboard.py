@@ -202,14 +202,53 @@ class ChatRequest(BaseModel):
     user_id: str = "web"
 
 
+def _opportunity_cards(db: AgentDB, limit: int = 5) -> list:
+    """Return recent opportunity signals formatted as chat cards."""
+    signals = db.get_signals(time_range="7d", category="opportunity")
+    cards = []
+    for s in signals[:limit]:
+        p = s.get("payload", {})
+        cards.append({
+            "type": "opportunity",
+            "ticker": s["ticker"],
+            "signal": s["signal_type"],
+            "yield": p.get("current_yield"),
+            "iv_rank": p.get("iv_rank"),
+            "last_price": p.get("last_price"),
+        })
+    return cards
+
+
+_CARD_KEYWORDS = {
+    "opportunity": ["机会", "高股息", "sell put", "卖put", "leaps", "iv", "波动率", "买入"],
+    "risk": ["风险", "持仓", "希腊字母", "delta", "gamma", "报告"],
+    "watchlist": ["自选", "加入", "添加", "移除", "删除"],
+}
+
+
+def _infer_cards(message: str, db: AgentDB) -> list:
+    msg = message.lower()
+    if any(kw in msg for kw in _CARD_KEYWORDS["opportunity"]):
+        return _opportunity_cards(db)
+    return []
+
+
 @router.post("/api/chat")
-async def chat_api(req: ChatRequest):
+async def chat_api(req: ChatRequest, db: AgentDB = Depends(get_db)):
     """Web chat endpoint — calls ClaudeAgent.process()."""
     from agent.main import claude_agent
     if claude_agent is None:
-        return JSONResponse({"reply": "AI 领航员尚未初始化，请稍候。"})
+        return JSONResponse({"reply": "AI 领航员尚未初始化，请稍候。", "cards": [], "profile_updated": False})
     try:
-        reply = claude_agent.process(req.user_id, req.message)
+        reply, profile_updated = claude_agent.process(req.user_id, req.message)
     except Exception as e:
         reply = f"处理失败：{e}"
-    return JSONResponse({"reply": reply})
+        profile_updated = False
+    cards = _infer_cards(req.message, db)
+    return JSONResponse({"reply": reply, "cards": cards, "profile_updated": profile_updated})
+
+
+@router.get("/api/profile")
+async def get_profile(user_id: str = "ALICE", db: AgentDB = Depends(get_db)):
+    profile = db.get_profile(user_id)
+    return JSONResponse({"profile": profile})

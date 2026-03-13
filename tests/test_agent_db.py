@@ -76,3 +76,23 @@ def test_get_strategy_pool_returns_latest_scan(db):
 def test_get_strategy_pool_empty(db):
     result = db.get_strategy_pool("dividend")
     assert result == []
+
+
+def test_get_profile_empty(db):
+    db.save_user("BOB")
+    assert db.get_profile("BOB") == {}
+
+
+def test_update_and_get_profile(db):
+    profile = {"risk_level": "moderate", "strategy_tags": ["高股息"], "summary": "稳健型"}
+    db.update_profile("CHARLIE", profile)
+    result = db.get_profile("CHARLIE")
+    assert result["risk_level"] == "moderate"
+    assert "高股息" in result["strategy_tags"]
+    assert result["summary"] == "稳健型"
+
+
+def test_update_profile_overwrites(db):
+    db.update_profile("DIANA", {"risk_level": "conservative"})
+    db.update_profile("DIANA", {"risk_level": "aggressive"})
+    assert db.get_profile("DIANA")["risk_level"] == "aggressive"
