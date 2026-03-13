@@ -149,7 +149,7 @@ class AkshareProvider(BaseProvider):
 
     def _hk_fundamentals(self, ticker: str) -> Optional[Dict[str, Any]]:
         symbol = self._normalize_hk(ticker)
-        info_df = ak.stock_hk_company_profile_em(stock=symbol)
+        info_df = ak.stock_hk_company_profile_em(symbol=symbol)
         info = dict(zip(info_df["item"], info_df["value"]))
         company_name = info.get("公司名称") or ticker
         industry = info.get("行业")
