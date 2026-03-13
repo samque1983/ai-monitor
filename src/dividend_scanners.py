@@ -394,6 +394,16 @@ def scan_dividend_buy_signal(
                 if _to_dt(div) >= one_year_ago
             )
 
+            # CN/HK: yfinance may only capture partial-year dividends (e.g. interim only).
+            # Override annual_dividend using XueQiu TTM yield from fundamentals.
+            market = record.get("market", "US")
+            if market in ("CN", "HK") and last_price > 0:
+                fundamentals = provider.get_fundamentals(ticker)
+                ttm_yield = (fundamentals or {}).get("dividend_yield") or 0.0
+                if ttm_yield > 0:
+                    annual_dividend = ttm_yield / 100 * last_price
+                    logger.debug(f"{ticker}: CN/HK — using TTM yield {ttm_yield:.2f}% to derive annual_dividend={annual_dividend:.4f}")
+
             if annual_dividend <= 0:
                 logger.debug(f"{ticker}: Annual dividend is {annual_dividend}, skipping")
                 continue

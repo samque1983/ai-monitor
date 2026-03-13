@@ -281,6 +281,73 @@ class TestScanDividendBuySignal:
         store.close()
 
 
+    def test_cn_stock_uses_fundamentals_ttm_yield(self, tmp_path):
+        """CN股票日信号扫描器应使用基本面TTM股息率，而不是yfinance单次派息计算。
+
+        场景：招商银行(600036.SS)年度派息3.013元/股，但yfinance只捕获到中期派息0.561元。
+        期望：使用fundamentals dividend_yield(7.578%) × 当前价格 推算 annual_dividend，
+              而不是直接用yfinance返回的0.561。
+        """
+        db_path = str(tmp_path / "test_dividend.db")
+        store = DividendStore(db_path)
+
+        ticker = "600036.SS"
+        # 填充历史数据使分位数有意义
+        for i, d in enumerate(["2021-06-01", "2022-06-01", "2023-06-01", "2024-06-01"]):
+            store.save_dividend_history(
+                ticker=ticker,
+                date=date.fromisoformat(d),
+                dividend_yield=6.0 + i * 0.5,
+                annual_dividend=2.4 + i * 0.2,
+                price=40.0,
+            )
+
+        mock_provider = MagicMock()
+        last_price = 39.76
+        mock_provider.get_price_data.return_value = pd.DataFrame(
+            {"Close": [last_price]},
+            index=pd.to_datetime(["2026-03-13"]),
+        )
+        # yfinance只返回中期派息（不完整）→ yield只有1.4%
+        mock_provider.get_dividend_history.return_value = [
+            {"date": "2025-09-15", "amount": 0.561},
+        ]
+        # fundamentals via XueQiu: TTM股息率 7.578%
+        mock_provider.get_fundamentals.return_value = {
+            "dividend_yield": 7.578,
+            "company_name": "招商银行",
+        }
+
+        config = {
+            "dividend_scanners": {
+                "min_yield": 4.0,
+                "min_yield_percentile": 85,
+            }
+        }
+        pool = [{
+            "ticker": ticker,
+            "market": "CN",
+            "forward_dividend_rate": None,
+            "max_yield_5y": None,
+            "data_version_date": str(date.today()),
+        }]
+        results = scan_dividend_buy_signal(
+            pool=pool,
+            provider=mock_provider,
+            store=store,
+            config=config,
+        )
+
+        assert len(results) == 1, "CN stock should trigger signal using TTM yield, not partial yfinance dividend"
+        expected_yield = 7.578  # from fundamentals, not raw dividend history
+        assert abs(results[0].current_yield - expected_yield) < 0.1, (
+            f"Expected ~{expected_yield:.2f}%, got {results[0].current_yield:.2f}% — "
+            "CN stock yield should come from XueQiu TTM, not yfinance partial payment"
+        )
+
+        store.close()
+
+
 class TestScanDividendSellPut:
     """测试高股息Sell Put期权策略扫描器"""
 
