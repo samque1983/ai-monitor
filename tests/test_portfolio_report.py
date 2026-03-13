@@ -156,3 +156,36 @@ def test_group_strategies_empty():
     assert groups["underlying"] == {}
     assert groups["category"]   == {}
     assert groups["dte"]        == {}
+
+
+# ── Task 3: _group_stats ─────────────────────────────────────────────────────
+from src.portfolio_report import _group_stats
+
+
+def test_group_stats_basic():
+    sgs = [
+        _make_sg(net_pnl=100, net_theta=20, net_delta=-0.3, max_loss=500),
+        _make_sg(net_pnl=200, net_theta=30, net_delta=-0.5, max_loss=800),
+    ]
+    stats = _group_stats(sgs, nlv=100_000)
+    assert stats["count"]      == 2
+    assert stats["total_pnl"]  == 300.0
+    assert stats["total_theta"] == 50.0
+    assert stats["total_max_loss"] == 1300.0
+    assert abs(stats["max_loss_pct"] - 1.3) < 0.01
+    assert stats["has_naked"]  == False
+    assert abs(stats["net_delta"] - (-0.8)) < 1e-6
+
+def test_group_stats_naked():
+    sgs = [
+        _make_sg(max_loss=500),
+        _make_sg(max_loss=None),   # naked — no max loss
+    ]
+    stats = _group_stats(sgs, nlv=100_000)
+    assert stats["has_naked"]      == True
+    assert stats["total_max_loss"] == 500.0   # only sum non-None
+
+def test_group_stats_empty():
+    stats = _group_stats([], nlv=100_000)
+    assert stats["count"] == 0
+    assert stats["total_pnl"] == 0.0

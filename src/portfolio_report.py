@@ -92,6 +92,31 @@ def _group_strategies(strategies: list) -> dict:
     result["underlying"] = OrderedDict(sorted(result["underlying"].items()))
     return result
 
+
+def _group_stats(strategies: list, nlv: float) -> dict:
+    """Compute aggregate stats for a group of StrategyGroup objects."""
+    if not strategies:
+        return {
+            "count": 0, "total_pnl": 0.0, "total_theta": 0.0,
+            "total_max_loss": 0.0, "max_loss_pct": 0.0,
+            "has_naked": False, "net_delta": 0.0,
+        }
+    total_pnl   = sum(sg.net_pnl   for sg in strategies)
+    total_theta = sum(sg.net_theta  for sg in strategies)
+    net_delta   = sum(sg.net_delta  for sg in strategies)
+    has_naked   = any(sg.max_loss is None for sg in strategies)
+    total_max_loss = sum(sg.max_loss for sg in strategies if sg.max_loss is not None)
+    max_loss_pct   = (total_max_loss / nlv * 100) if nlv > 0 else 0.0
+    return {
+        "count": len(strategies),
+        "total_pnl": total_pnl,
+        "total_theta": total_theta,
+        "net_delta": net_delta,
+        "total_max_loss": total_max_loss,
+        "max_loss_pct": max_loss_pct,
+        "has_naked": has_naked,
+    }
+
 _CSS = """
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
