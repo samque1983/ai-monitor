@@ -327,3 +327,87 @@ def test_leaps_standalone_not_modifier():
     types = {g.strategy_type for g in groups}
     assert "Bull Put Spread" in types
     assert "LEAPS Put" in types
+
+
+def test_ratio_put_spread_uncovered_max_loss_bounded():
+    """Ratio Put Spread with uncovered shorts must have finite max_loss.
+    Stock floors at $0, so max loss = short_qty*short_strike - long_qty*long_strike - net_credit.
+    Example: sell 2 puts @50, buy 1 put @45, each 1 lot, mult=100
+    net_credit = 2*2.0*100 - 1*1.0*100 = 300
+    max_loss = (2*50 - 1*45)*100 - 300 = 5500 - 300 = 5200
+    """
+    sp = _opt("AAPL  P050", "P", 50, -2, cost_basis=2.0, multiplier=100)
+    lp = _opt("AAPL  P045", "P", 45,  1, cost_basis=1.0, multiplier=100)
+    groups = OptionStrategyRecognizer().recognize([sp, lp])
+    assert len(groups) == 1
+    g = groups[0]
+    assert g.strategy_type == "Ratio Put Spread"
+    assert g.max_loss is not None, "Ratio Put Spread max_loss must be finite (stock floors at $0)"
+    assert g.max_loss == pytest.approx(5200.0)
+
+
+def test_ratio_call_spread_uncovered_max_loss_unlimited():
+    """Ratio Call Spread with uncovered shorts must remain max_loss=None (truly unlimited)."""
+    sc = _opt("AAPL  C220", "C", 220, -2, cost_basis=2.0, multiplier=100)
+    lc = _opt("AAPL  C230", "C", 230,  1, cost_basis=1.0, multiplier=100)
+    groups = OptionStrategyRecognizer().recognize([sc, lc])
+    assert len(groups) == 1
+    g = groups[0]
+    assert g.strategy_type == "Ratio Call Spread"
+    assert g.max_loss is None, "Ratio Call Spread with uncovered calls: unlimited upside risk"
+
+
+def test_pmcc_max_loss_bounded():
+    """PMCC (short near-term call + long LEAPS call) max_loss must be finite."""
+    near_exp = (date.today() + timedelta(days=60)).strftime("%Y%m%d")
+    far_exp  = (date.today() + timedelta(days=400)).strftime("%Y%m%d")
+    sc = _opt("AAPL  C250", "C", 250, -1, expiry=near_exp, cost_basis=3.0, multiplier=100)
+    lc = _opt("AAPL  C140", "C", 140,  1, expiry=far_exp,  cost_basis=10.0, multiplier=100)
+    groups = OptionStrategyRecognizer().recognize([sc, lc])
+    assert len(groups) == 1
+    g = groups[0]
+    assert g.strategy_type == "PMCC"
+    assert g.max_loss is not None, "PMCC max_loss must be finite (bounded by net debit)"
+    # net_credit = 1*3.0*100 - 1*10.0*100 = -700 (net debit)
+    assert g.max_loss == pytest.approx(700.0)
+
+
+def test_long_call_max_loss_bounded():
+    """Long Call max_loss = debit paid (not None)."""
+    lc = _opt("AAPL  C200", "C", 200, 1, cost_basis=5.0, multiplier=100)
+    groups = OptionStrategyRecognizer().recognize([lc])
+    assert len(groups) == 1
+    g = groups[0]
+    assert g.strategy_type in ("Long Call", "LEAPS Call")
+    assert g.max_loss is not None, "Long Call max_loss must be finite (= premium paid)"
+    assert g.max_loss == pytest.approx(500.0)
+
+
+def test_long_put_max_loss_bounded():
+    """Long Put max_loss = debit paid (not None)."""
+    lp = _opt("AAPL  P180", "P", 180, 1, cost_basis=4.0, multiplier=100)
+    groups = OptionStrategyRecognizer().recognize([lp])
+    assert len(groups) == 1
+    g = groups[0]
+    assert g.strategy_type in ("Long Put", "LEAPS Put")
+    assert g.max_loss is not None, "Long Put max_loss must be finite (= premium paid)"
+    assert g.max_loss == pytest.approx(400.0)
+
+
+def test_covered_call_zero_cost_basis_uses_mark_price():
+    """Covered Call with cost_basis=0 should fall back to mark_price to avoid negative max_loss."""
+    stk = PositionRecord(
+        symbol="AAPL", asset_category="STK", put_call="",
+        strike=0, expiry="", multiplier=1, position=100,
+        cost_basis_price=0.0, mark_price=150.0, unrealized_pnl=0.0,
+        delta=1.0, gamma=0.0, theta=0.0, vega=0.0,
+        underlying_symbol="", currency="USD",
+    )
+    sc = _opt("AAPL  C200", "C", 200, -1, cost_basis=3.0, multiplier=100)
+    groups = OptionStrategyRecognizer().recognize([stk, sc])
+    g = groups[0]
+    assert g.strategy_type == "Covered Call"
+    assert g.max_loss is not None
+    assert g.max_loss > 0, "Covered Call max_loss must be positive even when cost_basis=0"
+    # max_loss = mark_price * shares - net_credit = 150*100 - 300 = 14700
+    assert g.max_loss == pytest.approx(14700.0)
