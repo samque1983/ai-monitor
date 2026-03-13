@@ -180,6 +180,45 @@ def _group_subtitle(group_name: str, stats: dict, dim: str, nlv: float) -> str:
 
     return "，".join(p for p in parts if p)
 
+
+def _render_group_header(group_name: str, display_name: str,
+                          strategies: list, dim: str,
+                          nlv: float, color: str) -> str:
+    stats = _group_stats(strategies, nlv)
+    subtitle = _group_subtitle(group_name, stats, dim, nlv)
+
+    pnl = stats["total_pnl"]
+    pnl_color = "#30d158" if pnl >= 0 else "#ff453a"
+    pnl_str = _fmt_dollar(pnl)
+
+    theta = stats["total_theta"]
+    theta_str = f"{'+'  if theta >= 0 else ''}{theta:.0f}/天"
+    theta_color = "#30d158" if theta >= 0 else "#ff453a"
+
+    max_loss = stats["total_max_loss"]
+    if stats["has_naked"]:
+        loss_str = f"-${max_loss:,.0f}+ ⚠裸仓"
+    else:
+        loss_str = f"-${max_loss:,.0f} ({stats['max_loss_pct']:.1f}%)"
+
+    delta = stats["net_delta"]
+    delta_str = f"ΔExp {'+' if delta >= 0 else ''}{delta:.1f}"
+
+    return f"""
+<div style="background:rgba(255,255,255,0.03); border-left:3px solid {color};
+            border-radius:8px; padding:12px 16px; margin:20px 0 8px;">
+  <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+    <span style="font-size:14px; font-weight:700; color:{color};">{_e(display_name)}</span>
+    <span style="font-size:12px; color:#636366;">{stats['count']} 个策略</span>
+    <span style="font-size:12px; color:{pnl_color}; font-family:'SF Mono',monospace;">PnL {pnl_str}</span>
+    <span style="font-size:12px; color:{theta_color}; font-family:'SF Mono',monospace;">Θ {_e(theta_str)}</span>
+    <span style="font-size:12px; color:#ff453a; font-family:'SF Mono',monospace;">MaxLoss {_e(loss_str)}</span>
+    <span style="font-size:12px; color:#8e8e93; font-family:'SF Mono',monospace;">{_e(delta_str)}</span>
+  </div>
+  {f'<div style="font-size:12px; color:#8e8e93; margin-top:5px;">{_e(subtitle)}</div>' if subtitle else ''}
+</div>"""
+
+
 _CSS = """
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }

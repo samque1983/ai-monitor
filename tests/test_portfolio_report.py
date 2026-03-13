@@ -238,3 +238,30 @@ def test_subtitle_dte_expiring():
 def test_subtitle_dte_long():
     s = _group_subtitle(">90天", _stats(), dim="dte", nlv=100_000)
     assert "长线" in s or "Vega" in s
+
+
+# ── Task 5: _render_group_header ─────────────────────────────────────────────
+from src.portfolio_report import _render_group_header
+
+
+def test_render_group_header_contains_key_data():
+    sgs = [_make_sg(net_pnl=1240, net_theta=48, max_loss=6200)]
+    html = _render_group_header(
+        group_name="income", display_name="收租",
+        strategies=sgs, dim="intent",
+        nlv=150_000, color="#30d158"
+    )
+    assert "收租"   in html
+    assert "1,240"  in html or "1240" in html
+    assert "48"     in html
+    assert "6,200"  in html or "6200" in html
+    assert "靠卖出" in html   # subtitle present
+
+def test_render_group_header_naked_warning():
+    sgs = [_make_sg(max_loss=None)]
+    html = _render_group_header(
+        group_name="income", display_name="收租",
+        strategies=sgs, dim="intent",
+        nlv=150_000, color="#30d158"
+    )
+    assert "裸仓" in html
