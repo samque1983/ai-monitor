@@ -518,11 +518,11 @@ def _generate_strategy_report(report) -> str:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>期权组合风险报告 — {_e(report.account_id)} {_e(report.report_date)}</title>
+<title>账户风险报告 — {_e(report.account_id)} {_e(report.report_date)}</title>
 {_CSS}
 </head>
 <body>
-<h1>期权组合风险报告</h1>
+<h1>账户风险报告</h1>
 <p style="color:#8e8e93; font-size:13px; margin:4px 0 18px;">{_e(report.account_id)} · {_e(report.report_date)}</p>
 
 {summary_card}
