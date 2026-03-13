@@ -119,7 +119,7 @@ def _group_stats(strategies: list, nlv: float) -> dict:
 
 
 _CATEGORY_DESC = {
-    "裸卖": "卖出裸期权赚取全额权利金，风险无上限，最怕大幅波动",
+    "裸卖": "卖出裸期权赚取全额权利金。裸 Put 下行风险有界（股票跌至 $0），裸 Call 上涨亏损无上限",
     "价差": "买卖双腿对冲，风险收益均有上限，资金效率较高",
     "综合": "多腿组合策略，在区间震荡中赚取时间价值",
     "含股": "股票结合期权，降低持仓成本或锁定收益区间",
@@ -174,9 +174,9 @@ def _group_subtitle(group_name: str, stats: dict, dim: str, nlv: float) -> str:
 
     # Append warnings
     if stats["max_loss_pct"] > 10.0:
-        parts.append(f"⚠ 风险集中，占净资产 {stats['max_loss_pct']:.1f}%")
+        parts.append(f"⚠ 最大亏损 ${stats['total_max_loss']:,.0f}，占净资产 {stats['max_loss_pct']:.1f}%")
     if stats["has_naked"]:
-        parts.append("⚠ 含裸仓，理论亏损无上限")
+        parts.append("⚠ 含裸 Call，股价上涨亏损无上限")
 
     return "，".join(p for p in parts if p)
 
@@ -197,7 +197,7 @@ def _render_group_header(group_name: str, display_name: str,
 
     max_loss = stats["total_max_loss"]
     if stats["has_naked"]:
-        loss_str = f"-${max_loss:,.0f}+ ⚠裸仓"
+        loss_str = f"-${max_loss:,.0f} + ∞ (裸Call)"
     else:
         loss_str = f"-${max_loss:,.0f} ({stats['max_loss_pct']:.1f}%)"
 

@@ -449,13 +449,14 @@ class OptionStrategyRecognizer:
         elif stype == "Naked Put":
             sp = opt_legs[0]
             sg.max_profit = sg.net_credit
-            sg.max_loss = None
+            # Stock floors at $0 — max loss is bounded, not unlimited
+            sg.max_loss = (sp.strike - credit_per_contract) * mult * contracts
             sg.breakevens = [sp.strike - credit_per_contract]
 
         elif stype == "Naked Call":
             sc = opt_legs[0]
             sg.max_profit = sg.net_credit
-            sg.max_loss = None
+            sg.max_loss = None  # Truly unlimited: stock can rise without bound
             sg.breakevens = [sc.strike + credit_per_contract]
 
         elif stype == "Covered Call":
@@ -464,5 +465,26 @@ class OptionStrategyRecognizer:
             if sc and stk:
                 sg.max_profit = ((sc.strike - stk.cost_basis_price) * stk.position
                                  + sg.net_credit)
-                sg.max_loss = None
+                # Stock goes to $0 — bounded by cost basis minus premium received
+                sg.max_loss = stk.cost_basis_price * abs(stk.position) - sg.net_credit
                 sg.breakevens = [stk.cost_basis_price - credit_per_contract]
+
+        elif stype in ("Diagonal Spread", "Calendar Spread"):
+            # Approximate max loss: net debit paid (if debit) or spread-width worst-case (if credit).
+            # For a put diagonal where short_strike > long_strike and net credit received,
+            # worst case at near-term expiry = (short_strike - long_strike) * mult * contracts - net_credit.
+            short_legs = [p for p in opt_legs if p.position < 0]
+            long_legs  = [p for p in opt_legs if p.position > 0]
+            if short_legs and long_legs:
+                short_leg = short_legs[0]
+                long_leg  = long_legs[0]
+                diag_contracts = abs(short_leg.position)
+                if sg.net_credit <= 0:
+                    # Net debit paid: max loss = net debit
+                    sg.max_loss = abs(sg.net_credit)
+                else:
+                    # Net credit received: worst case is spread-width loss minus credit
+                    strike_diff = abs(short_leg.strike - long_leg.strike)
+                    sg.max_loss = max(0.0,
+                                     (strike_diff - sg.net_credit / diag_contracts / mult)
+                                     * mult * diag_contracts)

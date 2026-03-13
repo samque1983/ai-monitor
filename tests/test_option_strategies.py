@@ -253,6 +253,65 @@ def test_ratio_put_spread_equal_becomes_bull_put():
     assert long_leg.position == 5     # +4 + +1 (after dedup)
 
 
+def test_naked_put_max_loss_bounded():
+    """Naked Put max_loss is bounded: stock can only fall to $0.
+    max_loss = (strike - credit_per_contract) × mult × |contracts|
+    """
+    # -3 contracts, strike=180, cost_basis=4.0 → net_credit = 3*4*100 = 1200
+    # credit_per_contract = 1200 / 3 / 100 = 4.0
+    # max_loss = (180 - 4) * 100 * 3 = 52800
+    sp = _opt("AAPL  261201P00180000", "P", 180, -3, cost_basis=4.0, multiplier=100)
+    groups = OptionStrategyRecognizer().recognize([sp])
+    g = groups[0]
+    assert g.strategy_type == "Naked Put"
+    assert g.max_loss is not None, "Naked Put max_loss must be finite (stock floors at $0)"
+    assert g.max_loss == pytest.approx(52800.0)
+    assert g.max_profit == pytest.approx(1200.0)
+
+
+def test_naked_call_max_loss_unlimited():
+    """Naked Call max_loss remains None — stock can rise without bound."""
+    sc = _opt("AAPL  261201C00220000", "C", 220, -2, cost_basis=3.0, multiplier=100)
+    groups = OptionStrategyRecognizer().recognize([sc])
+    g = groups[0]
+    assert g.strategy_type == "Naked Call"
+    assert g.max_loss is None, "Naked Call max_loss must be None (unlimited upside risk)"
+
+
+def test_covered_call_max_loss_bounded():
+    """Covered Call max_loss bounded: stock goes to $0.
+    max_loss = cost_basis × shares - net_credit
+    """
+    # 100 shares cost_basis=140, sell 1 call cost_basis=3.0
+    # net_credit = 1 * 3.0 * 100 = 300
+    # max_loss = 140 * 100 - 300 = 13700
+    stock = _stk("AAPL", 100, mark=150.0)   # cost_basis=140 in _stk helper
+    call = _opt("AAPL  261201C00200000", "C", 200, -1, cost_basis=3.0, multiplier=100)
+    groups = OptionStrategyRecognizer().recognize([stock, call])
+    g = groups[0]
+    assert g.strategy_type == "Covered Call"
+    assert g.max_loss is not None, "Covered Call max_loss must be finite"
+    assert g.max_loss == pytest.approx(13700.0)
+
+
+def test_naked_put_with_long_put_modifier_caps_max_loss():
+    """Naked Put + cross-expiry Long Put modifier → max_loss capped by modifier strike.
+    Effective max_loss = (short_strike - modifier_strike - credit_per_contract) × mult × contracts
+    """
+    from datetime import date, timedelta
+    near_exp = (date.today() + timedelta(days=45)).strftime("%Y%m%d")
+    far_exp  = (date.today() + timedelta(days=80)).strftime("%Y%m%d")
+    sp = _opt("AAPL  P180", "P", 180, -2, expiry=near_exp, cost_basis=4.0, multiplier=100)
+    lp = _opt("AAPL  P160", "P", 160,  2, expiry=far_exp,  cost_basis=1.0, multiplier=100)
+    groups = OptionStrategyRecognizer().recognize([sp, lp])
+    # These are cross-expiry, should be a Diagonal Spread (not Naked Put + modifier)
+    assert len(groups) == 1
+    g = groups[0]
+    assert g.strategy_type == "Diagonal Spread"
+    # Diagonal spread max_loss should be bounded by the net debit / credit spread width
+    assert g.max_loss is not None, "Diagonal Spread max_loss must be finite"
+
+
 def test_leaps_standalone_not_modifier():
     """Standalone LEAPS put (can't be paired) stays as its own strategy, not a modifier."""
     from datetime import date, timedelta

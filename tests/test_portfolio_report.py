@@ -224,11 +224,11 @@ def test_subtitle_directional_short():
 
 def test_subtitle_high_risk_concentration():
     s = _group_subtitle("income", _stats(max_loss_pct=12.0), dim="intent", nlv=100_000)
-    assert "风险集中" in s and "12.0%" in s
+    assert "最大亏损" in s and "12.0%" in s
 
 def test_subtitle_naked_warning():
     s = _group_subtitle("income", _stats(has_naked=True), dim="intent", nlv=100_000)
-    assert "裸仓" in s
+    assert "裸 Call" in s and "无上限" in s
 
 # dte tab
 def test_subtitle_dte_expiring():
@@ -264,7 +264,7 @@ def test_render_group_header_naked_warning():
         strategies=sgs, dim="intent",
         nlv=150_000, color="#30d158"
     )
-    assert "裸仓" in html
+    assert "裸Call" in html or "裸 Call" in html
 
 
 # ── Task 6: _render_tabbed_summary ───────────────────────────────────────────
