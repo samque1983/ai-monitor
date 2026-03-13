@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from typing import List, Dict, Any, Optional
 from agent.db import AgentDB
 
@@ -60,31 +61,47 @@ class AgentTools:
             lines.append(f"止损: {card['stop_loss']}")
         return "\n".join(lines)
 
+    def get_risk_report(self) -> str:
+        """Return latest risk report as plain text for AI analysis."""
+        row = self.db.get_latest_risk_report("ALICE")
+        if not row:
+            return "暂无风险报告。请先通过本地 IB Gateway 上传持仓数据。"
+        html = row.get("html_content", "")
+        # Strip HTML tags, collapse whitespace
+        text = re.sub(r"<[^>]+>", " ", html)
+        text = re.sub(r"[ \t]+", " ", text)
+        text = re.sub(r"\n{3,}", "\n\n", text).strip()
+        # Cap at 6000 chars to stay within context
+        if len(text) > 6000:
+            text = text[:6000] + "\n…（报告已截断）"
+        return f"**风险报告（{row.get('report_date','')})**\n\n{text}"
+
     def manage_watchlist(self, action: str, ticker: str) -> str:
         """Add, remove, or list watchlist tickers."""
         user = self.db.get_user(self.user_id)
         if not user:
             return "用户未找到。"
-        watchlist: List[str] = json.loads(user.get("watchlist_json") or "[]")
+        items = self.db._parse_watchlist(user)
         ticker = ticker.upper().strip()
+        tickers = [i["ticker"] for i in items]
 
         if action == "add":
-            if ticker and ticker not in watchlist:
-                watchlist.append(ticker)
-                self.db.update_watchlist(self.user_id, watchlist)
-            return f"已加入 {ticker}。当前标的池: {', '.join(watchlist)}"
+            if ticker and ticker not in tickers:
+                self.db.add_to_watchlist(self.user_id, ticker)
+                tickers.append(ticker)
+            return f"已加入 {ticker}。当前标的池: {', '.join(tickers)}"
 
         elif action == "remove":
-            if ticker in watchlist:
-                watchlist.remove(ticker)
-                self.db.update_watchlist(self.user_id, watchlist)
-                return f"已移除 {ticker}。当前标的池: {', '.join(watchlist) or '（空）'}"
+            if ticker in tickers:
+                self.db.remove_from_watchlist(self.user_id, ticker)
+                tickers = [t for t in tickers if t != ticker]
+                return f"已移除 {ticker}。当前标的池: {', '.join(tickers) or '（空）'}"
             return f"{ticker} 不在标的池中。"
 
         elif action == "list":
-            if not watchlist:
+            if not tickers:
                 return "标的池为空。发送「加入 AAPL」来添加标的。"
-            return f"当前标的池（{len(watchlist)} 个）: {', '.join(watchlist)}"
+            return f"当前标的池（{len(tickers)} 个）: {', '.join(tickers)}"
 
         return "未知操作。支持: add / remove / list"
 
@@ -135,6 +152,15 @@ TOOL_DEFINITIONS = [
                 },
             },
             "required": ["action", "ticker"],
+        },
+    },
+    {
+        "name": "get_risk_report",
+        "description": "获取最新持仓风险报告，包含仓位风险等级、Greeks 摘要、最大亏损、风险预警",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
         },
     },
     {

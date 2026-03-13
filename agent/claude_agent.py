@@ -120,6 +120,8 @@ class ClaudeAgent:
                     inputs.get("action", "list"),
                     inputs.get("ticker", ""),
                 )
+            elif name == "get_risk_report":
+                return tools.get_risk_report()
             elif name == "trigger_scan":
                 return tools.trigger_scan()
             else:
