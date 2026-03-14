@@ -15,7 +15,11 @@ from typing import TYPE_CHECKING, List, Optional, Dict, Any
 from dataclasses import dataclass
 import logging
 import numpy as np
+import pandas as _pd_version_check
 from datetime import datetime, timedelta, date
+
+# pandas>=2.2 renamed 'M' to 'ME' (month-end); use correct alias for installed version
+_PANDAS_MONTH_END = 'ME' if tuple(int(x) for x in _pd_version_check.__version__.split('.')[:2]) >= (2, 2) else 'M'
 from src.data_engine import TickerData
 from src.data_loader import classify_market
 from src.financial_service import (
@@ -377,8 +381,7 @@ def scan_dividend_pool_weekly(
                     # Compute golden_price: forward_dividend / yield_75th_pct
                     # Build monthly yield series inline from already-fetched price + dividend history
                     if forward_dividend_rate and forward_dividend_rate > 0:
-                        _month_freq = 'ME' if pd.__version__ >= '2.2' else 'M'
-                        monthly = close_5y.resample(_month_freq).last().dropna()
+                        monthly = close_5y.resample(_PANDAS_MONTH_END).last().dropna()
                         div_dates = []
                         for d in dividend_history:
                             ts = pd.Timestamp(_to_dt(d))
@@ -941,7 +944,7 @@ def bootstrap_yield_history(
             close_col = price_df['Close']
             if hasattr(close_col, 'columns'):  # DataFrame (yfinance multi-level columns)
                 close_col = close_col.iloc[:, 0]
-            monthly = close_col.resample('M').last().dropna()
+            monthly = close_col.resample(_PANDAS_MONTH_END).last().dropna()
             if monthly.empty:
                 continue
 

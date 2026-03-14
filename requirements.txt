@@ -1,6 +1,6 @@
 ib_insync>=0.9.86
 yfinance>=0.2.31
-pandas>=2.0.0
+pandas>=2.2.0
 PyYAML>=6.0
 pytest>=7.0.0
 openai>=1.0.0
