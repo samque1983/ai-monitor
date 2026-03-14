@@ -1097,7 +1097,15 @@ function cardDividend(s) {
     if (p.floor_price == null)
       return '<div style="font-size:12px;color:var(--text-3);padding:4px 0">极值底价数据暂缺</div>';
     const goldenRow = p.golden_price != null
-      ? row('黄金位 (75th分位)', `$${p.golden_price.toFixed(2)} (当前溢价 ${p.current_vs_golden_pct != null ? p.current_vs_golden_pct.toFixed(1) : '?'}%)`)
+      ? (() => {
+          const vsGoldenPct = p.current_vs_golden_pct != null
+            ? p.current_vs_golden_pct
+            : (p.last_price && p.last_price > 0
+                ? Math.round((p.last_price - p.golden_price) / p.last_price * 1000) / 10
+                : null);
+          const pctStr = vsGoldenPct != null ? `${vsGoldenPct.toFixed(1)}%` : '?%';
+          return row('黄金位 (75th分位)', `$${p.golden_price.toFixed(2)} (当前溢价 ${pctStr})`);
+        })()
       : '<div style="font-size:12px;color:var(--text-3);padding:2px 0">黄金位暂缺 (历史数据不足)</div>';
     const rationaleRow = p.strike_rationale
       ? `<div style="font-size:11px;color:var(--text-3);padding:2px 0;font-style:italic">${p.strike_rationale}</div>`
