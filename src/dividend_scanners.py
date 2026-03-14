@@ -377,8 +377,14 @@ def scan_dividend_pool_weekly(
                     # Compute golden_price: forward_dividend / yield_75th_pct
                     # Build monthly yield series inline from already-fetched price + dividend history
                     if forward_dividend_rate and forward_dividend_rate > 0:
-                        monthly = close_5y.resample('M').last().dropna()
-                        div_dates = [pd.Timestamp(_to_dt(d)) for d in dividend_history]
+                        _month_freq = 'ME' if pd.__version__ >= '2.2' else 'M'
+                        monthly = close_5y.resample(_month_freq).last().dropna()
+                        div_dates = []
+                        for d in dividend_history:
+                            ts = pd.Timestamp(_to_dt(d))
+                            if ts.tz is not None:
+                                ts = ts.tz_localize(None)
+                            div_dates.append(ts)
                         div_amounts = [float(d['amount']) for d in dividend_history]
                         div_series = pd.Series(
                             div_amounts, index=pd.DatetimeIndex(div_dates)
@@ -397,10 +403,17 @@ def scan_dividend_pool_weekly(
                             yield_75th = float(np.percentile(monthly_yields, 75))
                             if yield_75th > 0:
                                 golden_price = round(forward_dividend_rate / (yield_75th / 100), 2)
-                                logger.debug(
+                                logger.info(
                                     f"{ticker}: golden_price=${golden_price:.2f} "
-                                    f"(yield_75th={yield_75th:.2f}%, fwd_div={forward_dividend_rate:.2f})"
+                                    f"(yield_75th={yield_75th:.2f}%, fwd_div={forward_dividend_rate:.2f}, "
+                                    f"n_yields={len(monthly_yields)})"
                                 )
+                        else:
+                            logger.info(
+                                f"{ticker}: golden_price skipped — monthly_yields={len(monthly_yields)} < 8 "
+                                f"(div_records={len(dividend_history)}, monthly_prices={len(monthly)}, "
+                                f"div_index_tz={div_series.index.tz}, price_index_tz={monthly.index.tz})"
+                            )
             except Exception as e:
                 logger.warning(f"{ticker}: Could not compute floor data - {e}")
 
