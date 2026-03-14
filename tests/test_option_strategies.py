@@ -534,3 +534,38 @@ def test_all_short_diagonal_has_finite_max_profit_and_loss():
     # = (546 + 375)*100 - 2900 = 92100 - 2900 = 89200
     assert g.max_loss is not None, "All-short Diagonal max_loss must be finite (not unlimited)"
     assert g.max_loss == pytest.approx(89200.0)
+
+
+def test_short_stock_max_profit_bounded():
+    """Short Stock: max_profit must be finite (stock → $0), not None/unlimited."""
+    s = _stk("TSLA", position=-100, mark=200.0)
+    # cost_basis_price=140 per _stk default — represents the short-sell price
+    groups = OptionStrategyRecognizer().recognize([s])
+    assert len(groups) == 1
+    g = groups[0]
+    assert g.strategy_type == "Short Stock"
+    assert g.max_profit is not None, "Short Stock max_profit must be finite (stock can only fall to $0)"
+    # max_profit = cost_basis * |position| = 140 * 100 = 14000
+    assert g.max_profit == pytest.approx(14000.0)
+    assert g.max_loss is None  # stock can rise without bound
+
+
+def test_all_long_diagonal_max_loss_bounded():
+    """Two long puts at different strikes/expirations → Diagonal Spread.
+    max_loss must be finite (= net debit paid), not None/unlimited.
+    """
+    from datetime import date, timedelta
+    near_exp = (date.today() + timedelta(days=30)).strftime("%Y%m%d")
+    far_exp  = (date.today() + timedelta(days=90)).strftime("%Y%m%d")
+    # Long 3× P100 near @ $4, Long 3× P95 far @ $2 — net debit = 3*(4+2)*100 = 1800
+    lp_near = _opt("SPY   P100", "P", 100, +3, expiry=near_exp, cost_basis=4.0, multiplier=100)
+    lp_far  = _opt("SPY   P95",  "P",  95, +3, expiry=far_exp,  cost_basis=2.0, multiplier=100)
+    groups = OptionStrategyRecognizer().recognize([lp_near, lp_far])
+    assert len(groups) == 1
+    g = groups[0]
+    assert g.strategy_type == "Diagonal Spread"
+    # net_credit = -(3*4*100 + 3*2*100) = -1800 (net debit)
+    assert g.net_credit == pytest.approx(-1800.0)
+    # max_loss must be finite and equal to the net debit paid
+    assert g.max_loss is not None, "All-long Diagonal max_loss must be finite (= net debit paid)"
+    assert g.max_loss == pytest.approx(1800.0)

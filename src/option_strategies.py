@@ -522,6 +522,10 @@ class OptionStrategyRecognizer:
                 sg.max_profit = sg.net_credit if sg.net_credit > 0 else 0.0
                 total_notional = sum(abs(p.position) * p.strike * p.multiplier for p in short_legs)
                 sg.max_loss = max(0.0, total_notional - sg.net_credit)
+            elif long_legs and not short_legs:
+                # All-long diagonal/calendar: max loss = net debit paid; max profit hard to model.
+                sg.max_loss = abs(sg.net_credit)
+                sg.max_profit = None  # Depends on relative time decay; leave as N/A
 
         elif stype in ("Long Call", "Long Put", "LEAPS Call", "LEAPS Put",
                        "Straddle", "Strangle"):
@@ -538,6 +542,10 @@ class OptionStrategyRecognizer:
 
         elif stype == "Short Stock":
             sg.max_loss = None  # Truly unlimited: stock can rise without bound
+            stk = sg.stock_leg
+            if stk:
+                basis = stk.cost_basis_price if stk.cost_basis_price > 0 else stk.mark_price
+                sg.max_profit = basis * abs(stk.position)  # stock falls to $0
 
         elif stype == "Protective Put":
             stk = sg.stock_leg
