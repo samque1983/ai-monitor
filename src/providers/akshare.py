@@ -95,7 +95,7 @@ class AkshareProvider(BaseProvider):
             else:  # US
                 raw = ak.stock_us_hist(
                     symbol=ticker, period="daily",
-                    start_date=start, end_date=end, adjust="hfq",
+                    start_date=start, end_date=end, adjust="qfq",
                 )
             if raw is None or raw.empty:
                 return pd.DataFrame()

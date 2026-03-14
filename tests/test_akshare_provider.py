@@ -93,6 +93,7 @@ def test_us_price_data():
     call_kwargs = mock_ak.stock_us_hist.call_args
     symbol_used = call_kwargs.kwargs.get("symbol") or call_kwargs.args[0]
     assert symbol_used == "AAPL"
+    assert call_kwargs.kwargs.get("adjust") == "qfq"
 
 
 def test_price_data_api_error_returns_empty():
