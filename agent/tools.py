@@ -109,6 +109,39 @@ class AgentTools:
         """Acknowledge scan trigger request."""
         return "扫描触发请求已记录。下次定时扫描将在今日17:00执行。如需立即扫描，请在本地手动运行。"
 
+    def get_opportunity_cards(self, strategy: str = "") -> str:
+        """Return opportunity cards as a JSON array for the given strategy type."""
+        signal_type = strategy.strip() if strategy.strip() else "dividend"
+        signals = self.db.get_strategy_pool(signal_type)
+        if not signals:
+            return f"暂无 {signal_type} 机会信号。"
+        cards = []
+        for s in signals[:5]:
+            yield_val = s.get("ttm_yield") or s.get("current_yield") or s.get("yield") or 0
+            card = {
+                "type": "opportunity",
+                "ticker": s.get("ticker", ""),
+                "name": s.get("company_name", s.get("ticker", "")),
+                "signal": signal_type,
+                "yield": f"{yield_val:.1f}%" if yield_val else "—",
+                "iv_rank": s.get("iv_rank", 0),
+                "action": "add_watchlist",
+            }
+            cards.append(card)
+        return json.dumps(cards, ensure_ascii=False)
+
+    def get_risk_summary(self) -> str:
+        """Return latest risk report metadata as JSON."""
+        report = self.db.get_latest_risk_report(self.user_id)
+        if not report:
+            return "暂无风险报告。请先上传持仓数据。"
+        return json.dumps({
+            "type": "risk_summary",
+            "report_date": report["report_date"],
+            "account_id": report["account_id"],
+            "action": "view_risk_report",
+        }, ensure_ascii=False)
+
 
 # Claude tool definitions (passed to messages.create)
 TOOL_DEFINITIONS = [
@@ -166,6 +199,29 @@ TOOL_DEFINITIONS = [
     {
         "name": "trigger_scan",
         "description": "请求触发一次立即扫描",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "name": "get_opportunity_cards",
+        "description": "获取特定策略的机会卡片列表，可指定策略类型如 dividend、sell_put",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "strategy": {
+                    "type": "string",
+                    "description": "策略类型: dividend / sell_put / iv_low / leaps，默认 dividend",
+                }
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "get_risk_summary",
+        "description": "获取用户最新持仓风险报告摘要",
         "input_schema": {
             "type": "object",
             "properties": {},

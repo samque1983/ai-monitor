@@ -124,6 +124,10 @@ class ClaudeAgent:
                 return tools.get_risk_report()
             elif name == "trigger_scan":
                 return tools.trigger_scan()
+            elif name == "get_opportunity_cards":
+                return tools.get_opportunity_cards(inputs.get("strategy", ""))
+            elif name == "get_risk_summary":
+                return tools.get_risk_summary()
             else:
                 return f"未知工具: {name}"
         except Exception as e:
