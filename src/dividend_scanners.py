@@ -361,6 +361,8 @@ def scan_dividend_pool_weekly(
                     close_5y = price_df_5y['Close']
                     if hasattr(close_5y, 'columns'):  # DataFrame (yfinance multi-level columns)
                         close_5y = close_5y.iloc[:, 0]
+                    if hasattr(close_5y.index, 'tz') and close_5y.index.tz is not None:
+                        close_5y.index = close_5y.index.tz_localize(None)
                     _floor_data = _compute_floor_data(close_5y, annual_dividend_ttm, forward_dividend_rate)
                     max_yield_5y = _floor_data["max_yield_5y"]
                     if _floor_data["extreme_detected"] and _floor_data["raw_min_date"]:
