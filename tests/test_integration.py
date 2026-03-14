@@ -441,6 +441,51 @@ def test_build_agent_payload_sell_put_has_liquidity_fields():
     assert sp["liquidity_warn"] is False
 
 
+def test_build_agent_payload_extreme_event_fields():
+    """Extreme event fields must be serialized in dividend signal payload."""
+    from src.main import _build_agent_payload
+    from src.dividend_scanners import DividendBuySignal
+    from unittest.mock import MagicMock
+
+    td = MagicMock()
+    td.ticker = "T"
+    td.last_price = 20.0
+    td.earnings_date = None
+    td.days_to_earnings = None
+    td.dividend_quality_score = 80.0
+    td.payout_ratio = 50.0
+    td.payout_type = "GAAP"
+    td.quality_breakdown = {}
+    td.analysis_text = ""
+    td.health_rationale = ""
+
+    s = DividendBuySignal(
+        ticker_data=td,
+        signal_type="STOCK",
+        current_yield=5.0,
+        yield_percentile=80.0,
+        forward_dividend_rate=1.0,
+        max_yield_5y=6.0,
+        floor_price=16.67,
+        floor_downside_pct=16.7,
+        floor_price_raw=14.00,
+        extreme_event_label="2020-03 COVID 抛售",
+        extreme_event_price=13.50,
+        extreme_event_days=25,
+    )
+
+    result = _build_agent_payload(
+        sell_puts=[], iv_low=[], iv_high=[], ma200_bull=[], ma200_bear=[],
+        leaps=[], earnings_gaps=[], earnings_gap_ticker_map={},
+        iv_momentum=[], dividend_signals=[s],
+    )
+    div = next(r for r in result if r["signal_type"] == "dividend")
+
+    assert div["extreme_event_label"] == "2020-03 COVID 抛售"
+    assert div["extreme_event_price"] == 13.50
+    assert div["floor_price_raw"] == 14.00
+
+
 def test_main_risk_report_args(monkeypatch):
     """Test --risk-report --account parsing doesn't crash."""
     monkeypatch.setenv("ACCOUNT_TEST_FLEX_TOKEN", "tok")

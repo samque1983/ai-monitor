@@ -182,6 +182,9 @@ def _build_agent_payload(
             "health_rationale": td.health_rationale or "",
             "golden_price": round(float(s.golden_price), 2) if s.golden_price is not None else None,
             "current_vs_golden_pct": s.current_vs_golden_pct,
+            "extreme_event_label": s.extreme_event_label,
+            "extreme_event_price": round(float(s.extreme_event_price), 2) if s.extreme_event_price is not None else None,
+            "floor_price_raw": round(float(s.floor_price_raw), 2) if s.floor_price_raw is not None else None,
         })
 
     return signals
