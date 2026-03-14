@@ -382,3 +382,46 @@ def test_get_yield_percentile_no_history_returns_default():
     assert result.p10 is None
     assert result.p90 is None
     assert result.hist_max is None
+
+
+def test_get_yield_percentile_value_returns_75th(tmp_path):
+    """Returns the 75th percentile yield value from stored history."""
+    import numpy as np
+    store = DividendStore(str(tmp_path / "test.db"))
+    yields = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]
+    for i, y in enumerate(yields):
+        store.save_dividend_history("AAPL", date(2023, i + 1, 1), y, y * 0.01, 100.0)
+    result = store.get_yield_percentile_value("AAPL", 75)
+    assert result is not None
+    expected = round(float(np.percentile(yields, 75)), 4)
+    assert abs(result - expected) < 0.001
+    store.close()
+
+
+def test_get_yield_percentile_value_returns_none_insufficient_data(tmp_path):
+    """Returns None when fewer than 8 data points exist."""
+    store = DividendStore(str(tmp_path / "test2.db"))
+    for i in range(5):
+        store.save_dividend_history("AAPL", date(2023, i + 1, 1), float(i + 1), 0.1, 100.0)
+    result = store.get_yield_percentile_value("AAPL", 75)
+    assert result is None
+    store.close()
+
+
+def test_get_yield_percentile_value_returns_none_no_history(tmp_path):
+    """Returns None when no history exists for ticker."""
+    store = DividendStore(str(tmp_path / "test3.db"))
+    result = store.get_yield_percentile_value("AAPL", 75)
+    assert result is None
+    store.close()
+
+
+def test_save_pool_includes_golden_price(tmp_path):
+    """save_pool stores golden_price; get_pool_records returns it."""
+    store = DividendStore(str(tmp_path / "test4.db"))
+    td = _make_ticker("AAPL")
+    td.golden_price = 123.45
+    store.save_pool([td], "2026-03-14")
+    records = store.get_pool_records()
+    assert records[0]["golden_price"] == 123.45
+    store.close()

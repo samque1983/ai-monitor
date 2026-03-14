@@ -78,6 +78,7 @@ class DividendStore:
             ("extreme_event_label", "TEXT"),
             ("extreme_event_price", "REAL"),
             ("extreme_event_days", "INTEGER"),
+            ("golden_price", "REAL"),
         ]:
             if col not in pool_cols and pool_cols:
                 cursor.execute(f"ALTER TABLE dividend_pool ADD COLUMN {col} {col_type}")
@@ -144,8 +145,9 @@ class DividendStore:
                     quality_breakdown, analysis_text, forward_dividend_rate,
                     max_yield_5y, data_version_date, sgov_yield, health_rationale,
                     floor_price_raw, extreme_event_label,
-                    extreme_event_price, extreme_event_days
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    extreme_event_price, extreme_event_days,
+                    golden_price
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 ticker.ticker, version, ticker.name, ticker.market,
                 ticker.dividend_quality_score, ticker.consecutive_years,
@@ -166,6 +168,7 @@ class DividendStore:
                 getattr(ticker, 'extreme_event_label', None),
                 getattr(ticker, 'extreme_event_price', None),
                 getattr(ticker, 'extreme_event_days', None),
+                getattr(ticker, 'golden_price', None),
             ))
 
         quality_scores = [t.dividend_quality_score for t in tickers if t.dividend_quality_score is not None]
@@ -242,7 +245,8 @@ class DividendStore:
                    quality_breakdown, analysis_text, forward_dividend_rate,
                    max_yield_5y, data_version_date, sgov_yield, health_rationale,
                    floor_price_raw, extreme_event_label,
-                   extreme_event_price, extreme_event_days
+                   extreme_event_price, extreme_event_days,
+                   golden_price
             FROM dividend_pool
             WHERE version = (
                 SELECT version FROM screening_versions
@@ -258,6 +262,7 @@ class DividendStore:
             "max_yield_5y", "data_version_date", "sgov_yield", "health_rationale",
             "floor_price_raw", "extreme_event_label",
             "extreme_event_price", "extreme_event_days",
+            "golden_price",
         ]
         records = []
         for row in cursor.fetchall():
@@ -327,6 +332,24 @@ class DividendStore:
             p90=round(p90, 2) if p90 is not None else None,
             hist_max=round(hist_max, 2),
         )
+
+    def get_yield_percentile_value(self, ticker: str, percentile: float) -> Optional[float]:
+        """Return the yield value at the given percentile from stored history.
+
+        Requires at least 8 data points; returns None if insufficient.
+        """
+        import numpy as np
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT dividend_yield FROM dividend_history
+            WHERE ticker = ?
+            ORDER BY date DESC
+            LIMIT 1250
+        """, (ticker,))
+        yields = [row[0] for row in cursor.fetchall() if row[0] is not None]
+        if len(yields) < 8:
+            return None
+        return round(float(np.percentile(yields, percentile)), 4)
 
     def get_defensiveness_score(self, sector: str, industry: str):
         """Return (score, rationale) if cached and not expired, else None."""
