@@ -1483,3 +1483,84 @@ def test_ticker_data_has_golden_price_field():
     assert td.golden_price is None
     td.golden_price = 95.0
     assert td.golden_price == 95.0
+
+
+def test_scan_entry_skips_option_when_price_at_or_below_golden(tmp_path):
+    """When current_price <= golden_price, option scan is skipped and spot is recommended."""
+    from src.dividend_scanners import scan_dividend_buy_signal
+    from src.dividend_store import DividendStore
+
+    db_path = str(tmp_path / "test.db")
+    store = DividendStore(db_path)
+
+    # Seed yield history so percentile check works (current yield ~4.1% will be high)
+    ticker = "KO"
+    for d, y in [("2021-03-01", 2.5), ("2022-03-01", 3.0), ("2023-03-01", 3.2),
+                 ("2024-03-01", 3.5), ("2025-03-01", 3.8)]:
+        store.save_dividend_history(ticker, date.fromisoformat(d), y, 4.0, 100.0)
+
+    provider = MagicMock()
+    # last_price = 98.0, which is <= golden_price = 100.0
+    provider.get_price_data.return_value = pd.DataFrame(
+        {"Close": [98.0]},
+        index=pd.to_datetime([str(date.today())])
+    )
+    # annual_dividend = 4 * 1.0 = 4.0 → yield = 4.0/98 * 100 = ~4.08% >= min_yield 3.5
+    provider.get_dividend_history.return_value = [
+        {"date": str(date.today()), "amount": 1.0},
+        {"date": str(date.today() - timedelta(days=90)), "amount": 1.0},
+        {"date": str(date.today() - timedelta(days=180)), "amount": 1.0},
+        {"date": str(date.today() - timedelta(days=270)), "amount": 1.0},
+    ]
+    provider.get_earnings_date.return_value = None
+    provider.should_skip_options.return_value = False
+
+    pool = [{
+        "ticker": ticker,
+        "market": "US",
+        "forward_dividend_rate": 4.0,
+        "max_yield_5y": 4.0,
+        "quality_score": 80.0,
+        "consecutive_years": 10,
+        "dividend_growth_5y": 3.0,
+        "payout_ratio": 60.0,
+        "payout_type": "GAAP",
+        "floor_price_raw": None,
+        "extreme_event_label": None,
+        "extreme_event_price": None,
+        "extreme_event_days": None,
+        "golden_price": 100.0,   # current price 98 <= golden 100 → skip option
+        "data_version_date": str(date.today()),
+        "sgov_yield": 4.8,
+        "health_rationale": "Stable",
+        "quality_breakdown": {},
+        "analysis_text": "",
+    }]
+
+    config = {
+        "dividend_scanners": {
+            "min_yield": 3.5,
+            "min_yield_percentile": 80.0,
+            "option": {
+                "enabled": True,
+                "min_dte": 45,
+                "max_dte": 90,
+                "target_strike_percentile": 90,
+            }
+        }
+    }
+
+    results = scan_dividend_buy_signal(pool=pool, provider=provider, store=store, config=config)
+    store.close()
+
+    # Signal should still be generated (price at high yield)
+    assert len(results) == 1
+    sig = results[0]
+
+    # Option must be skipped — price already at/below golden
+    assert sig.option_details is None
+    assert sig.ticker_data.recommended_strategy == "spot"
+    assert "黄金位" in sig.ticker_data.recommended_reason
+
+    # Provider must NOT have been called to fetch options
+    provider.get_options_chain.assert_not_called()

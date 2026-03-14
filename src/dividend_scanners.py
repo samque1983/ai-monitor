@@ -637,6 +637,7 @@ def scan_dividend_buy_signal(
                 # Step 7: 尝试添加期权策略（仅美国市场）
                 option_details = None
                 signal_type = "STOCK"
+                _golden_bypass = False
 
                 # 检查是否启用期权策略
                 option_config = scanner_config.get("option", {})
@@ -648,17 +649,25 @@ def scan_dividend_buy_signal(
                     # 从 pool record 读取黄金位（周扫描时计算并存储）
                     _golden_price_from_pool = record.get("golden_price")
 
-                    # 调用scan_dividend_sell_put获取期权详情
-                    option_details = scan_dividend_sell_put(
-                        ticker_data=ticker_data,
-                        provider=provider,
-                        annual_dividend=annual_dividend,
-                        target_yield=target_yield,
-                        min_dte=option_config.get("min_dte", 45),
-                        max_dte=option_config.get("max_dte", 90),
-                        golden_price=_golden_price_from_pool,
-                        current_price=last_price,
-                    )
+                    # 如果当前价已低于或等于黄金位，直接现货买入，跳过期权
+                    _golden_bypass = bool(_golden_price_from_pool and last_price <= _golden_price_from_pool)
+                    if _golden_bypass:
+                        logger.info(
+                            f"{ticker}: Price ${last_price:.2f} <= golden ${_golden_price_from_pool:.2f}, "
+                            f"skipping option scan — recommend spot"
+                        )
+                    else:
+                        # 调用scan_dividend_sell_put获取期权详情
+                        option_details = scan_dividend_sell_put(
+                            ticker_data=ticker_data,
+                            provider=provider,
+                            annual_dividend=annual_dividend,
+                            target_yield=target_yield,
+                            min_dte=option_config.get("min_dte", 45),
+                            max_dte=option_config.get("max_dte", 90),
+                            golden_price=_golden_price_from_pool,
+                            current_price=last_price,
+                        )
 
                     if option_details and not option_details.get("sell_put_illiquid"):
                         signal_type = "OPTION"
@@ -679,15 +688,19 @@ def scan_dividend_buy_signal(
                     ticker_data.sgov_yield = _fallback_sgov
                 if _option_apy is not None and ticker_data.sgov_yield is not None:
                     ticker_data.sgov_adjusted_apy = round(_option_apy + ticker_data.sgov_yield, 2)
-                _rec_strategy, _rec_reason = _get_recommended_strategy(
-                    ticker=ticker,
-                    current_yield=current_yield,
-                    sgov_adjusted_apy=ticker_data.sgov_adjusted_apy,
-                    option_available=_option_available,
-                    option_illiquid=_option_illiquid,
-                )
-                ticker_data.recommended_strategy = _rec_strategy
-                ticker_data.recommended_reason = _rec_reason
+                if _golden_bypass:
+                    ticker_data.recommended_strategy = "spot"
+                    ticker_data.recommended_reason = "当前价已低于黄金位，直接现货买入"
+                else:
+                    _rec_strategy, _rec_reason = _get_recommended_strategy(
+                        ticker=ticker,
+                        current_yield=current_yield,
+                        sgov_adjusted_apy=ticker_data.sgov_adjusted_apy,
+                        option_available=_option_available,
+                        option_illiquid=_option_illiquid,
+                    )
+                    ticker_data.recommended_strategy = _rec_strategy
+                    ticker_data.recommended_reason = _rec_reason
 
                 # Positive value = stock is X% above the floor price (downside buffer)
                 _floor_downside_pct: Optional[float] = None
