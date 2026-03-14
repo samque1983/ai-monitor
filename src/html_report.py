@@ -413,11 +413,23 @@ def _dividend_card(signal: Any) -> str:
         my_str = f'{max_yield_5y:.1f}' if max_yield_5y is not None else 'N/A'
         fdr_str = f'${forward_dividend_rate:.2f}' if forward_dividend_rate is not None else 'N/A'
         fdp_str = f'{-floor_downside_pct:.1f}' if floor_downside_pct is not None else '?'
+        # Extreme event footnote
+        _evt_label = getattr(signal, 'extreme_event_label', None)
+        _evt_price = getattr(signal, 'extreme_event_price', None)
+        _evt_days  = getattr(signal, 'extreme_event_days', None)
+        extreme_note = ''
+        if _evt_label and _evt_price is not None:
+            _days_str = f'，持续 {_evt_days} 天' if _evt_days else ''
+            extreme_note = (
+                f'    <p style="font-size:0.82em;color:var(--text-muted,#86868b)">'
+                f'↳ 已剔除更低点 ${_evt_price:.2f} ({_evt_label}{_days_str})</p>\n'
+            )
         floor_html = (
             f'{cb_row}\n'
             f'    <p>历史最高股息率 (5年): {my_str}%</p>\n'
             f'    <p>Forward 股息: {fdr_str}/股</p>\n'
             f'    <p>极值底价: ${floor_price:.2f} (较当前 {fdp_str}%)</p>\n'
+            f'{extreme_note}'
             f'    {warn}'
         )
     else:

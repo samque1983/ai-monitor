@@ -149,6 +149,17 @@ class AgentDB:
         self.conn.commit()
         return items
 
+    def seed_watchlist(self, user_id: str, items: List[Dict]):
+        """Write items directly to watchlist_json. Used for first-time seeding only.
+        Overwrites any existing content. Auto-creates user if not present."""
+        if not self.get_user(user_id):
+            self.save_user(user_id)
+        self.conn.execute(
+            "UPDATE users SET watchlist_json=? WHERE user_id=?",
+            (json.dumps(items, ensure_ascii=False), user_id)
+        )
+        self.conn.commit()
+
     def get_strategy_pool(self, signal_type: str) -> List[Dict]:
         """Return all signals of given signal_type from the latest scan_date."""
         row = self.conn.execute(

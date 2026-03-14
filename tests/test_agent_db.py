@@ -96,3 +96,37 @@ def test_update_profile_overwrites(db):
     db.update_profile("DIANA", {"risk_level": "conservative"})
     db.update_profile("DIANA", {"risk_level": "aggressive"})
     assert db.get_profile("DIANA")["risk_level"] == "aggressive"
+
+
+def test_seed_watchlist(db):
+    db.save_user("ALICE")
+    items = [
+        {"ticker": "AAPL", "name": "Apple", "group": "US Tech", "role": "core"},
+        {"ticker": "TSM",  "name": "TSMC",  "group": "Semi",    "role": ""},
+    ]
+    db.seed_watchlist("ALICE", items)
+    result = db._parse_watchlist(db.get_user("ALICE"))
+    assert len(result) == 2
+    assert result[0]["ticker"] == "AAPL"
+    assert result[0]["name"] == "Apple"
+    assert result[1]["ticker"] == "TSM"
+
+
+def test_seed_watchlist_overwrites(db):
+    db.save_user("ALICE")
+    db.seed_watchlist("ALICE", [{"ticker": "MSFT"}])
+    db.seed_watchlist("ALICE", [{"ticker": "NVDA"}, {"ticker": "AMD"}])
+    result = db._parse_watchlist(db.get_user("ALICE"))
+    tickers = [r["ticker"] for r in result]
+    assert tickers == ["NVDA", "AMD"]
+    assert "MSFT" not in tickers
+
+
+def test_seed_watchlist_autocreates_user(db):
+    """seed_watchlist creates the user if they don't exist yet."""
+    assert db.get_user("NEWUSER") is None
+    db.seed_watchlist("NEWUSER", [{"ticker": "AAPL"}])
+    user = db.get_user("NEWUSER")
+    assert user is not None
+    result = db._parse_watchlist(user)
+    assert result[0]["ticker"] == "AAPL"

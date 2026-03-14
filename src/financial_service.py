@@ -387,7 +387,7 @@ class FinancialServiceAnalyzer:
 
         # 3b. LLM health override for anomalous companies (negative equity / GAAP distortion)
         health_rationale = None
-        if self._is_anomalous(fundamentals) and self.enabled and self._has_llm_key():
+        if self.enabled and self._is_anomalous(fundamentals) and self._has_llm_key():
             assessment = self._get_health_assessment(ticker, fundamentals)
             if assessment:
                 health_score = float(assessment["health_score"])

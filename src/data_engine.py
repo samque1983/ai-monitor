@@ -45,6 +45,10 @@ class TickerData:
     analysis_text: Optional[str] = None
     forward_dividend_rate: Optional[float] = None
     max_yield_5y: Optional[float] = None
+    floor_price_raw: Optional[float] = None
+    extreme_event_label: Optional[str] = None
+    extreme_event_price: Optional[float] = None
+    extreme_event_days: Optional[int] = None
     data_version_date: Optional[str] = None
     needs_reeval: bool = False
 

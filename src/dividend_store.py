@@ -74,6 +74,10 @@ class DividendStore:
             ("data_version_date", "TEXT"),
             ("sgov_yield", "REAL"),
             ("health_rationale", "TEXT"),
+            ("floor_price_raw", "REAL"),
+            ("extreme_event_label", "TEXT"),
+            ("extreme_event_price", "REAL"),
+            ("extreme_event_days", "INTEGER"),
         ]:
             if col not in pool_cols and pool_cols:
                 cursor.execute(f"ALTER TABLE dividend_pool ADD COLUMN {col} {col_type}")
@@ -138,8 +142,10 @@ class DividendStore:
                     payout_type, dividend_yield, roe, debt_to_equity,
                     industry, sector, added_date,
                     quality_breakdown, analysis_text, forward_dividend_rate,
-                    max_yield_5y, data_version_date, sgov_yield, health_rationale
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    max_yield_5y, data_version_date, sgov_yield, health_rationale,
+                    floor_price_raw, extreme_event_label,
+                    extreme_event_price, extreme_event_days
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 ticker.ticker, version, ticker.name, ticker.market,
                 ticker.dividend_quality_score, ticker.consecutive_years,
@@ -156,6 +162,10 @@ class DividendStore:
                 date.today().isoformat(),
                 getattr(ticker, 'sgov_yield', None),
                 getattr(ticker, 'health_rationale', None),
+                getattr(ticker, 'floor_price_raw', None),
+                getattr(ticker, 'extreme_event_label', None),
+                getattr(ticker, 'extreme_event_price', None),
+                getattr(ticker, 'extreme_event_days', None),
             ))
 
         quality_scores = [t.dividend_quality_score for t in tickers if t.dividend_quality_score is not None]
@@ -230,7 +240,9 @@ class DividendStore:
                    dividend_growth_5y, payout_ratio, payout_type, dividend_yield,
                    roe, debt_to_equity, industry, sector,
                    quality_breakdown, analysis_text, forward_dividend_rate,
-                   max_yield_5y, data_version_date, sgov_yield, health_rationale
+                   max_yield_5y, data_version_date, sgov_yield, health_rationale,
+                   floor_price_raw, extreme_event_label,
+                   extreme_event_price, extreme_event_days
             FROM dividend_pool
             WHERE version = (
                 SELECT version FROM screening_versions
@@ -244,6 +256,8 @@ class DividendStore:
             "roe", "debt_to_equity", "industry", "sector",
             "quality_breakdown", "analysis_text", "forward_dividend_rate",
             "max_yield_5y", "data_version_date", "sgov_yield", "health_rationale",
+            "floor_price_raw", "extreme_event_label",
+            "extreme_event_price", "extreme_event_days",
         ]
         records = []
         for row in cursor.fetchall():
