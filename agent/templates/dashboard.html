@@ -955,6 +955,12 @@ function buildPercentileBar(pct) {
   return bar;
 }
 
+function fmtExpiry(dateStr) {
+  if (!dateStr) return '';
+  var d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 function buildStrategySection(s) {
   var p = s.payload || {};
   var ticker = s.ticker || '';
@@ -993,8 +999,8 @@ function buildStrategySection(s) {
   var spPanel = '';
   if (hasOption) {
     spPanel = (rec === 'sell_put' ? reasonHtml : '')
-      + '<div class="strategy-row"><span class="strategy-row-label">行权价</span><span class="strategy-row-value highlight">$' + (p.option_strike || 0).toFixed(2) + ' · ' + (p.option_dte || 0) + ' DTE</span></div>'
-      + '<div class="strategy-row"><span class="strategy-row-label">权利金</span><span class="strategy-row-value">$' + (p.option_bid || 0).toFixed(2) + ' → ' + (p.option_apy || 0).toFixed(1) + '% 年化</span></div>'
+      + '<div class="strategy-row"><span class="strategy-row-label">行权价</span><span class="strategy-row-value highlight">$' + (p.option_strike || 0).toFixed(2) + ' PUT' + (p.option_expiration ? ' · ' + fmtExpiry(p.option_expiration) : '') + ' · ' + (p.option_dte || 0) + 'D</span></div>'
+      + '<div class="strategy-row"><span class="strategy-row-label">权利金</span><span class="strategy-row-value">$' + (p.option_mid || 0).toFixed(2) + ' → ' + (p.option_apy || 0).toFixed(1) + '% 年化</span></div>'
       + (sgov != null ? '<div class="strategy-row"><span class="strategy-row-label">SGOV 叠加</span><span class="strategy-row-value">+' + sgov.toFixed(1) + '% <span style="color:var(--text-3);font-size:11px">现金短期国债收益' + (sgovIsEst ? ' · 估算' : '') + '</span></span></div>' : '')
       + '<div class="strategy-row"><span class="strategy-row-label">综合年化</span><span class="strategy-row-value highlight">' + (sgovApy != null ? sgovApy.toFixed(1) : (p.option_apy || 0).toFixed(1)) + '% <span style="color:var(--text-3);font-size:11px">' + (sgovApy != null ? ('(Sell Put + SGOV' + (sgovIsEst ? ' est.' : '') + ')') : '(Sell Put)') + '</span></span></div>';
   }
