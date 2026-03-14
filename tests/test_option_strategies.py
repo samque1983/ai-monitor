@@ -573,15 +573,35 @@ def test_all_long_diagonal_max_loss_bounded():
 
 def test_underlying_price_set_for_pure_option_strategy():
     """StrategyGroup.underlying_price should be populated for pure option positions.
-    For pure option strategies (no stock leg), underlying_price should use the
-    first leg's strike as proxy — consistent with strategy_risk.py.
+    When PositionRecord.underlying_price == 0, falls back to the leg's strike.
     """
     sp = _opt("AAPL  P180", "P", 180, -1, cost_basis=3.0, multiplier=100)
+    # _opt sets underlying_price=0 (default) → should fall back to strike=180
     groups = OptionStrategyRecognizer().recognize([sp])
     g = groups[0]
     assert g.strategy_type == "Naked Put"
     assert g.underlying_price > 0, "underlying_price must be set (> 0)"
-    assert g.underlying_price == pytest.approx(180.0)  # falls back to strike
+    assert g.underlying_price == pytest.approx(180.0)  # fallback to strike
+
+
+def test_underlying_price_prefers_position_record_field_over_strike():
+    """When PositionRecord.underlying_price is set (from Flex undPrice),
+    StrategyGroup.underlying_price must use it instead of the option strike.
+    """
+    from src.flex_client import PositionRecord as PR
+    sp = PR(
+        symbol="QQQ   P78", asset_category="OPT", put_call="P",
+        strike=78, expiry="20260630", multiplier=100, position=-7,
+        cost_basis_price=2.0, mark_price=2.0, unrealized_pnl=0.0,
+        delta=-0.3, gamma=0.01, theta=0.05, vega=0.1,
+        underlying_symbol="QQQ", currency="USD",
+        underlying_price=94.50,   # real price from undPrice field
+    )
+    groups = OptionStrategyRecognizer().recognize([sp])
+    g = groups[0]
+    # Must use 94.50, NOT the strike 78
+    assert g.underlying_price == pytest.approx(94.50), \
+        "StrategyGroup.underlying_price must prefer PositionRecord.underlying_price over strike"
 
 
 def test_underlying_price_uses_stock_mark_for_covered_call():

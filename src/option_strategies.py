@@ -408,12 +408,16 @@ class OptionStrategyRecognizer:
             except ValueError:
                 sg.dte = 0
 
-        # Underlying price proxy for Δ/1% display
+        # Underlying price for Δ/1% display.
+        # Priority: stock mark_price > Flex undPrice from any leg > option strike fallback.
         if sg.stock_leg:
             sg.underlying_price = sg.stock_leg.mark_price
         else:
             first_opt = next((p for p in sg.legs if p.asset_category == "OPT"), None)
-            sg.underlying_price = first_opt.strike if first_opt else 0.0
+            if first_opt:
+                sg.underlying_price = (first_opt.underlying_price
+                                       if first_opt.underlying_price > 0
+                                       else first_opt.strike)
 
         self._compute_payoff(sg, opt_legs)
 

@@ -136,3 +136,47 @@ def test_flex_client_parses_currency():
     cht = next(p for p in positions if p.symbol == "CHT")
     assert aapl.currency == "USD"
     assert cht.currency == "HKD"
+
+
+def test_parse_flex_positions_underlying_price():
+    """undPrice from Flex XML must be parsed into PositionRecord.underlying_price."""
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+<FlexQueryResponse>
+  <FlexStatements>
+    <FlexStatement accountId="U123">
+      <OpenPositions>
+        <OpenPosition symbol="AAPL  P180" assetCategory="OPT" putCall="P" strike="180"
+          expiry="20261201" multiplier="100" position="-1" costBasisPrice="3.00"
+          markPrice="2.00" unrealizedPnL="100" delta="-0.3"
+          gamma="0.01" theta="-0.05" vega="0.1"
+          undPrice="195.50" underlyingSymbol="AAPL" currency="USD"/>
+        <OpenPosition symbol="AAPL" assetCategory="STK" putCall="" strike="0"
+          expiry="" multiplier="1" position="100" costBasisPrice="150.00"
+          markPrice="195.50" unrealizedPnL="4550" delta="1.0"
+          gamma="0" theta="0" vega="0" currency="USD"/>
+      </OpenPositions>
+      <AccountInformation netLiquidation="120000" grossPositionValue="95000"
+        initMarginReq="18000" maintMarginReq="12300" excessLiquidity="22200"
+        availableFunds="25000" cushion="0.185"/>
+    </FlexStatement>
+  </FlexStatements>
+</FlexQueryResponse>"""
+
+    from src.flex_client import FlexClient
+    from unittest.mock import patch, MagicMock
+    send_xml = """<?xml version="1.0"?>
+<FlexStatementOperationInfo><ReferenceCode>1</ReferenceCode><Status>Success</Status>
+</FlexStatementOperationInfo>"""
+
+    client = FlexClient(token="t", query_id="q")
+    with patch("src.flex_client.requests.get", side_effect=lambda url, **kw:
+               MagicMock(text=send_xml if "SendRequest" in url else xml)):
+        positions, _ = client.fetch()
+
+    opt = next(p for p in positions if p.asset_category == "OPT")
+    stk = next(p for p in positions if p.asset_category == "STK")
+    # Option: underlying_price should come from undPrice attribute
+    assert opt.underlying_price == pytest.approx(195.50), \
+        "OPT underlying_price must be parsed from undPrice attribute"
+    # Stock: underlying_price should equal its own mark_price
+    assert stk.underlying_price == pytest.approx(195.50)

@@ -25,8 +25,9 @@ class PositionRecord:
     gamma: float
     theta: float
     vega: float
-    underlying_symbol: str = ""  # underlying ticker for OPT positions
-    currency: str = "USD"        # position currency (HKD for HK stocks)
+    underlying_symbol: str = ""   # underlying ticker for OPT positions
+    currency: str = "USD"         # position currency (HKD for HK stocks)
+    underlying_price: float = 0.0 # underlying mark price from Flex undPrice (0 = not available)
 
 
 @dataclass
@@ -106,6 +107,10 @@ class FlexClient:
                 vega=float(a.get("vega") or 0),
                 underlying_symbol=a.get("underlyingSymbol", ""),
                 currency=a.get("currency", "USD"),
+                underlying_price=float(
+                    a.get("undPrice") or a.get("underlyingPrice") or
+                    (a.get("markPrice") if a.get("assetCategory", "") == "STK" else 0) or 0
+                ),
             ))
         acct_el = root.find(".//AccountInformation")
         if acct_el is None:
