@@ -66,19 +66,20 @@ Load Google Fonts via `<link>` with `preconnect` prewarming — always include a
 ```html
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500&family=Noto+Sans+SC:wght@300;400&family=DM+Sans:opsz,wght@9..40,300..600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500&family=DM+Sans:opsz,wght@9..40,300..700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 ```
 
 ### Font Role Assignments
 
 | Font | Usage | CSS |
 |------|-------|-----|
-| `Space Grotesk` + `Noto Sans SC` | Page titles, brand headings | `font-family: "Space Grotesk", "Noto Sans SC", sans-serif; font-weight: 300; font-style: normal;` |
+| `DM Sans` + `Noto Sans SC` (CJK) | Page titles, brand headings | `font-family: "DM Sans", "Noto Sans SC", -apple-system, sans-serif; font-weight: 600 (page title) / 500 (brand); font-style: normal; letter-spacing: -0.02em;` |
 | `DM Sans` | Body text, labels, UI copy | `font-family: "DM Sans", -apple-system, "Helvetica Neue", sans-serif;` |
 | `DM Mono` | All financial numbers, dates, tickers, codes, tech details | `font-family: "DM Mono", monospace;` |
 
 ### Type Scale
-- Page title: `clamp(24px, 6vw, 36px)`, weight 300, letter-spacing `0.02em` (CJK) / `-0.03em` (Latin brand)
+- Page title: `clamp(22px, 5.5vw, 32px)`, weight 600, letter-spacing `-0.02em`
+- Brand title (sidebar): `18px`, weight 500, letter-spacing `-0.02em`
 - Section labels: `10px`, weight 600, `letter-spacing: 0.1em`, `text-transform: uppercase`
 - Body: `14px`, line-height `1.5`
 - Secondary body: `13–14px`, `color: var(--text-2)`, line-height `1.65`
@@ -104,7 +105,7 @@ Every HTML page must follow this structure:
       <span class="eyebrow-date">YYYY-MM-DD</span>
     </div>
 
-    <!-- 2. Page title: Space Grotesk weight-300 -->
+    <!-- 2. Page title: DM Sans weight-600 -->
     <h1 class="page-title">Title</h1>
 
     <!-- 3. Status badges (optional) -->
@@ -302,7 +303,7 @@ When updating an existing HTML-generating module to this spec:
 2. Replace all inline/hardcoded colors with CSS variable references
 3. Replace body font with `DM Sans`
 4. Replace all numeric/ticker displays with `DM Mono`
-5. Replace page title font with `Space Grotesk` + `Noto Sans SC` (weight 300, normal style)
+5. Replace page title font with `DM Sans` weight 600, `letter-spacing: -0.02em` (CJK fallback: `Noto Sans SC`)
 6. Add staggered `fadeUp` animation to cards
 7. Replace plain tables with card components where appropriate
 8. Add section dividers between content groups
