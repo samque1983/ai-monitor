@@ -163,6 +163,12 @@ body {
   font-family: "DM Mono", monospace; font-size: 16px; font-weight: 600;
   letter-spacing: 0.04em; color: var(--text); flex-shrink: 0;
 }
+.card-name {
+  font-size: 11px; font-family: "DM Sans", sans-serif;
+  color: rgba(255,255,255,0.42); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+  max-width: 160px; line-height: 1.2; margin-top: 1px;
+}
 .type-badge {
   font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 20px;
   text-transform: uppercase; letter-spacing: 0.05em; border: 1px solid;
@@ -604,6 +610,8 @@ function earningsRow(p) {
     : '';
 }
 
+const truncName = n => (n && n.length > 20) ? n.slice(0, 19) + '…' : (n || '');
+
 function esc(s) {
   return s == null ? '' : String(s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -620,7 +628,10 @@ function cardSellPut(s) {
   return `<div class="card card--green">
     <div class="card-head">
       <div class="card-head-left">
-        <span class="card-ticker">${s.ticker}</span>
+        <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
+          <span class="card-ticker">${s.ticker}</span>
+          <span class="card-name">${truncName(p.name)}</span>
+        </div>
         <span class="type-badge badge-opportunity">Sell Put</span>
       </div>
       <div class="card-kpi kpi-green">${p.apy}%<small>APY</small></div>
@@ -641,7 +652,10 @@ function cardSellPutRisk(s) {
   return `<div class="card card--red">
     <div class="card-head">
       <div class="card-head-left">
-        <span class="card-ticker">${s.ticker}</span>
+        <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
+          <span class="card-ticker">${s.ticker}</span>
+          <span class="card-name">${truncName(p.name)}</span>
+        </div>
         <span class="type-badge badge-risk">财报风险</span>
       </div>
       <div class="card-kpi kpi-red">${p.apy}%<small>APY</small></div>
@@ -661,7 +675,10 @@ function cardIvLow(s) {
   return `<div class="card card--blue">
     <div class="card-head">
       <div class="card-head-left">
-        <span class="card-ticker">${s.ticker}</span>
+        <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
+          <span class="card-ticker">${s.ticker}</span>
+          <span class="card-name">${truncName(p.name)}</span>
+        </div>
         <span class="type-badge badge-opportunity">IV 低位</span>
       </div>
       <div class="card-kpi kpi-blue">${p.iv_rank}%<small>IVR</small></div>
@@ -680,7 +697,10 @@ function cardIvHigh(s) {
   return `<div class="card card--red">
     <div class="card-head">
       <div class="card-head-left">
-        <span class="card-ticker">${s.ticker}</span>
+        <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
+          <span class="card-ticker">${s.ticker}</span>
+          <span class="card-name">${truncName(p.name)}</span>
+        </div>
         <span class="type-badge badge-risk">IV 高位</span>
       </div>
       <div class="card-kpi kpi-red">${p.iv_rank}%<small>IVR</small></div>
@@ -704,7 +724,10 @@ function cardMa200(s, bullish) {
   return `<div class="card ${accentCls}">
     <div class="card-head">
       <div class="card-head-left">
-        <span class="card-ticker">${s.ticker}</span>
+        <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
+          <span class="card-ticker">${s.ticker}</span>
+          <span class="card-name">${truncName(p.name)}</span>
+        </div>
         <span class="type-badge ${badgeCls}">${label}</span>
       </div>
       <div class="card-kpi ${kpiCls}">${sign}${p.pct}%<small>偏离</small></div>
@@ -726,7 +749,10 @@ function cardLeaps(s) {
   return `<div class="card card--blue">
     <div class="card-head">
       <div class="card-head-left">
-        <span class="card-ticker">${s.ticker}</span>
+        <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
+          <span class="card-ticker">${s.ticker}</span>
+          <span class="card-name">${truncName(p.name)}</span>
+        </div>
         <span class="type-badge badge-leaps">LEAPS 共振</span>
       </div>
       <div class="card-kpi kpi-blue">${p.iv_rank}%<small>IVR</small></div>
@@ -752,7 +778,10 @@ function cardEarningsGap(s) {
   return `<div class="card card--red">
     <div class="card-head">
       <div class="card-head-left">
-        <span class="card-ticker">${s.ticker}</span>
+        <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
+          <span class="card-ticker">${s.ticker}</span>
+          <span class="card-name">${truncName(p.name)}</span>
+        </div>
         <span class="type-badge badge-risk">财报 Gap</span>
         ${riskBadge}
       </div>
@@ -774,7 +803,10 @@ function cardIvMomentum(s) {
   return `<div class="card card--amber">
     <div class="card-head">
       <div class="card-head-left">
-        <span class="card-ticker">${s.ticker}</span>
+        <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
+          <span class="card-ticker">${s.ticker}</span>
+          <span class="card-name">${truncName(p.name)}</span>
+        </div>
         <span class="type-badge badge-risk">IV 异动</span>
       </div>
       <div class="card-kpi kpi-amber">+${p.iv_momentum}%<small>5日</small></div>
@@ -1166,9 +1198,11 @@ function cardDividend(s) {
   return `<div class="card card--amber">
     <div class="card-head" style="background:rgba(255,179,64,0.04)">
       <div class="card-head-left">
-        <span class="card-ticker">${s.ticker}</span>
+        <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
+          <span class="card-ticker">${s.ticker}</span>
+          <span class="card-name">${truncName(p.name)}</span>
+        </div>
         <span class="type-badge badge-dividend">股息</span>
-
       </div>
       <div class="card-kpi kpi-amber">${p.current_yield}%<small>股息率</small></div>
     </div>
