@@ -228,9 +228,10 @@ async def regenerate_risk_report(account_key: str, request: Request):
             expiry=p.get("expiry", ""), multiplier=p.get("multiplier", 100),
             position=p["position"], cost_basis_price=p.get("cost_basis_price", 0.0),
             mark_price=p.get("mark_price", 0.0), unrealized_pnl=p.get("unrealized_pnl", 0.0),
-            delta=p.get("delta"), gamma=p.get("gamma"),
-            theta=p.get("theta"), vega=p.get("vega"),
+            delta=p.get("delta", 0.0), gamma=p.get("gamma", 0.0),
+            theta=p.get("theta", 0.0), vega=p.get("vega", 0.0),
             underlying_symbol=p.get("underlying_symbol", ""), currency=p.get("currency", "USD"),
+            underlying_price=p.get("underlying_price", 0.0),
         )
         for p in raw["positions"]
     ]
