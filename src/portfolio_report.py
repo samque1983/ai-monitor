@@ -378,7 +378,7 @@ def _strategy_card(sg) -> str:
     if greeks_available:
         greek_html = f"""
 <div class="greek-row">
-  <div class="greek-item"><span class="greek-label">Δ 每1%</span><span class="greek-value">{_fmt_dollar(sg.net_delta * 0.01 * 100)}</span></div>
+  <div class="greek-item"><span class="greek-label">Δ 每1%</span><span class="greek-value">{_fmt_dollar(sg.net_delta * (sg.underlying_price or 100) * 0.01)}</span></div>
   <div class="greek-item"><span class="greek-label">Θ 每天</span><span class="greek-value">{_fmt_dollar(sg.net_theta)}</span></div>
   <div class="greek-item"><span class="greek-label">V 每1%IV</span><span class="greek-value">{_fmt_dollar(sg.net_vega * 0.01)}</span></div>
   <div class="greek-item"><span class="greek-label">最大盈利</span><span class="greek-value">{"无上限" if sg.max_profit is None else _fmt_dollar(sg.max_profit)}</span></div>

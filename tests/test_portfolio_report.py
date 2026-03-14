@@ -369,6 +369,34 @@ def test_strategy_card_expiry_formatted():
     assert "2026-03-30" in html, "Formatted expiry YYYY-MM-DD must appear in card"
 
 
+def test_strategy_card_delta_uses_underlying_price():
+    """Delta display must use underlying_price for per-1%-move calc, not hardcoded $100."""
+    from src.portfolio_report import _strategy_card
+    from src.flex_client import PositionRecord
+    from src.option_strategies import StrategyGroup
+    p = PositionRecord(
+        symbol="AAPL  P180", asset_category="OPT", put_call="P",
+        strike=180, expiry="20261201", multiplier=100, position=-1,
+        cost_basis_price=3.0, mark_price=2.0, unrealized_pnl=0.0,
+        delta=-0.3, gamma=0.01, theta=0.05, vega=0.1,
+        underlying_symbol="AAPL", currency="USD",
+    )
+    sg = StrategyGroup(underlying="AAPL", strategy_type="Naked Put", intent="income")
+    sg.legs = [p]
+    sg.dte = 45
+    sg.net_delta = 30.0        # -0.3 * -1 * 100 = 30
+    sg.net_theta = 5.0
+    sg.net_vega = -10.0
+    sg.net_gamma = -1.0
+    sg.net_credit = 300.0
+    sg.underlying_price = 195.0  # stock at $195, not $100
+    html = _strategy_card(sg)
+    # Δ per 1% = 30 * 195 * 0.01 = $58.5 → rounds to $59, NOT $30 (hardcoded $100 would give $30)
+    assert "+$59" in html or "+$58" in html, \
+        "Delta display must use underlying_price ($195), not hardcoded $100"
+    assert "+$30" not in html, "Should NOT show net_delta directly (hardcoded $100 formula)"
+
+
 def test_group_header_theta_negative_sign_format():
     """Group header theta must format as '-$45/天' not '$-45/天' when negative."""
     from src.portfolio_report import _render_group_header

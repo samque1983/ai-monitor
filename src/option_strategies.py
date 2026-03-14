@@ -26,6 +26,7 @@ class StrategyGroup:
     net_pnl: float = 0.0
     net_credit: float = 0.0   # >0 = received premium, <0 = paid premium
     currency: str = "USD"
+    underlying_price: float = 0.0  # proxy for Δ$/1% calc; stock mark or first option strike
 
 
 _INTENT_MAP = {
@@ -406,6 +407,13 @@ class OptionStrategyRecognizer:
                 sg.dte = max(0, (exp - _date.today()).days)
             except ValueError:
                 sg.dte = 0
+
+        # Underlying price proxy for Δ/1% display
+        if sg.stock_leg:
+            sg.underlying_price = sg.stock_leg.mark_price
+        else:
+            first_opt = next((p for p in sg.legs if p.asset_category == "OPT"), None)
+            sg.underlying_price = first_opt.strike if first_opt else 0.0
 
         self._compute_payoff(sg, opt_legs)
 

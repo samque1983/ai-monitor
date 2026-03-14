@@ -569,3 +569,28 @@ def test_all_long_diagonal_max_loss_bounded():
     # max_loss must be finite and equal to the net debit paid
     assert g.max_loss is not None, "All-long Diagonal max_loss must be finite (= net debit paid)"
     assert g.max_loss == pytest.approx(1800.0)
+
+
+def test_underlying_price_set_for_pure_option_strategy():
+    """StrategyGroup.underlying_price should be populated for pure option positions.
+    For pure option strategies (no stock leg), underlying_price should use the
+    first leg's strike as proxy — consistent with strategy_risk.py.
+    """
+    sp = _opt("AAPL  P180", "P", 180, -1, cost_basis=3.0, multiplier=100)
+    groups = OptionStrategyRecognizer().recognize([sp])
+    g = groups[0]
+    assert g.strategy_type == "Naked Put"
+    assert g.underlying_price > 0, "underlying_price must be set (> 0)"
+    assert g.underlying_price == pytest.approx(180.0)  # falls back to strike
+
+
+def test_underlying_price_uses_stock_mark_for_covered_call():
+    """For stock+option strategies, underlying_price = stock mark_price."""
+    from datetime import date, timedelta
+    exp = (date.today() + timedelta(days=45)).strftime("%Y%m%d")
+    stk = _stk("AAPL", position=100, mark=195.0)
+    sc  = _opt("AAPL  C200", "C", 200, -1, expiry=exp, cost_basis=2.0, multiplier=100)
+    groups = OptionStrategyRecognizer().recognize([stk, sc])
+    g = groups[0]
+    assert g.strategy_type == "Covered Call"
+    assert g.underlying_price == pytest.approx(195.0)  # from stock mark_price
