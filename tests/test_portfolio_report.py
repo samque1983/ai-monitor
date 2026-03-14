@@ -397,6 +397,43 @@ def test_strategy_card_delta_uses_underlying_price():
     assert "+$30" not in html, "Should NOT show net_delta directly (hardcoded $100 formula)"
 
 
+def test_short_strangle_card_shows_downside_max_loss():
+    """Short strangle card must show '↓ -$X | ↑ 无限制' for max_loss when max_loss_downside is set."""
+    from src.portfolio_report import _strategy_card
+    from src.flex_client import PositionRecord
+    from src.option_strategies import StrategyGroup
+    sc = PositionRecord(
+        symbol="NVDA  C240", asset_category="OPT", put_call="C",
+        strike=240, expiry="20260618", multiplier=100, position=-2,
+        cost_basis_price=5.0, mark_price=4.0, unrealized_pnl=0.0,
+        delta=0.3, gamma=0.01, theta=-0.05, vega=0.1,
+        underlying_symbol="NVDA", currency="USD",
+    )
+    sp = PositionRecord(
+        symbol="NVDA  P148", asset_category="OPT", put_call="P",
+        strike=148, expiry="20260618", multiplier=100, position=-1,
+        cost_basis_price=3.0, mark_price=2.5, unrealized_pnl=0.0,
+        delta=-0.2, gamma=0.01, theta=-0.04, vega=0.08,
+        underlying_symbol="NVDA", currency="USD",
+    )
+    sg = StrategyGroup(underlying="NVDA", strategy_type="Strangle", intent="speculation")
+    sg.legs = [sc, sp]
+    sg.dte = 96
+    sg.net_delta = -40.0
+    sg.net_theta = 14.0
+    sg.net_vega = -28.0
+    sg.net_gamma = -3.0
+    sg.net_credit = 1300.0
+    sg.max_profit = 1300.0
+    sg.max_loss = None           # unlimited (call side)
+    sg.max_loss_downside = 13500.0  # put floor: stock → $0
+    sg.underlying_price = 160.0
+    html = _strategy_card(sg)
+    assert "13,500" in html, "Downside max loss amount must appear in card"
+    assert "无限制" in html, "Upside unlimited text must appear in card"
+    assert "↓" in html or "↑" in html, "Directional arrows must appear in split max_loss display"
+
+
 def test_group_header_theta_negative_sign_format():
     """Group header theta must format as '-$45/天' not '$-45/天' when negative."""
     from src.portfolio_report import _render_group_header

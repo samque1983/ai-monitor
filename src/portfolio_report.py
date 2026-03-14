@@ -307,6 +307,15 @@ def _fmt_dollar(v: float) -> str:
     return f"-${abs(v):,.0f}"
 
 
+def _fmt_max_loss(sg) -> str:
+    """Format max_loss field for display. When unlimited but downside floor exists, show split."""
+    if sg.max_loss is not None:
+        return _fmt_dollar(-sg.max_loss)
+    if getattr(sg, "max_loss_downside", None) is not None:
+        return f"↓ {_fmt_dollar(-sg.max_loss_downside)} | ↑ 无限制"
+    return "无限制"
+
+
 def _fmt_expiry(expiry: str) -> str:
     """Format YYYYMMDD → YYYY-MM-DD. Returns original string if not 8-char."""
     if len(expiry) == 8:
@@ -382,13 +391,13 @@ def _strategy_card(sg) -> str:
   <div class="greek-item"><span class="greek-label">Θ 每天</span><span class="greek-value">{_fmt_dollar(sg.net_theta)}</span></div>
   <div class="greek-item"><span class="greek-label">V 每1%IV</span><span class="greek-value">{_fmt_dollar(sg.net_vega * 0.01)}</span></div>
   <div class="greek-item"><span class="greek-label">最大盈利</span><span class="greek-value">{"无上限" if sg.max_profit is None else _fmt_dollar(sg.max_profit)}</span></div>
-  <div class="greek-item"><span class="greek-label">最大亏损</span><span class="greek-value">{"无限制" if sg.max_loss is None else _fmt_dollar(-sg.max_loss)}</span></div>
+  <div class="greek-item"><span class="greek-label">最大亏损</span><span class="greek-value">{_fmt_max_loss(sg)}</span></div>
 </div>"""
     else:
         greek_html = f"""
 <div class="greek-row">
   <div class="greek-item"><span class="greek-label">最大盈利</span><span class="greek-value">{"无上限" if sg.max_profit is None else _fmt_dollar(sg.max_profit)}</span></div>
-  <div class="greek-item"><span class="greek-label">最大亏损</span><span class="greek-value">{"无限制" if sg.max_loss is None else _fmt_dollar(-sg.max_loss)}</span></div>
+  <div class="greek-item"><span class="greek-label">最大亏损</span><span class="greek-value">{_fmt_max_loss(sg)}</span></div>
   <span style="font-size:11px;color:#636366;">Greeks 未启用 — 在 Flex Query → Open Positions 中勾选 Delta/Theta/Vega/Gamma</span>
 </div>"""
 

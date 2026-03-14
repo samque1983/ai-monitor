@@ -18,8 +18,9 @@ class StrategyGroup:
     net_theta: float = 0.0
     net_vega: float = 0.0
     net_gamma: float = 0.0
-    max_profit: Optional[float] = None   # None = unlimited
-    max_loss: Optional[float] = None     # None = unlimited (naked)
+    max_profit: Optional[float] = None        # None = unlimited
+    max_loss: Optional[float] = None          # None = unlimited (naked)
+    max_loss_downside: Optional[float] = None # put-side floor when max_loss=None (stock → $0)
     breakevens: List[float] = field(default_factory=list)
     expiry: str = ""     # primary leg expiry "YYYYMMDD"
     dte: int = 0
@@ -544,6 +545,12 @@ class OptionStrategyRecognizer:
                 # Short: received premium → max profit = credit received; max loss = unlimited
                 sg.max_profit = sg.net_credit
                 sg.max_loss = None
+                # Downside floor: stock → $0, only short puts are exercised
+                put_notional = sum(
+                    abs(p.position) * p.strike * p.multiplier
+                    for p in sg.legs if p.put_call == "P" and p.position < 0
+                )
+                sg.max_loss_downside = max(0.0, put_notional - sg.net_credit)
             else:
                 # Long: paid premium → max loss = debit paid; max profit = unlimited
                 sg.max_loss = abs(sg.net_credit)

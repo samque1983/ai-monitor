@@ -608,9 +608,12 @@ def test_short_strangle_max_profit_bounded():
     """Short Strangle: both legs short → net_credit > 0.
     max_profit = net_credit (premium received when both expire worthless).
     max_loss = None (unlimited; call side unbounded).
+    max_loss_downside = put_notional_at_zero - net_credit (downside floor: stock → $0).
     """
     # Short 2× C240 @ $5, Short 1× P148 @ $3, multiplier=100
     # net_credit = 2*5*100 + 1*3*100 = 1000 + 300 = 1300
+    # put_notional_at_zero = 148 * 100 * 1 = 14800
+    # max_loss_downside = 14800 - 1300 = 13500
     sc = _opt("NVDA  C240", "C", 240, -2, cost_basis=5.0, multiplier=100)
     sp = _opt("NVDA  P148", "P", 148, -1, cost_basis=3.0, multiplier=100)
     groups = OptionStrategyRecognizer().recognize([sc, sp])
@@ -621,6 +624,8 @@ def test_short_strangle_max_profit_bounded():
     assert g.max_profit is not None, "Short Strangle max_profit must be finite (= net credit received)"
     assert g.max_profit == pytest.approx(1300.0)
     assert g.max_loss is None, "Short Strangle max_loss is unlimited (call side unbounded)"
+    assert g.max_loss_downside is not None, "Short Strangle max_loss_downside must show put-side floor"
+    assert g.max_loss_downside == pytest.approx(13500.0)
 
 
 def test_long_strangle_max_loss_bounded():
