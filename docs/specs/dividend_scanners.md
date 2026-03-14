@@ -43,7 +43,9 @@ SQLite-backed storage for the dividend pool and yield history.
 ```sql
 dividend_pool (ticker PK, name, market, quality_score, consecutive_years,
                dividend_growth_5y, payout_ratio, roe, debt_to_equity,
-               industry, sector, added_date, version)
+               industry, sector, added_date, version,
+               forward_dividend_rate, max_yield_5y,
+               golden_price)        -- 黄金位: forward_dividend / yield_75th_pct
 
 dividend_history (ticker, date, dividend_yield, annual_dividend, price)
   PRIMARY KEY (ticker, date)
@@ -55,7 +57,8 @@ screening_versions (version PK, created_at, tickers_count, avg_quality_score)
 - `save_pool(tickers: List[TickerData], version: str)` — replaces entire pool
 - `get_current_pool() -> List[str]` — ticker list from pool
 - `save_dividend_history(ticker, date, dividend_yield, annual_dividend, price)`
-- `get_yield_percentile(ticker, current_yield) -> float` — % of history ≤ current_yield
+- `get_yield_percentile(ticker, current_yield) -> YieldPercentileResult` — Winsorized percentile + p10/p90/hist_max
+- `get_yield_percentile_value(ticker, percentile) -> Optional[float]` — raw yield value at given percentile (None if < 8 pts)
 - `close()`
 
 ---
@@ -137,6 +140,16 @@ scan_dividend_pool_weekly(
 
 Payout > 100 → log error + skip. Per-ticker exception isolation.
 
+**Golden price computation** (added to step 8, after floor_data):
+
+Using the already-fetched `close_5y` price series and `dividend_history`:
+1. Build monthly yield series: resample price to month-end, compute trailing-12-month dividend yield per month
+2. `yield_75th_pct = np.percentile(monthly_yields, 75)` — requires ≥ 8 data points
+3. `golden_price = forward_dividend_rate / (yield_75th_pct / 100)` — requires `forward_dividend_rate > 0`
+4. Stored on `TickerData.golden_price` and persisted to `dividend_pool.golden_price`
+
+Interpretation: golden_price is the price at which the stock yields the 75th percentile historical yield — only 25% of history was cheaper than this level. Provides a genuine margin of safety vs. yield-math average.
+
 ### DividendBuySignal
 
 ```python
@@ -146,7 +159,11 @@ class DividendBuySignal:
     signal_type: str            # "STOCK" | "OPTION"
     current_yield: float        # %
     yield_percentile: float     # from DividendStore
-    option_details: Optional[Dict]  # strike, bid, dte, expiration, apy
+    option_details: Optional[Dict]  # strike, bid, dte, expiration, apy,
+                                    # golden_price, current_vs_golden_pct, strike_rationale
+    golden_price: Optional[float]           # 黄金位
+    current_vs_golden_pct: Optional[float]  # (current - golden) / current * 100
+    strike_rationale: Optional[str]         # how the SELL PUT strike was chosen
 ```
 
 ### scan_dividend_buy_signal
@@ -167,22 +184,30 @@ scan_dividend_buy_signal(
 **Trigger condition**: `current_yield >= min_yield AND yield_percentile >= min_yield_percentile`
 
 **Option strategy** (US market only, when `option.enabled=true`):
-- `target_yield = current_yield * (target_strike_percentile / yield_percentile)`
-- Calls `scan_dividend_sell_put()` to select strike
+- Reads `golden_price` from pool record (computed during weekly scan)
+- Calls `scan_dividend_sell_put()` with `golden_price` as primary target strike
+- `target_yield` (yield-math) passed as fallback when `golden_price` is None
 
 ### scan_dividend_sell_put
 
 ```python
 scan_dividend_sell_put(
     ticker_data, provider, annual_dividend,
-    target_yield_percentile, target_yield,
+    target_yield,
     min_dte=45, max_dte=90,
+    golden_price: Optional[float] = None,
+    current_price: Optional[float] = None,
 ) -> Optional[Dict]
 ```
 
-Strike selection: `target_strike = annual_dividend / (target_yield / 100)`.
+**Strike selection** (priority order):
+1. `golden_price` → use directly as `target_strike` when provided and > 0
+2. Fallback: `target_strike = annual_dividend / (target_yield / 100)` (yield-math, used when history insufficient)
+
 Selects option from chain with minimum `abs(strike - target_strike)`.
-APY (display only): `(bid / strike) * (365 / dte) * 100`.
+APY (display only): `(mid / strike) * (365 / dte) * 100`.
+
+**Return dict** includes: `strike`, `bid`, `ask`, `mid`, `spread_pct`, `dte`, `expiration`, `apy`, `golden_price`, `current_vs_golden_pct`, `strike_rationale`.
 
 ---
 
@@ -198,7 +223,7 @@ dividend_scanners:
   min_yield_percentile: 90
   option:
     enabled: false
-    target_strike_percentile: 90
+    target_strike_percentile: 90  # kept for fallback target_yield calc; no longer primary
     min_dte: 45
     max_dte: 90
 
