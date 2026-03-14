@@ -14,6 +14,7 @@ Dividend Scanners Module (Phase 2 High Dividend)
 from typing import TYPE_CHECKING, List, Optional, Dict, Any
 from dataclasses import dataclass
 import logging
+import numpy as np
 from datetime import datetime, timedelta, date
 from src.data_engine import TickerData
 from src.data_loader import classify_market
@@ -339,8 +340,9 @@ def scan_dividend_pool_weekly(
                 or fundamentals.get("dividendRate")
             )
 
-            # Step 8: 计算 floor price (filtered) using _compute_floor_data
+            # Step 8: 计算 floor price (filtered) using _compute_floor_data + golden_price
             max_yield_5y = None
+            golden_price: Optional[float] = None
             _floor_data: Optional[dict] = None
             try:
                 price_df_5y = provider.get_price_data(ticker, period='5y')
@@ -350,6 +352,7 @@ def scan_dividend_pool_weekly(
                     and 'Close' in price_df_5y.columns
                     and annual_dividend_ttm > 0
                 ):
+                    import pandas as pd
                     close_5y = price_df_5y['Close']
                     if hasattr(close_5y, 'columns'):  # DataFrame (yfinance multi-level columns)
                         close_5y = close_5y.iloc[:, 0]
@@ -363,6 +366,34 @@ def scan_dividend_pool_weekly(
                         )
                     else:
                         _floor_data["extreme_event_label"] = None
+
+                    # Compute golden_price: forward_dividend / yield_75th_pct
+                    # Build monthly yield series inline from already-fetched price + dividend history
+                    if forward_dividend_rate and forward_dividend_rate > 0:
+                        monthly = close_5y.resample('M').last().dropna()
+                        div_dates = [pd.Timestamp(_to_dt(d)) for d in dividend_history]
+                        div_amounts = [float(d['amount']) for d in dividend_history]
+                        div_series = pd.Series(
+                            div_amounts, index=pd.DatetimeIndex(div_dates)
+                        ).sort_index()
+                        monthly_yields = []
+                        for month_end, price_val in monthly.items():
+                            if price_val <= 0:
+                                continue
+                            window_start = month_end - pd.DateOffset(months=12)
+                            trailing = float(div_series[
+                                (div_series.index > window_start) & (div_series.index <= month_end)
+                            ].sum())
+                            if trailing > 0:
+                                monthly_yields.append(trailing / float(price_val) * 100)
+                        if len(monthly_yields) >= 8:
+                            yield_75th = float(np.percentile(monthly_yields, 75))
+                            if yield_75th > 0:
+                                golden_price = round(forward_dividend_rate / (yield_75th / 100), 2)
+                                logger.debug(
+                                    f"{ticker}: golden_price=${golden_price:.2f} "
+                                    f"(yield_75th={yield_75th:.2f}%, fwd_div={forward_dividend_rate:.2f})"
+                                )
             except Exception as e:
                 logger.warning(f"{ticker}: Could not compute floor data - {e}")
 
@@ -403,6 +434,7 @@ def scan_dividend_pool_weekly(
                 quality_breakdown=quality_score_result.quality_breakdown,
                 analysis_text=quality_score_result.analysis_text or "",
                 health_rationale=quality_score_result.health_rationale,
+                golden_price=golden_price,
                 data_version_date=str(date.today()),
                 sgov_yield=sgov_yield if classify_market(ticker) == "US" else None,
             )
@@ -852,7 +884,7 @@ def bootstrap_yield_history(
             close_col = price_df['Close']
             if hasattr(close_col, 'columns'):  # DataFrame (yfinance multi-level columns)
                 close_col = close_col.iloc[:, 0]
-            monthly = close_col.resample('ME').last().dropna()
+            monthly = close_col.resample('M').last().dropna()
             if monthly.empty:
                 continue
 

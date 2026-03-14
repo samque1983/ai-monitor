@@ -201,6 +201,57 @@ class TestScanDividendPoolWeekly:
         # Assert
         assert len(results) == 0, "Should exclude ticker with payout_ratio > 100"
 
+    def test_scan_dividend_pool_weekly_computes_golden_price(self):
+        """Weekly scan computes golden_price and stores it on TickerData."""
+        dates = pd.date_range("2021-01-01", periods=60, freq="M")
+        prices = pd.Series([100.0 + i * 0.1 for i in range(60)], index=dates)
+        price_df = pd.DataFrame({"Close": prices})
+
+        div_history = [
+            {"date": "2021-06-01", "amount": 0.50},
+            {"date": "2021-12-01", "amount": 0.50},
+            {"date": "2022-06-01", "amount": 0.55},
+            {"date": "2022-12-01", "amount": 0.55},
+            {"date": "2023-06-01", "amount": 0.60},
+            {"date": "2023-12-01", "amount": 0.60},
+            {"date": "2024-06-01", "amount": 0.65},
+            {"date": "2024-12-01", "amount": 0.65},
+            {"date": "2025-06-01", "amount": 0.70},
+            {"date": "2025-12-01", "amount": 0.72},
+        ]
+        fundamentals = {
+            "company_name": "TestCo",
+            "dividend_yield": 4.5,
+            "payout_ratio": 50.0,
+            "roe": 15.0,
+            "debt_to_equity": 0.5,
+            "industry": "Finance",
+            "sector": "Financials",
+            "forward_dividend_rate": 1.40,
+            "dividendRate": 1.40,
+        }
+        mock_provider = MagicMock()
+        mock_provider.get_dividend_history.return_value = div_history
+        mock_provider.get_fundamentals.return_value = fundamentals
+        mock_provider.get_price_data.return_value = price_df
+
+        quality_score = DividendQualityScore(
+            overall_score=80.0, stability_score=70.0, health_score=75.0,
+            defensiveness_score=50.0, risk_flags=[],
+        )
+        mock_fs = MagicMock()
+        mock_fs.analyze_dividend_quality.return_value = quality_score
+
+        config = {"dividend_scanners": {
+            "min_quality_score": 70, "min_consecutive_years": 3, "max_payout_ratio": 100,
+        }}
+        results = scan_dividend_pool_weekly(["AAPL"], mock_provider, mock_fs, config)
+
+        assert len(results) == 1
+        td = results[0]
+        assert td.golden_price is not None, "golden_price should be computed when sufficient data exists"
+        assert td.golden_price > 0
+
 
 class TestScanDividendBuySignal:
     """测试每日股息买入信号扫描器"""
