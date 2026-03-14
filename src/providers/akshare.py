@@ -150,10 +150,12 @@ class AkshareProvider(BaseProvider):
 
     def _hk_fundamentals(self, ticker: str) -> Optional[Dict[str, Any]]:
         symbol = self._normalize_hk(ticker)
-        info_df = ak.stock_hk_company_profile_em(symbol=symbol)
-        info = dict(zip(info_df["item"], info_df["value"]))
-        company_name = info.get("公司名称") or ticker
-        industry = info.get("行业")
+        df = ak.stock_hk_company_profile_em(symbol=symbol)
+        if df is None or df.empty:
+            return None
+        row = df.iloc[0]
+        company_name = row.get("公司名称") or ticker
+        industry = row.get("所属行业")
         return {
             "company_name": company_name,
             "industry": industry,

@@ -111,8 +111,8 @@ MOCK_CN_INFO = pd.DataFrame({
 })
 
 MOCK_HK_INFO = pd.DataFrame({
-    "item":  ["公司名称",       "行业"],
-    "value": ["腾讯控股有限公司", "互联网"],
+    "公司名称": ["腾讯控股有限公司"],
+    "所属行业": ["互联网"],
 })
 
 # ak.stock_individual_spot_xq returns DataFrame with columns 'item', 'value'
