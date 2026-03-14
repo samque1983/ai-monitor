@@ -6,7 +6,7 @@
 <title>市场雷达</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:opsz,wght@9..40,300..600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500&family=Noto+Sans+SC:wght@300;400&family=DM+Sans:opsz,wght@9..40,300..600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 /* ── Reset + Tokens ── */
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -59,16 +59,23 @@ body {
   margin-bottom: 6px;
 }
 .eyebrow-label {
-  font-size: 11px; font-weight: 600; letter-spacing: 0.1em;
-  text-transform: uppercase; color: var(--text-3);
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-3);
 }
 .eyebrow-meta { font-family: "DM Mono", monospace; font-size: 11px; color: var(--text-3); }
 .page-title {
-  font-family: "Instrument Serif", Georgia, serif;
-  font-style: italic;
-  font-size: clamp(26px, 6.5vw, 38px);
-  font-weight: 400; letter-spacing: -0.01em;
-  color: var(--text); line-height: 1.1; margin-bottom: 20px;
+  font-family: "Space Grotesk", "Noto Sans SC", sans-serif;
+  font-style: normal;
+  font-size: clamp(24px, 6vw, 36px);
+  font-weight: 300;
+  letter-spacing: 0.02em;
+  color: var(--text);
+  line-height: 1.15;
+  margin-bottom: 20px;
 }
 
 /* ── Layout ── */
@@ -181,9 +188,13 @@ body {
     animation: brandPulse 2.4s ease-in-out infinite;
   }
   .brand-title {
-    font-family: "Instrument Serif", Georgia, serif;
-    font-style: italic; font-size: 22px; font-weight: 400;
-    color: var(--text); line-height: 1.1; letter-spacing: -0.01em;
+    font-family: "Space Grotesk", "Noto Sans SC", sans-serif;
+    font-style: normal;
+    font-size: 20px;
+    font-weight: 300;
+    letter-spacing: -0.03em;
+    color: var(--text);
+    line-height: 1.1;
   }
   .brand-sub {
     font-family: "DM Mono", monospace; font-size: 10px;
