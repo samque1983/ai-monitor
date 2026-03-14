@@ -898,7 +898,7 @@ function cardSellPut(s) {
       <div class="card-head-left">
         <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
           <span class="card-ticker">${s.ticker}</span>
-          <span class="card-name">${truncName(s.name)}</span>
+          <span class="card-name">${truncName(p.name)}</span>
         </div>
         <span class="type-badge badge-opportunity">Sell Put</span>
       </div>
@@ -922,7 +922,7 @@ function cardSellPutRisk(s) {
       <div class="card-head-left">
         <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
           <span class="card-ticker">${s.ticker}</span>
-          <span class="card-name">${truncName(s.name)}</span>
+          <span class="card-name">${truncName(p.name)}</span>
         </div>
         <span class="type-badge badge-risk">财报风险</span>
       </div>
@@ -945,7 +945,7 @@ function cardIvLow(s) {
       <div class="card-head-left">
         <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
           <span class="card-ticker">${s.ticker}</span>
-          <span class="card-name">${truncName(s.name)}</span>
+          <span class="card-name">${truncName(p.name)}</span>
         </div>
         <span class="type-badge badge-opportunity">IV 低位</span>
       </div>
@@ -967,7 +967,7 @@ function cardIvHigh(s) {
       <div class="card-head-left">
         <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
           <span class="card-ticker">${s.ticker}</span>
-          <span class="card-name">${truncName(s.name)}</span>
+          <span class="card-name">${truncName(p.name)}</span>
         </div>
         <span class="type-badge badge-risk">IV 高位</span>
       </div>
@@ -994,7 +994,7 @@ function cardMa200(s, bullish) {
       <div class="card-head-left">
         <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
           <span class="card-ticker">${s.ticker}</span>
-          <span class="card-name">${truncName(s.name)}</span>
+          <span class="card-name">${truncName(p.name)}</span>
         </div>
         <span class="type-badge ${badgeCls}">${label}</span>
       </div>
@@ -1019,7 +1019,7 @@ function cardLeaps(s) {
       <div class="card-head-left">
         <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
           <span class="card-ticker">${s.ticker}</span>
-          <span class="card-name">${truncName(s.name)}</span>
+          <span class="card-name">${truncName(p.name)}</span>
         </div>
         <span class="type-badge badge-leaps">LEAPS 共振</span>
       </div>
@@ -1048,7 +1048,7 @@ function cardEarningsGap(s) {
       <div class="card-head-left">
         <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
           <span class="card-ticker">${s.ticker}</span>
-          <span class="card-name">${truncName(s.name)}</span>
+          <span class="card-name">${truncName(p.name)}</span>
         </div>
         <span class="type-badge badge-risk">财报 Gap</span>
         ${riskBadge}
@@ -1073,7 +1073,7 @@ function cardIvMomentum(s) {
       <div class="card-head-left">
         <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
           <span class="card-ticker">${s.ticker}</span>
-          <span class="card-name">${truncName(s.name)}</span>
+          <span class="card-name">${truncName(p.name)}</span>
         </div>
         <span class="type-badge badge-risk">IV 异动</span>
       </div>
@@ -1445,7 +1445,7 @@ function cardDividend(s) {
       <div class="card-head-left">
         <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
           <span class="card-ticker">${s.ticker}</span>
-          <span class="card-name">${truncName(s.name)}</span>
+          <span class="card-name">${truncName(p.name)}</span>
         </div>
         <span class="type-badge badge-dividend">股息</span>
       </div>
