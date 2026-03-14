@@ -4,9 +4,13 @@
 - `agent/db.py` — signals table schema + save/query methods
 - `agent/deps.py` — DB dependency injection
 - `agent/dashboard.py` — HTTP endpoints
-- `agent/static/dashboard.html` — frontend (static file)
+- `agent/templates/dashboard.html` — **实际服务的前端**（Jinja2，`TemplateResponse`）
+- `agent/static/dashboard.html` — 备份/参考副本，**不被服务，改 UI 时同步更新**
 - `agent/main.py` — scan_results push wiring
 - `src/main.py` — `_build_agent_payload()`
+
+> **重要：** 任何 dashboard UI 修改必须改 `agent/templates/dashboard.html`。
+> `agent/static/dashboard.html` 是镜像副本，同步更新但不影响线上。
 
 ---
 
