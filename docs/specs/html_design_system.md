@@ -66,19 +66,19 @@ Load Google Fonts via `<link>` with `preconnect` prewarming — always include a
 ```html
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:opsz,wght@9..40,300..600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500&family=Noto+Sans+SC:wght@300;400&family=DM+Sans:opsz,wght@9..40,300..600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 ```
 
 ### Font Role Assignments
 
 | Font | Usage | CSS |
 |------|-------|-----|
-| `Instrument Serif italic` | Page titles, brand headings | `font-family: "Instrument Serif", Georgia, serif; font-style: italic;` |
+| `Space Grotesk` + `Noto Sans SC` | Page titles, brand headings | `font-family: "Space Grotesk", "Noto Sans SC", sans-serif; font-weight: 300; font-style: normal;` |
 | `DM Sans` | Body text, labels, UI copy | `font-family: "DM Sans", -apple-system, "Helvetica Neue", sans-serif;` |
 | `DM Mono` | All financial numbers, dates, tickers, codes, tech details | `font-family: "DM Mono", monospace;` |
 
 ### Type Scale
-- Page title: `clamp(28px, 7vw, 40px)`, weight 400, letter-spacing `-0.01em`
+- Page title: `clamp(24px, 6vw, 36px)`, weight 300, letter-spacing `0.02em` (CJK) / `-0.03em` (Latin brand)
 - Section labels: `10px`, weight 600, `letter-spacing: 0.1em`, `text-transform: uppercase`
 - Body: `14px`, line-height `1.5`
 - Secondary body: `13–14px`, `color: var(--text-2)`, line-height `1.65`
@@ -104,7 +104,7 @@ Every HTML page must follow this structure:
       <span class="eyebrow-date">YYYY-MM-DD</span>
     </div>
 
-    <!-- 2. Page title: Instrument Serif italic -->
+    <!-- 2. Page title: Space Grotesk weight-300 -->
     <h1 class="page-title">Title</h1>
 
     <!-- 3. Status badges (optional) -->
@@ -302,7 +302,7 @@ When updating an existing HTML-generating module to this spec:
 2. Replace all inline/hardcoded colors with CSS variable references
 3. Replace body font with `DM Sans`
 4. Replace all numeric/ticker displays with `DM Mono`
-5. Replace page title font with `Instrument Serif italic`
+5. Replace page title font with `Space Grotesk` + `Noto Sans SC` (weight 300, normal style)
 6. Add staggered `fadeUp` animation to cards
 7. Replace plain tables with card components where appropriate
 8. Add section dividers between content groups
