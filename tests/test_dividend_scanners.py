@@ -1339,3 +1339,17 @@ def test_buy_signal_passes_through_extreme_event_fields(tmp_path):
     assert signals[0].floor_price_raw == 40.0
     assert signals[0].extreme_event_days == 18
     assert signals[0].extreme_event_price == 31.0
+
+
+def test_ticker_data_has_golden_price_field():
+    """TickerData must have golden_price as an Optional[float] field."""
+    from src.data_engine import TickerData
+    td = TickerData(
+        ticker="TEST", name="Test", market="US", last_price=100.0,
+        ma200=None, ma50w=None, rsi14=None, iv_rank=None, iv_momentum=None,
+        prev_close=100.0, earnings_date=None, days_to_earnings=None,
+    )
+    assert hasattr(td, "golden_price")
+    assert td.golden_price is None
+    td.golden_price = 95.0
+    assert td.golden_price == 95.0
