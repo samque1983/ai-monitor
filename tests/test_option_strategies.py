@@ -604,6 +604,57 @@ def test_underlying_price_prefers_position_record_field_over_strike():
         "StrategyGroup.underlying_price must prefer PositionRecord.underlying_price over strike"
 
 
+def test_short_strangle_max_profit_bounded():
+    """Short Strangle: both legs short → net_credit > 0.
+    max_profit = net_credit (premium received when both expire worthless).
+    max_loss = None (unlimited; call side unbounded).
+    """
+    # Short 2× C240 @ $5, Short 1× P148 @ $3, multiplier=100
+    # net_credit = 2*5*100 + 1*3*100 = 1000 + 300 = 1300
+    sc = _opt("NVDA  C240", "C", 240, -2, cost_basis=5.0, multiplier=100)
+    sp = _opt("NVDA  P148", "P", 148, -1, cost_basis=3.0, multiplier=100)
+    groups = OptionStrategyRecognizer().recognize([sc, sp])
+    assert len(groups) == 1
+    g = groups[0]
+    assert g.strategy_type == "Strangle"
+    assert g.net_credit == pytest.approx(1300.0)
+    assert g.max_profit is not None, "Short Strangle max_profit must be finite (= net credit received)"
+    assert g.max_profit == pytest.approx(1300.0)
+    assert g.max_loss is None, "Short Strangle max_loss is unlimited (call side unbounded)"
+
+
+def test_long_strangle_max_loss_bounded():
+    """Long Strangle: both legs long → net_credit < 0.
+    max_loss = premium paid (bounded). max_profit = None (unlimited).
+    """
+    # Long 1× C240 @ $5, Long 1× P148 @ $3, multiplier=100 → net_credit = -800
+    lc = _opt("NVDA  C240", "C", 240, +1, cost_basis=5.0, multiplier=100)
+    lp = _opt("NVDA  P148", "P", 148, +1, cost_basis=3.0, multiplier=100)
+    groups = OptionStrategyRecognizer().recognize([lc, lp])
+    assert len(groups) == 1
+    g = groups[0]
+    assert g.strategy_type == "Strangle"
+    assert g.net_credit == pytest.approx(-800.0)
+    assert g.max_loss is not None, "Long Strangle max_loss must be finite (= premium paid)"
+    assert g.max_loss == pytest.approx(800.0)
+    assert g.max_profit is None, "Long Strangle max_profit is unlimited"
+
+
+def test_short_straddle_max_profit_bounded():
+    """Short Straddle: both legs short → max_profit = net_credit, max_loss = None."""
+    sc = _opt("AAPL  C180", "C", 180, -3, cost_basis=4.0, multiplier=100)
+    sp = _opt("AAPL  P180", "P", 180, -3, cost_basis=3.0, multiplier=100)
+    groups = OptionStrategyRecognizer().recognize([sc, sp])
+    assert len(groups) == 1
+    g = groups[0]
+    assert g.strategy_type == "Straddle"
+    # net_credit = 3*4*100 + 3*3*100 = 1200 + 900 = 2100
+    assert g.net_credit == pytest.approx(2100.0)
+    assert g.max_profit is not None, "Short Straddle max_profit must be finite (= net credit received)"
+    assert g.max_profit == pytest.approx(2100.0)
+    assert g.max_loss is None, "Short Straddle max_loss is unlimited"
+
+
 def test_underlying_price_uses_stock_mark_for_covered_call():
     """For stock+option strategies, underlying_price = stock mark_price."""
     from datetime import date, timedelta

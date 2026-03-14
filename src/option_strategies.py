@@ -539,11 +539,20 @@ class OptionStrategyRecognizer:
                 sg.max_loss = abs(sg.net_credit)
                 sg.max_profit = None  # Depends on relative time decay; leave as N/A
 
-        elif stype in ("Long Call", "Long Put", "LEAPS Call", "LEAPS Put",
-                       "Straddle", "Strangle"):
+        elif stype in ("Straddle", "Strangle"):
+            if sg.net_credit > 0:
+                # Short: received premium → max profit = credit received; max loss = unlimited
+                sg.max_profit = sg.net_credit
+                sg.max_loss = None
+            else:
+                # Long: paid premium → max loss = debit paid; max profit = unlimited
+                sg.max_loss = abs(sg.net_credit)
+                sg.max_profit = None
+
+        elif stype in ("Long Call", "Long Put", "LEAPS Call", "LEAPS Put"):
             # Max loss = premium paid (net debit). net_credit is negative for long positions.
             sg.max_loss = max(0.0, abs(sg.net_credit))
-            sg.max_profit = None  # Unlimited for calls/straddles; leave None for simplicity
+            sg.max_profit = None  # Unlimited; leave None for simplicity
 
         elif stype == "Long Stock":
             stk = sg.stock_leg
