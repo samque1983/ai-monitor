@@ -93,99 +93,22 @@ def _group_strategies(strategies: list) -> dict:
     return result
 
 
-def _group_stats(strategies: list, nlv: float) -> dict:
+def _group_stats(strategies: list) -> dict:
     """Compute aggregate stats for a group of StrategyGroup objects."""
     if not strategies:
-        return {
-            "count": 0, "total_pnl": 0.0, "total_theta": 0.0,
-            "total_max_loss": 0.0, "max_loss_pct": 0.0,
-            "has_naked": False, "net_delta": 0.0,
-        }
-    total_pnl   = sum(sg.net_pnl   for sg in strategies)
-    total_theta = sum(sg.net_theta  for sg in strategies)
-    net_delta   = sum(sg.net_delta  for sg in strategies)
-    has_naked   = any(sg.max_loss is None for sg in strategies)
-    total_max_loss = sum(sg.max_loss for sg in strategies if sg.max_loss is not None)
-    max_loss_pct   = (total_max_loss / nlv * 100) if nlv > 0 else 0.0
+        return {"count": 0, "total_pnl": 0.0, "total_theta": 0.0}
     return {
         "count": len(strategies),
-        "total_pnl": total_pnl,
-        "total_theta": total_theta,
-        "net_delta": net_delta,
-        "total_max_loss": total_max_loss,
-        "max_loss_pct": max_loss_pct,
-        "has_naked": has_naked,
+        "total_pnl": sum(sg.net_pnl  for sg in strategies),
+        "total_theta": sum(sg.net_theta for sg in strategies),
     }
 
-
-_CATEGORY_DESC = {
-    "裸卖": "卖出裸期权赚取全额权利金。裸 Put 下行风险有界（股票跌至 $0），裸 Call 上涨亏损无上限",
-    "价差": "买卖双腿对冲，风险收益均有上限，资金效率较高",
-    "综合": "多腿组合策略，在区间震荡中赚取时间价值",
-    "含股": "股票结合期权，降低持仓成本或锁定收益区间",
-    "跨期": "利用不同到期日的时间价值差套利",
-    "长期": "LEAPS 长期期权，低杠杆博弈方向或作为对冲",
-    "单腿": "单腿买入期权，最大亏损 = 已付权利金",
-    "其他": "未分类策略，请手动核查",
-}
-
-_DTE_DESC = {
-    "≤30天":   "临近到期，Theta 加速衰减，Gamma 风险上升，需密切关注",
-    "31–90天": "中期策略，有充裕时间管理和调整",
-    ">90天":   "长线布局，无需频繁操作，Vega 敞口是主要风险",
-    "无到期":  "股票仓位或永续持仓，主要风险来自 Delta 方向",
-}
-
-
-def _group_subtitle(group_name: str, stats: dict, dim: str, nlv: float) -> str:
-    """Generate plain-language description for a strategy group header."""
-    parts = []
-
-    if dim == "intent":
-        theta = stats["total_theta"]
-        delta = stats["net_delta"]
-        if group_name == "income":
-            if theta > 0:
-                parts.append(f"靠卖出期权赚时间价值，每天自动进账 ${theta:.0f}，最怕突然大幅波动")
-            else:
-                parts.append("收租策略但 Theta 为负，检查是否持有过多保护腿")
-        elif group_name == "hedge":
-            parts.append(f"花钱买保险，每天付出 ${abs(theta):.0f} Theta，下行风险已设上限")
-        elif group_name == "directional":
-            direction = "多头" if delta >= 0 else "空头"
-            parts.append(f"净{direction}敞口，标的涨跌影响方向性盈亏")
-        elif group_name == "speculation":
-            parts.append("买入期权博弈，最大亏损 = 已付权利金，到期作废则全损")
-        elif group_name == "mixed":
-            parts.append("兼具多种目的（如 Collar），需整体评估 Delta 和 Theta 的平衡")
-        else:
-            parts.append("未分类策略，请手动核查")
-
-    elif dim == "underlying":
-        delta = stats["net_delta"]
-        direction = "多头" if delta >= 0 else "空头"
-        parts.append(f"净{direction}敞口，共 {stats['count']} 个策略")
-
-    elif dim == "category":
-        parts.append(_CATEGORY_DESC.get(group_name, ""))
-
-    elif dim == "dte":
-        parts.append(_DTE_DESC.get(group_name, ""))
-
-    # Append warnings
-    if stats["max_loss_pct"] > 10.0:
-        parts.append(f"⚠ 最大亏损 ${stats['total_max_loss']:,.0f}，占净资产 {stats['max_loss_pct']:.1f}%")
-    if stats["has_naked"]:
-        parts.append("⚠ 含裸 Call，股价上涨亏损无上限")
-
-    return "，".join(p for p in parts if p)
 
 
 def _render_group_header(group_name: str, display_name: str,
                           strategies: list, dim: str,
                           nlv: float, color: str) -> str:
-    stats = _group_stats(strategies, nlv)
-    subtitle = _group_subtitle(group_name, stats, dim, nlv)
+    stats = _group_stats(strategies)
 
     pnl = stats["total_pnl"]
     pnl_color = "#30d158" if pnl >= 0 else "#ff453a"
@@ -205,7 +128,6 @@ def _render_group_header(group_name: str, display_name: str,
     <span style="font-size:12px; color:{pnl_color}; font-family:'SF Mono',monospace;">盈亏 {pnl_str}</span>
     <span style="font-size:12px; color:{theta_color}; font-family:'SF Mono',monospace;">日Θ {_e(theta_str)}</span>
   </div>
-  {f'<div style="font-size:12px; color:#8e8e93; margin-top:5px;">{_e(subtitle)}</div>' if subtitle else ''}
 </div>"""
 
 
