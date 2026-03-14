@@ -67,7 +67,7 @@ def test_cn_price_data():
     mock_ak.stock_zh_a_hist.assert_called_once()
     call_kwargs = mock_ak.stock_zh_a_hist.call_args
     assert call_kwargs.kwargs.get("symbol") == "600519" or call_kwargs.args[0] == "600519"
-    assert call_kwargs.kwargs.get("adjust") == "hfq"
+    assert call_kwargs.kwargs.get("adjust") == "qfq"
 
 
 def test_hk_price_data():
@@ -80,6 +80,7 @@ def test_hk_price_data():
     call_kwargs = mock_ak.stock_hk_hist.call_args
     symbol_used = call_kwargs.kwargs.get("symbol") or call_kwargs.args[0]
     assert symbol_used == "00700"
+    assert call_kwargs.kwargs.get("adjust") == "qfq"
 
 
 def test_us_price_data():

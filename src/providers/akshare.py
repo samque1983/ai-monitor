@@ -84,13 +84,13 @@ class AkshareProvider(BaseProvider):
                 symbol = self._normalize_cn(ticker)
                 raw = ak.stock_zh_a_hist(
                     symbol=symbol, period="daily",
-                    start_date=start, end_date=end, adjust="hfq",
+                    start_date=start, end_date=end, adjust="qfq",
                 )
             elif market == "HK":
                 symbol = self._normalize_hk(ticker)
                 raw = ak.stock_hk_hist(
                     symbol=symbol, period="daily",
-                    start_date=start, end_date=end, adjust="hfq",
+                    start_date=start, end_date=end, adjust="qfq",
                 )
             else:  # US
                 raw = ak.stock_us_hist(
