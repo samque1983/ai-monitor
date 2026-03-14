@@ -62,7 +62,7 @@ def _compute_floor_data(
         "raw_min_price": None, "raw_min_date": None, "extreme_detected": False,
         "extreme_event_price": None, "extreme_event_days": None,
     }
-    if annual_dividend_ttm <= 0 or forward_dividend_rate <= 0:
+    if annual_dividend_ttm <= 0:
         return empty
 
     raw_min_price = float(close_5y.min())
@@ -79,10 +79,12 @@ def _compute_floor_data(
         return empty
 
     max_yield_filtered = round((annual_dividend_ttm / min_5y_filtered) * 100, 2)
-    floor_price_filtered = round(forward_dividend_rate / (max_yield_filtered / 100), 2)
+    # floor_price requires forward_dividend_rate; compute only when available
+    _fdr = forward_dividend_rate if forward_dividend_rate and forward_dividend_rate > 0 else None
+    floor_price_filtered = round(_fdr / (max_yield_filtered / 100), 2) if _fdr else None
 
     max_yield_raw = round((annual_dividend_ttm / raw_min_price) * 100, 2) if raw_min_price > 0 else None
-    floor_price_raw = round(forward_dividend_rate / (max_yield_raw / 100), 2) if max_yield_raw else None
+    floor_price_raw = round(_fdr / (max_yield_raw / 100), 2) if _fdr and max_yield_raw else None
 
     extreme_detected = bool(raw_min_price < min_5y_filtered * 0.85)
     extreme_event_price = raw_min_price if extreme_detected else None
@@ -347,8 +349,6 @@ def scan_dividend_pool_weekly(
                     and not price_df_5y.empty
                     and 'Close' in price_df_5y.columns
                     and annual_dividend_ttm > 0
-                    and forward_dividend_rate is not None
-                    and forward_dividend_rate > 0
                 ):
                     close_5y = price_df_5y['Close']
                     if hasattr(close_5y, 'columns'):  # DataFrame (yfinance multi-level columns)
