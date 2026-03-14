@@ -54,8 +54,10 @@ body {
   margin-bottom: 6px;
 }
 .eyebrow-label {
-  font-size: 11px; font-weight: 600; letter-spacing: 0.1em;
-  text-transform: uppercase; color: var(--text-3);
+  font-family: "DM Mono", monospace;
+  font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--amber);
+  display: flex; align-items: center; gap: 6px;
 }
 .eyebrow-meta { font-family: "DM Mono", monospace; font-size: 11px; color: var(--text-3); }
 .page-title {
@@ -379,7 +381,7 @@ body {
 <main class="main-content">
 
     <div class="page-eyebrow">
-      <span class="eyebrow-label">Quant Radar</span>
+      <span class="eyebrow-label"><span class="brand-pulse"></span>寻找机会 监控风险</span>
       <span class="eyebrow-meta" id="last-updated">正在加载...</span>
     </div>
     <h1 class="page-title">市场雷达</h1>
