@@ -207,6 +207,9 @@ class DividendBuySignal:
     extreme_event_label: Optional[str] = None      # e.g. "2020-03 COVID 抛售"
     extreme_event_price: Optional[float] = None    # The filtered-out raw min price
     extreme_event_days: Optional[int] = None       # Days price stayed at that low
+    golden_price: Optional[float] = None           # 黄金位
+    current_vs_golden_pct: Optional[float] = None  # (current - golden) / current * 100
+    strike_rationale: Optional[str] = None         # explanation of how strike was chosen
 
 
 def scan_dividend_pool_weekly(
@@ -636,20 +639,23 @@ def scan_dividend_buy_signal(
                 # 检查是否启用期权策略
                 option_config = scanner_config.get("option", {})
                 if option_config.get("enabled", False) and not provider.should_skip_options(ticker):
-                    # 计算目标股息率（基于历史分位数）
+                    # 计算目标股息率（作为黄金位不可用时的回退）
                     target_strike_percentile = option_config.get("target_strike_percentile", 90)
-                    # 计算目标股息率：当前股息率 × (目标分位数 / 当前分位数)
                     target_yield = current_yield * (target_strike_percentile / yield_percentile) if yield_percentile > 0 else current_yield
+
+                    # 从 pool record 读取黄金位（周扫描时计算并存储）
+                    _golden_price_from_pool = record.get("golden_price")
 
                     # 调用scan_dividend_sell_put获取期权详情
                     option_details = scan_dividend_sell_put(
                         ticker_data=ticker_data,
                         provider=provider,
                         annual_dividend=annual_dividend,
-                        target_yield_percentile=target_strike_percentile,
                         target_yield=target_yield,
                         min_dte=option_config.get("min_dte", 45),
                         max_dte=option_config.get("max_dte", 90),
+                        golden_price=_golden_price_from_pool,
+                        current_price=last_price,
                     )
 
                     if option_details and not option_details.get("sell_put_illiquid"):
@@ -686,6 +692,7 @@ def scan_dividend_buy_signal(
                 if _floor_price is not None and last_price > 0:
                     _floor_downside_pct = round((last_price - _floor_price) / last_price * 100, 1)
 
+                _golden_price_for_signal = record.get("golden_price")
                 signal = DividendBuySignal(
                     ticker_data=ticker_data,
                     signal_type=signal_type,
@@ -705,6 +712,14 @@ def scan_dividend_buy_signal(
                     extreme_event_label=_extreme_event_label,
                     extreme_event_price=_extreme_event_price,
                     extreme_event_days=_extreme_event_days,
+                    golden_price=_golden_price_for_signal,
+                    current_vs_golden_pct=(
+                        round((last_price - _golden_price_for_signal) / last_price * 100, 1)
+                        if (_golden_price_for_signal and last_price > 0) else None
+                    ),
+                    strike_rationale=(
+                        option_details.get("strike_rationale") if option_details else None
+                    ),
                 )
 
                 results.append(signal)
@@ -731,10 +746,11 @@ def scan_dividend_sell_put(
     ticker_data: TickerData,
     provider: "MarketDataProvider",
     annual_dividend: float,
-    target_yield_percentile: float,
     target_yield: float,
     min_dte: int = 45,
     max_dte: int = 90,
+    golden_price: Optional[float] = None,
+    current_price: Optional[float] = None,
 ) -> Optional[Dict[str, Any]]:
     """高股息Sell Put期权策略扫描
 
@@ -786,10 +802,15 @@ def scan_dividend_sell_put(
     ticker = ticker_data.ticker
 
     try:
-        # Step 1: 计算目标行权价
-        target_strike = annual_dividend / (target_yield / 100)
+        # Step 1: 确定目标行权价 — 优先使用黄金位，回退到股息率估算
+        if golden_price is not None and golden_price > 0:
+            target_strike = golden_price
+            strike_rationale = "黄金位 = forward股息 / 历史75th收益率"
+        else:
+            target_strike = annual_dividend / (target_yield / 100)
+            strike_rationale = "yield-math fallback (历史数据不足)"
         logger.debug(
-            f"{ticker}: Target strike = {annual_dividend:.2f} / {target_yield}% = ${target_strike:.2f}"
+            f"{ticker}: Target strike = ${target_strike:.2f} ({strike_rationale})"
         )
 
         # Step 2: 获取期权链
@@ -838,6 +859,12 @@ def scan_dividend_sell_put(
             'dte': dte,
             'expiration': expiration,
             'apy': round(apy, 2),
+            'golden_price': golden_price,
+            'current_vs_golden_pct': (
+                round((current_price - golden_price) / current_price * 100, 1)
+                if (golden_price and current_price and current_price > 0) else None
+            ),
+            'strike_rationale': strike_rationale,
         }
 
         logger.info(

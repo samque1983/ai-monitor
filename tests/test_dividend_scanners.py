@@ -476,7 +476,7 @@ class TestScanDividendSellPut:
             ticker_data=ticker_data,
             provider=mock_provider,
             annual_dividend=annual_dividend,
-            target_yield_percentile=90,  # Not used in strike selection
+            golden_price=None,  # No golden_price, uses yield-math fallback
             target_yield=target_yield,
             min_dte=45,
             max_dte=90
@@ -1060,7 +1060,7 @@ def test_scan_dividend_sell_put_uses_midpoint_apy(mock_provider, sample_ticker_d
     mock_provider.get_options_chain.return_value = options_df
     mock_provider.should_skip_options.return_value = False
     result = scan_dividend_sell_put(sample_ticker_data, mock_provider,
-                                    annual_dividend=1.72, target_yield_percentile=90,
+                                    annual_dividend=1.72,
                                     target_yield=5.5)
     assert result is not None
     assert result.get("sell_put_illiquid") is False
@@ -1079,7 +1079,7 @@ def test_scan_dividend_sell_put_illiquid_flag_over_30pct(mock_provider, sample_t
     mock_provider.get_options_chain.return_value = options_df
     mock_provider.should_skip_options.return_value = False
     result = scan_dividend_sell_put(sample_ticker_data, mock_provider,
-                                    annual_dividend=1.72, target_yield_percentile=90,
+                                    annual_dividend=1.72,
                                     target_yield=5.5)
     assert result is not None
     assert result["sell_put_illiquid"] is True
@@ -1390,6 +1390,71 @@ def test_buy_signal_passes_through_extreme_event_fields(tmp_path):
     assert signals[0].floor_price_raw == 40.0
     assert signals[0].extreme_event_days == 18
     assert signals[0].extreme_event_price == 31.0
+
+
+def test_scan_dividend_sell_put_uses_golden_price_as_strike():
+    """When golden_price is provided, use it as target_strike instead of yield-math."""
+    chain = pd.DataFrame({
+        'strike': [90.0, 95.0, 100.0, 105.0],
+        'bid': [1.0, 1.2, 1.5, 1.8],
+        'ask': [1.1, 1.3, 1.6, 1.9],
+        'dte': [60, 60, 60, 60],
+        'expiration': ['2026-05-15'] * 4,
+    })
+    mock_provider = MagicMock()
+    mock_provider.get_options_chain.return_value = chain
+    td = MagicMock()
+    td.ticker = "AAPL"
+
+    # golden_price=96.0 → closest strike is 95; yield-math (4.0/0.04=100) would give 100
+    result = scan_dividend_sell_put(
+        ticker_data=td, provider=mock_provider,
+        annual_dividend=4.0, target_yield=4.0,
+        min_dte=45, max_dte=90,
+        golden_price=96.0, current_price=110.0,
+    )
+    assert result is not None
+    assert result['strike'] == 95.0
+    assert result['strike_rationale'] == "黄金位 = forward股息 / 历史75th收益率"
+    assert result['golden_price'] == 96.0
+    assert result['current_vs_golden_pct'] is not None
+
+
+def test_scan_dividend_sell_put_fallback_when_no_golden_price():
+    """When golden_price is None, falls back to yield-math for target_strike."""
+    chain = pd.DataFrame({
+        'strike': [90.0, 95.0, 100.0, 105.0],
+        'bid': [1.0, 1.2, 1.5, 1.8],
+        'ask': [1.1, 1.3, 1.6, 1.9],
+        'dte': [60, 60, 60, 60],
+        'expiration': ['2026-05-15'] * 4,
+    })
+    mock_provider = MagicMock()
+    mock_provider.get_options_chain.return_value = chain
+    td = MagicMock()
+    td.ticker = "AAPL"
+
+    # annual_dividend=4.0, target_yield=4.0 → target_strike=100
+    result = scan_dividend_sell_put(
+        ticker_data=td, provider=mock_provider,
+        annual_dividend=4.0, target_yield=4.0,
+        min_dte=45, max_dte=90,
+        golden_price=None,
+    )
+    assert result is not None
+    assert result['strike'] == 100.0
+    assert "fallback" in result['strike_rationale']
+
+
+def test_dividend_buy_signal_has_golden_price_field():
+    """DividendBuySignal must carry golden_price, current_vs_golden_pct, strike_rationale."""
+    sig = DividendBuySignal(
+        ticker_data=MagicMock(), signal_type="STOCK",
+        current_yield=5.0, yield_percentile=85.0,
+    )
+    assert hasattr(sig, "golden_price")
+    assert hasattr(sig, "current_vs_golden_pct")
+    assert hasattr(sig, "strike_rationale")
 
 
 def test_ticker_data_has_golden_price_field():
