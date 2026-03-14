@@ -1297,3 +1297,45 @@ class TestLabelExtremeEvent:
         mock_provider.get_price_data.return_value = bench_df
         label = _label_extreme_event(_date(2019, 5, 28), market="US", provider=mock_provider)
         assert label == "个股事件"
+
+
+# ── Task 6: wiring integration test ──────────────────────────────────────────
+
+def test_buy_signal_passes_through_extreme_event_fields(tmp_path):
+    """extreme_event_label from pool record is forwarded to DividendBuySignal."""
+    store = DividendStore(str(tmp_path / "d.db"))
+    pool = [{
+        "ticker": "TEST",
+        "forward_dividend_rate": 2.0,
+        "max_yield_5y": 4.0,
+        "data_version_date": date.today().isoformat(),
+        "floor_price_raw": 40.0,
+        "extreme_event_label": "2020-03 COVID 抛售",
+        "extreme_event_price": 31.0,
+        "extreme_event_days": 18,
+        "sgov_yield": None,
+    }]
+    provider_mock = MagicMock()
+    close_col = pd.Series(
+        [50.0, 51.0, 50.5],
+        index=pd.date_range("2026-03-10", periods=3, freq="B")
+    )
+    price_df = pd.DataFrame({"Close": close_col})
+    div_history = [{"date": f"2025-{m:02d}-01", "amount": 0.5} for m in range(5, 9)]
+    provider_mock.get_price_data.return_value = price_df
+    provider_mock.get_dividend_history.return_value = div_history
+    provider_mock.should_skip_options.return_value = True
+
+    # Seed yield history so percentile check works
+    store.save_dividend_history("TEST", _date(2025, 1, 1), 3.5, 2.0, 57.0)
+    store.save_dividend_history("TEST", _date(2024, 6, 1), 3.2, 2.0, 62.0)
+
+    signals = scan_dividend_buy_signal(
+        pool=pool, provider=provider_mock, store=store,
+        config={"dividend_scanners": {"min_yield": 3.0, "min_yield_percentile": 50}}
+    )
+    assert len(signals) == 1
+    assert signals[0].extreme_event_label == "2020-03 COVID 抛售"
+    assert signals[0].floor_price_raw == 40.0
+    assert signals[0].extreme_event_days == 18
+    assert signals[0].extreme_event_price == 31.0

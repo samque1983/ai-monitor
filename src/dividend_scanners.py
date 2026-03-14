@@ -200,6 +200,10 @@ class DividendBuySignal:
     yield_p10: Optional[float] = None       # P10 of 5-year yield history
     yield_p90: Optional[float] = None       # P90 of 5-year yield history
     yield_hist_max: Optional[float] = None  # Historical max yield (includes crises)
+    floor_price_raw: Optional[float] = None        # Unfiltered floor price (raw close.min())
+    extreme_event_label: Optional[str] = None      # e.g. "2020-03 COVID 抛售"
+    extreme_event_price: Optional[float] = None    # The filtered-out raw min price
+    extreme_event_days: Optional[int] = None       # Days price stayed at that low
 
 
 def scan_dividend_pool_weekly(
@@ -333,10 +337,9 @@ def scan_dividend_pool_weekly(
                 or fundamentals.get("dividendRate")
             )
 
-            # Step 8: 计算 max_yield_5y using TTM annual dividend / 5y min price
-            # Uses annual_dividend_ttm (already computed from dividend history) and
-            # 5y price data. No Dividends column needed — only Close is required.
+            # Step 8: 计算 floor price (filtered) using _compute_floor_data
             max_yield_5y = None
+            _floor_data: Optional[dict] = None
             try:
                 price_df_5y = provider.get_price_data(ticker, period='5y')
                 if (
@@ -344,15 +347,24 @@ def scan_dividend_pool_weekly(
                     and not price_df_5y.empty
                     and 'Close' in price_df_5y.columns
                     and annual_dividend_ttm > 0
+                    and forward_dividend_rate is not None
+                    and forward_dividend_rate > 0
                 ):
                     close_5y = price_df_5y['Close']
                     if hasattr(close_5y, 'columns'):  # DataFrame (yfinance multi-level columns)
                         close_5y = close_5y.iloc[:, 0]
-                    min_5y_price = float(close_5y.min())
-                    if min_5y_price > 0:
-                        max_yield_5y = round((annual_dividend_ttm / min_5y_price) * 100, 2)
+                    _floor_data = _compute_floor_data(close_5y, annual_dividend_ttm, forward_dividend_rate)
+                    max_yield_5y = _floor_data["max_yield_5y"]
+                    if _floor_data["extreme_detected"] and _floor_data["raw_min_date"]:
+                        _floor_data["extreme_event_label"] = _label_extreme_event(
+                            _floor_data["raw_min_date"],
+                            market=classify_market(ticker),
+                            provider=None,  # rule library only during weekly scan
+                        )
+                    else:
+                        _floor_data["extreme_event_label"] = None
             except Exception as e:
-                logger.warning(f"{ticker}: Could not compute max_yield_5y - {e}")
+                logger.warning(f"{ticker}: Could not compute floor data - {e}")
 
             # Step 9: 创建TickerData对象
             ticker_data = TickerData(
@@ -384,6 +396,10 @@ def scan_dividend_pool_weekly(
                 # Enrichment fields
                 forward_dividend_rate=forward_dividend_rate,
                 max_yield_5y=max_yield_5y,
+                floor_price_raw=_floor_data["floor_price_raw"] if _floor_data else None,
+                extreme_event_label=_floor_data.get("extreme_event_label") if _floor_data else None,
+                extreme_event_price=_floor_data["extreme_event_price"] if _floor_data else None,
+                extreme_event_days=_floor_data["extreme_event_days"] if _floor_data else None,
                 quality_breakdown=quality_score_result.quality_breakdown,
                 analysis_text=quality_score_result.analysis_text or "",
                 health_rationale=quality_score_result.health_rationale,
@@ -460,6 +476,10 @@ def scan_dividend_buy_signal(
         _fwd_div = record.get("forward_dividend_rate")
         _max_yield = record.get("max_yield_5y")
         _data_version_date_str = record.get("data_version_date")
+        _floor_price_raw = record.get("floor_price_raw")
+        _extreme_event_label = record.get("extreme_event_label")
+        _extreme_event_price = record.get("extreme_event_price")
+        _extreme_event_days = record.get("extreme_event_days")
 
         # Compute floor_price: forward_dividend_rate / (max_yield_5y / 100)
         _floor_price: Optional[float] = None
@@ -649,6 +669,10 @@ def scan_dividend_buy_signal(
                     yield_p10=_yield_p10,
                     yield_p90=_yield_p90,
                     yield_hist_max=_yield_hist_max,
+                    floor_price_raw=_floor_price_raw,
+                    extreme_event_label=_extreme_event_label,
+                    extreme_event_price=_extreme_event_price,
+                    extreme_event_days=_extreme_event_days,
                 )
 
                 results.append(signal)
