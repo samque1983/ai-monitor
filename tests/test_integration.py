@@ -352,6 +352,63 @@ def test_build_agent_payload_illiquid_option_details():
     assert entry["option_spread_pct"] == pytest.approx(85.0)
 
 
+def test_build_agent_payload_dividend_includes_option_expiration():
+    """option_expiration must be present in dividend signal payload when option is liquid."""
+    from src.main import _build_agent_payload
+    from src.dividend_scanners import DividendBuySignal
+    from src.data_engine import TickerData
+
+    td = TickerData(
+        ticker="KO", name="Coca-Cola", market="US",
+        last_price=65.0, ma200=60.0, ma50w=62.0, rsi14=40.0,
+        iv_rank=20.0, iv_momentum=None, prev_close=64.0,
+        earnings_date=None, days_to_earnings=None,
+        dividend_yield=5.0, dividend_yield_5y_percentile=95.0,
+        dividend_quality_score=80.0, consecutive_years=10,
+        dividend_growth_5y=3.5, payout_ratio=60.0,
+        roe=15.0, debt_to_equity=1.0, industry="Beverages",
+        sector="Consumer Staples", free_cash_flow=10_000_000,
+        forward_dividend_rate=2.0, max_yield_5y=4.0,
+        quality_breakdown={}, analysis_text="Strong payer.",
+        data_version_date=str(date.today()),
+    )
+
+    option_details = {
+        "strike": 60.0,
+        "bid": 1.20,
+        "ask": 1.40,
+        "mid": 1.30,
+        "spread_pct": 15.4,
+        "liquidity_warn": False,
+        "sell_put_illiquid": False,
+        "dte": 55,
+        "expiration": "2026-05-16",
+        "apy": 14.4,
+        "golden_price": 62.0,
+        "current_vs_golden_pct": 4.8,
+        "strike_rationale": "黄金位 = forward股息 / 历史75th收益率",
+    }
+
+    signal = DividendBuySignal(
+        ticker_data=td, signal_type="OPTION",
+        current_yield=5.0, yield_percentile=95.0,
+        option_details=option_details,
+        forward_dividend_rate=2.0, max_yield_5y=4.0,
+        floor_price=50.0, floor_downside_pct=23.1,
+        data_age_days=0, needs_reeval=False,
+    )
+
+    payload = _build_agent_payload(
+        sell_puts=[], iv_low=[], iv_high=[], ma200_bull=[], ma200_bear=[],
+        leaps=[], earnings_gaps=[], earnings_gap_ticker_map={},
+        iv_momentum=[], dividend_signals=[signal],
+    )
+
+    entry = payload[0]
+    assert "option_expiration" in entry
+    assert entry["option_expiration"] == "2026-05-16"
+
+
 def test_build_agent_payload_sell_put_has_liquidity_fields():
     """Sell put payload must include liquidity fields from SellPutSignal."""
     from src.main import _build_agent_payload

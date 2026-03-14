@@ -161,6 +161,7 @@ def _build_agent_payload(
             "days_to_earnings": td.days_to_earnings,
             "option_strike": round(float(opt["strike"]), 0) if opt else None,
             "option_dte": opt["dte"] if opt else None,
+            "option_expiration": str(opt["expiration"]) if opt and opt.get("expiration") is not None else None,
             "option_bid": round(float(opt["bid"]), 2) if opt and not opt.get("sell_put_illiquid") else None,
             "option_ask": round(float(opt.get("ask", 0)), 2) if opt and not opt.get("sell_put_illiquid") else None,
             "option_mid": round(float(opt.get("mid", 0)), 2) if opt and not opt.get("sell_put_illiquid") else None,
