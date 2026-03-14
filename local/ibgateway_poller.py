@@ -140,6 +140,7 @@ class PositionData:
     vega: float
     underlying_symbol: str
     currency: str
+    underlying_price: float = 0.0  # underlying mark price from Gateway
 
 
 @dataclass
@@ -404,6 +405,17 @@ class IBPoller(EWrapper, EClient):
             pos_data.theta = g["theta"]
             pos_data.vega  = g["vega"]
             filled += 1
+
+        # Fill underlying_price on every OPT position from the prices we have
+        for _, pos_data in self._opt_contracts:
+            S = self._underlying_prices.get(pos_data.underlying_symbol)
+            if S and S > 0:
+                pos_data.underlying_price = S
+
+        # Fill underlying_price on STK positions (they ARE the underlying)
+        for pos_data in self.positions:
+            if pos_data.asset_category == "STK" and pos_data.mark_price > 0:
+                pos_data.underlying_price = pos_data.mark_price
 
         logger.info(f"BS Greeks filled for {filled} options "
                     f"(underlying prices available: {len(self._underlying_prices)})")

@@ -124,6 +124,7 @@ class PositionPayload(BaseModel):
     vega: float = 0.0
     underlying_symbol: str = ""
     currency: str = "USD"
+    underlying_price: float = 0.0
 
 
 class AccountSummaryPayload(BaseModel):
@@ -162,6 +163,7 @@ async def upload_positions(payload: PositionsUploadPayload, request: Request):
             unrealized_pnl=p.unrealized_pnl, delta=p.delta, gamma=p.gamma,
             theta=p.theta, vega=p.vega,
             underlying_symbol=p.underlying_symbol, currency=p.currency,
+            underlying_price=p.underlying_price,
         )
         for p in payload.positions
     ]
