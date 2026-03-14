@@ -140,6 +140,49 @@ scan_dividend_pool_weekly(
 
 Payout > 100 → log error + skip. Per-ticker exception isolation.
 
+**Floor price computation** (`_compute_floor_data`):
+
+Uses 5-year daily close prices to compute the dividend-yield-implied price floor:
+
+1. `min_5y_filtered` = 3rd percentile of 5-day rolling min — smooths out single-day spikes
+2. `max_yield_5y` = `annual_dividend_ttm / min_5y_filtered * 100` — highest yield seen in normal market conditions
+3. `floor_price` = `forward_dividend_rate / (max_yield_5y / 100)` — price at which stock would yield the historical max
+
+**Extreme event detection**:
+
+```python
+extreme_detected = bool(raw_min_price < min_5y_filtered * 0.85)
+```
+
+If the raw 5-year close minimum is >15% below the filtered minimum, the low is treated as an extreme event and excluded from `max_yield_5y` (so `floor_price` reflects a "normal market" floor, not a crash floor).
+
+When detected, `_label_extreme_event()` looks up the raw_min_date against a rule library:
+
+```python
+_EXTREME_EVENT_RULES = [
+    {"label": "2020-03 COVID 抛售",  "start": date(2020,2,19), "end": date(2020,3,23),  "market": None},
+    {"label": "2022 加息熊市",        "start": date(2022,1,1),  "end": date(2022,10,13), "market": None},
+    {"label": "2018 Q4 崩盘",         "start": date(2018,10,1), "end": date(2018,12,24), "market": None},
+    {"label": "2015 A股熔断",         "start": date(2015,6,12), "end": date(2016,2,29),  "market": "CN"},
+]
+```
+
+Falls back to benchmark comparison (`SPY`/`HSI`/`CSI300`) if date matches no rule.
+
+**Fields stored in pool and serialized to agent payload**:
+- `floor_price` — filtered floor (normal market conditions)
+- `floor_price_raw` — unfiltered floor (includes extreme events)
+- `extreme_event_label` — human-readable event name, or `None` if no extreme detected
+- `extreme_event_price` — raw min price that was excluded
+- `extreme_event_days` — days price stayed at that low
+
+**Dashboard rendering**: When `extreme_event_label` is set, a sub-line appears below the 极值底价 row:
+```
+已排除 2020-03 COVID 抛售 · 原始低 $73.20
+```
+
+**5-year window limitation**: `extreme_detected` only fires for events within the 5-year lookback window. Events older than 5 years (e.g., COVID crash in Mar 2020 becomes invisible after Mar 2025) will not appear, even if they were significant. This is expected — the pool is designed to reflect current market structure, not historical crises.
+
 **Golden price computation** (added to step 8, after floor_data):
 
 Using the already-fetched `close_5y` price series and `dividend_history`:
