@@ -152,3 +152,75 @@ def test_strategy_dividend_page_handles_empty_pool():
     client = get_client()
     resp = client.get("/strategy/dividend")
     assert resp.status_code == 200
+
+
+# ── Watchlist seed tests (use isolated DB via AGENT_DB_PATH) ──────────────────
+
+import tempfile
+from unittest.mock import patch
+
+_FAKE_UNIVERSE = [
+    {"ticker": "SEED1", "name": "Seed One",   "group": "Test", "role": "", "floor": "", "strike": "", "note": ""},
+    {"ticker": "SEED2", "name": "Seed Two",   "group": "Test", "role": "", "floor": "", "strike": "", "note": ""},
+]
+
+
+def _isolated_client(db_path: str):
+    """Return a TestClient backed by a fresh DB at db_path."""
+    import agent.deps as deps
+    os.environ["AGENT_DB_PATH"] = db_path
+    deps._db = None
+    deps._db_path = None
+    from agent.main import app
+    return TestClient(app)
+
+
+def test_watchlist_page_seeds_empty_user():
+    """Empty watchlist → seeded from default universe on page load."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = os.path.join(tmpdir, "test.db")
+        client = _isolated_client(db_path)
+        with patch("agent.dashboard._get_default_universe", return_value=_FAKE_UNIVERSE):
+            resp = client.get("/watchlist")
+        assert resp.status_code == 200
+        assert "SEED1" in resp.text
+        assert "SEED2" in resp.text
+        from agent.db import AgentDB
+        db = AgentDB(db_path)
+        user = db.get_user("ALICE")
+        assert user is not None
+        items = db._parse_watchlist(user)
+        tickers = [i["ticker"] for i in items]
+        assert "SEED1" in tickers
+        assert "SEED2" in tickers
+
+
+def test_watchlist_page_no_seed_when_default_empty():
+    """If default universe is empty (CSV not ready), show empty state without seeding."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = os.path.join(tmpdir, "test.db")
+        client = _isolated_client(db_path)
+        with patch("agent.dashboard._get_default_universe", return_value=[]):
+            resp = client.get("/watchlist")
+        assert resp.status_code == 200
+        assert "暂无自选标的" in resp.text
+        from agent.db import AgentDB
+        db = AgentDB(db_path)
+        user = db.get_user("ALICE")
+        items = db._parse_watchlist(user) if user else []
+        assert items == []
+
+
+def test_watchlist_page_no_reseed_when_non_empty():
+    """Non-empty watchlist → _get_default_universe is never called."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = os.path.join(tmpdir, "test.db")
+        client = _isolated_client(db_path)
+        # Pre-populate ALICE with one ticker
+        from agent.db import AgentDB
+        db = AgentDB(db_path)
+        db.add_to_watchlist("ALICE", "TSLA")
+        with patch("agent.dashboard._get_default_universe", return_value=_FAKE_UNIVERSE) as mock_uni:
+            resp = client.get("/watchlist")
+        assert resp.status_code == 200
+        mock_uni.assert_not_called()

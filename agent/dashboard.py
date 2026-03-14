@@ -127,11 +127,12 @@ async def watchlist_page(request: Request, db: AgentDB = Depends(get_db)):
     user = db.get_user("ALICE")
     items: list = db._parse_watchlist(user) if user else []
 
-    is_default = False
-    default_rows: list = []
     if not items:
-        default_rows = _get_default_universe()
-        is_default = bool(default_rows)
+        defaults = _get_default_universe()
+        if defaults:
+            db.seed_watchlist("ALICE", defaults)
+            user = db.get_user("ALICE")
+            items = db._parse_watchlist(user) if user else []
 
     tag_index = _build_tag_index(db)
     ticker_rows = [{**item, "tags": tag_index.get(item["ticker"], [])} for item in items]
@@ -145,8 +146,6 @@ async def watchlist_page(request: Request, db: AgentDB = Depends(get_db)):
         "active_page": "watchlist",
         "ticker_rows": ticker_rows,
         "strategy_cards": strategy_cards,
-        "is_default": is_default,
-        "default_rows": default_rows,
     })
 
 
