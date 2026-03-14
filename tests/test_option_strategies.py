@@ -508,3 +508,29 @@ def test_covered_call_zero_cost_basis_uses_mark_price():
     assert g.max_loss > 0, "Covered Call max_loss must be positive even when cost_basis=0"
     # max_loss = mark_price * shares - net_credit = 150*100 - 300 = 14700
     assert g.max_loss == pytest.approx(14700.0)
+
+
+def test_all_short_diagonal_has_finite_max_profit_and_loss():
+    """Two short puts at different strikes/expirations → Diagonal Spread.
+    Both max_profit and max_loss must be finite (not None/unlimited).
+    max_profit = net_credit; max_loss = total notional - net_credit.
+    """
+    from datetime import date, timedelta
+    near_exp = (date.today() + timedelta(days=16)).strftime("%Y%m%d")
+    far_exp  = (date.today() + timedelta(days=107)).strftime("%Y%m%d")
+    # Short 7× P78 near-term @ $2 premium, Short 5× P75 far-term @ $3 premium
+    sp_near = _opt("QQQ   P78",  "P", 78, -7, expiry=near_exp, cost_basis=2.0, multiplier=100)
+    sp_far  = _opt("QQQ   P75",  "P", 75, -5, expiry=far_exp,  cost_basis=3.0, multiplier=100)
+    groups = OptionStrategyRecognizer().recognize([sp_near, sp_far])
+    assert len(groups) == 1
+    g = groups[0]
+    assert g.strategy_type == "Diagonal Spread"
+    # net_credit = 7*2*100 + 5*3*100 = 1400 + 1500 = 2900
+    assert g.net_credit == pytest.approx(2900.0)
+    # max_profit must be finite and equal to net_credit
+    assert g.max_profit is not None, "All-short Diagonal max_profit must be finite (not unlimited)"
+    assert g.max_profit == pytest.approx(2900.0)
+    # max_loss must be finite: notional - net_credit = (7*78 + 5*75)*100 - 2900
+    # = (546 + 375)*100 - 2900 = 92100 - 2900 = 89200
+    assert g.max_loss is not None, "All-short Diagonal max_loss must be finite (not unlimited)"
+    assert g.max_loss == pytest.approx(89200.0)

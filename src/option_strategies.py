@@ -516,6 +516,12 @@ class OptionStrategyRecognizer:
                 # Max profit is bounded by the spread width + net credit received
                 # (approximation: short expires worthless, long at full intrinsic value)
                 sg.max_profit = max(0.0, strike_diff * mult * diag_contracts + sg.net_credit)
+            elif short_legs and not long_legs:
+                # All-short diagonal (naked shorts across expirations): no long leg to cap loss.
+                # max_profit = premium collected; max_loss bounded by strike notional (stock → 0).
+                sg.max_profit = sg.net_credit if sg.net_credit > 0 else 0.0
+                total_notional = sum(abs(p.position) * p.strike * p.multiplier for p in short_legs)
+                sg.max_loss = max(0.0, total_notional - sg.net_credit)
 
         elif stype in ("Long Call", "Long Put", "LEAPS Call", "LEAPS Put",
                        "Straddle", "Strangle"):
