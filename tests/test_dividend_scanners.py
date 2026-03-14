@@ -4,7 +4,7 @@ import pandas as pd
 from datetime import date, timedelta
 from unittest.mock import MagicMock, patch
 from src.data_engine import TickerData
-from src.dividend_scanners import scan_dividend_pool_weekly, scan_dividend_buy_signal, DividendBuySignal, scan_dividend_sell_put
+from src.dividend_scanners import scan_dividend_pool_weekly, scan_dividend_buy_signal, DividendBuySignal, scan_dividend_sell_put, _compute_floor_data, _label_extreme_event
 from src.financial_service import DividendQualityScore
 from src.dividend_store import DividendStore, YieldPercentileResult
 
@@ -1178,3 +1178,122 @@ def test_buy_signal_includes_yield_p10_p90_hist_max():
     assert sig.yield_p90 == 5.8
     assert sig.yield_hist_max == 12.0
     assert sig.yield_percentile == 85.0
+
+
+# ── Task 1: _compute_floor_data tests ────────────────────────────────────────
+
+import numpy as np
+from datetime import date as _date
+
+
+class TestComputeFloorData:
+    def _make_normal_series(self, low=40.0, high=100.0, n=1260) -> pd.Series:
+        """Stable price series declining from high to low, no flash crash."""
+        idx = pd.date_range("2020-01-01", periods=n, freq="B")
+        prices = np.linspace(high, low, n)
+        return pd.Series(prices, index=idx)
+
+    def _make_flash_crash_series(self) -> pd.Series:
+        """Series with a single-day flash crash to 10.0, otherwise 40-100."""
+        idx = pd.date_range("2020-01-01", periods=1260, freq="B")
+        prices = np.linspace(100.0, 40.0, 1260)
+        s = pd.Series(prices, index=idx)
+        s.iloc[600] = 10.0  # single-day spike
+        return s
+
+    def _make_sustained_low_series(self) -> pd.Series:
+        """Series with 60-day sustained low at 15.0 (realistic bear market, not a flash crash).
+        60 days = ~4.8% of 1260 — above the 3rd percentile threshold, so not filtered out."""
+        idx = pd.date_range("2020-01-01", periods=1260, freq="B")
+        prices = np.full(1260, 60.0, dtype=float)
+        prices[600:660] = 15.0
+        return pd.Series(prices, index=idx)
+
+    def test_flash_crash_filtered_floor_price_higher_than_raw(self):
+        """Single-day spike: filtered floor_price > raw floor_price_raw."""
+        s = self._make_flash_crash_series()
+        result = _compute_floor_data(s, annual_dividend_ttm=2.0, forward_dividend_rate=2.0)
+        assert result["floor_price"] > result["floor_price_raw"]
+
+    def test_sustained_low_not_filtered(self):
+        """10-day low: extreme_detected should be False (not filtered out)."""
+        s = self._make_sustained_low_series()
+        result = _compute_floor_data(s, annual_dividend_ttm=2.0, forward_dividend_rate=2.0)
+        assert result["extreme_detected"] is False
+
+    def test_floor_price_formula(self):
+        """floor_price = forward_dividend_rate / (max_yield_5y / 100)."""
+        s = self._make_normal_series(low=40.0)
+        result = _compute_floor_data(s, annual_dividend_ttm=2.0, forward_dividend_rate=2.0)
+        assert result["floor_price"] is not None
+        assert result["max_yield_5y"] is not None
+        expected = round(2.0 / (result["max_yield_5y"] / 100), 2)
+        assert result["floor_price"] == expected
+
+    def test_extreme_detected_flag_set_on_flash_crash(self):
+        s = self._make_flash_crash_series()
+        result = _compute_floor_data(s, annual_dividend_ttm=2.0, forward_dividend_rate=2.0)
+        assert result["extreme_detected"] is True
+        assert result["extreme_event_price"] == pytest.approx(10.0, abs=1.0)
+
+    def test_extreme_event_days_counted(self):
+        s = self._make_flash_crash_series()
+        result = _compute_floor_data(s, annual_dividend_ttm=2.0, forward_dividend_rate=2.0)
+        if result["extreme_detected"]:
+            assert result["extreme_event_days"] >= 1
+
+    def test_returns_raw_min_date(self):
+        s = self._make_flash_crash_series()
+        result = _compute_floor_data(s, annual_dividend_ttm=2.0, forward_dividend_rate=2.0)
+        assert result["raw_min_date"] is not None
+
+    def test_zero_dividend_returns_none_floor(self):
+        s = self._make_normal_series()
+        result = _compute_floor_data(s, annual_dividend_ttm=0.0, forward_dividend_rate=0.0)
+        assert result["floor_price"] is None
+        assert result["floor_price_raw"] is None
+
+
+# ── Task 3: _label_extreme_event tests ───────────────────────────────────────
+
+class TestLabelExtremeEvent:
+    def test_covid_window_returns_label(self):
+        label = _label_extreme_event(_date(2020, 3, 10), market="US", provider=None)
+        assert label == "2020-03 COVID 抛售"
+
+    def test_rate_hike_window_returns_label(self):
+        label = _label_extreme_event(_date(2022, 6, 15), market="US", provider=None)
+        assert label == "2022 加息熊市"
+
+    def test_2018_q4_crash(self):
+        label = _label_extreme_event(_date(2018, 12, 1), market="US", provider=None)
+        assert label == "2018 Q4 崩盘"
+
+    def test_cn_circuit_breaker_only_for_cn(self):
+        label_cn = _label_extreme_event(_date(2016, 1, 5), market="CN", provider=None)
+        label_us = _label_extreme_event(_date(2016, 1, 5), market="US", provider=None)
+        assert label_cn == "2015 A股熔断"
+        assert label_us is None
+
+    def test_no_match_no_provider_returns_none(self):
+        label = _label_extreme_event(_date(2023, 6, 1), market="US", provider=None)
+        assert label is None
+
+    def test_no_match_provider_systemic_risk(self):
+        """Benchmark drops >10% around the date → 系统性风险."""
+        mock_provider = MagicMock()
+        idx = pd.date_range("2019-05-20", periods=15, freq="B")
+        prices = [100.0] * 7 + [85.0] * 8  # -15% drop
+        bench_df = pd.DataFrame({"Close": prices}, index=idx)
+        mock_provider.get_price_data.return_value = bench_df
+        label = _label_extreme_event(_date(2019, 5, 28), market="US", provider=mock_provider)
+        assert label == "系统性风险"
+
+    def test_no_match_provider_stock_specific(self):
+        """Flat benchmark → 个股事件."""
+        mock_provider = MagicMock()
+        idx = pd.date_range("2019-05-20", periods=15, freq="B")
+        bench_df = pd.DataFrame({"Close": [100.0] * 15}, index=idx)
+        mock_provider.get_price_data.return_value = bench_df
+        label = _label_extreme_event(_date(2019, 5, 28), market="US", provider=mock_provider)
+        assert label == "个股事件"

@@ -32,6 +32,118 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# ── Extreme event rule library ────────────────────────────────────────────────
+_EXTREME_EVENT_RULES = [
+    {"label": "2020-03 COVID 抛售", "start": date(2020, 2, 19), "end": date(2020, 3, 23), "market": None},
+    {"label": "2022 加息熊市",      "start": date(2022, 1,  1), "end": date(2022, 10,13), "market": None},
+    {"label": "2018 Q4 崩盘",       "start": date(2018, 10, 1), "end": date(2018, 12,24), "market": None},
+    {"label": "2015 A股熔断",       "start": date(2015, 6, 12), "end": date(2016, 2, 29), "market": "CN"},
+]
+
+_BENCHMARK_TICKER = {"US": "SPY", "HK": "^HSI", "CN": "000300.SS"}
+
+
+def _compute_floor_data(
+    close_5y: "Any",
+    annual_dividend_ttm: float,
+    forward_dividend_rate: float,
+) -> dict:
+    """Compute floor price using 5-day rolling min + 3rd percentile filter.
+
+    Returns dict with keys:
+        max_yield_5y, floor_price, floor_price_raw,
+        raw_min_price, raw_min_date, extreme_detected,
+        extreme_event_price, extreme_event_days
+    """
+    import pandas as pd
+
+    empty: dict = {
+        "max_yield_5y": None, "floor_price": None, "floor_price_raw": None,
+        "raw_min_price": None, "raw_min_date": None, "extreme_detected": False,
+        "extreme_event_price": None, "extreme_event_days": None,
+    }
+    if annual_dividend_ttm <= 0 or forward_dividend_rate <= 0:
+        return empty
+
+    raw_min_price = float(close_5y.min())
+    raw_min_idx = close_5y.idxmin()
+    raw_min_date_val = raw_min_idx.date() if hasattr(raw_min_idx, "date") else raw_min_idx
+
+    rolling_min = close_5y.rolling(window=5, min_periods=5).min()
+    filtered_series = rolling_min.dropna()
+    if filtered_series.empty:
+        return empty
+
+    min_5y_filtered = float(filtered_series.quantile(0.03))
+    if min_5y_filtered <= 0:
+        return empty
+
+    max_yield_filtered = round((annual_dividend_ttm / min_5y_filtered) * 100, 2)
+    floor_price_filtered = round(forward_dividend_rate / (max_yield_filtered / 100), 2)
+
+    max_yield_raw = round((annual_dividend_ttm / raw_min_price) * 100, 2) if raw_min_price > 0 else None
+    floor_price_raw = round(forward_dividend_rate / (max_yield_raw / 100), 2) if max_yield_raw else None
+
+    extreme_detected = bool(raw_min_price < min_5y_filtered * 0.85)
+    extreme_event_price = raw_min_price if extreme_detected else None
+    extreme_event_days: Optional[int] = None
+    if extreme_detected:
+        threshold = raw_min_price * 1.10
+        extreme_event_days = int((close_5y <= threshold).sum())
+
+    return {
+        "max_yield_5y": max_yield_filtered,
+        "floor_price": floor_price_filtered,
+        "floor_price_raw": floor_price_raw,
+        "raw_min_price": raw_min_price,
+        "raw_min_date": raw_min_date_val,
+        "extreme_detected": extreme_detected,
+        "extreme_event_price": extreme_event_price,
+        "extreme_event_days": extreme_event_days,
+    }
+
+
+def _label_extreme_event(
+    raw_min_date: date,
+    market: str,
+    provider: "Optional[Any]" = None,
+) -> "Optional[str]":
+    """Return human-readable label for an extreme low event, or None.
+
+    Checks rule library first; falls back to benchmark comparison if provider given.
+    """
+    for rule in _EXTREME_EVENT_RULES:
+        if rule["market"] is not None and rule["market"] != market:
+            continue
+        if rule["start"] <= raw_min_date <= rule["end"]:
+            return rule["label"]
+
+    if provider is None:
+        return None
+
+    benchmark = _BENCHMARK_TICKER.get(market, "SPY")
+    try:
+        import pandas as pd
+        bench_df = provider.get_price_data(benchmark, period="5y")
+        if bench_df is None or bench_df.empty or "Close" not in bench_df.columns:
+            return None
+        bench_close = bench_df["Close"]
+        if hasattr(bench_close, "columns"):
+            bench_close = bench_close.iloc[:, 0]
+        bench_close.index = pd.to_datetime(bench_close.index)
+        target_ts = pd.Timestamp(raw_min_date)
+        window = bench_close.loc[
+            (bench_close.index >= target_ts - pd.Timedelta(days=14)) &
+            (bench_close.index <= target_ts + pd.Timedelta(days=14))
+        ]
+        if len(window) < 2:
+            return None
+        bench_change = (window.iloc[-1] - window.iloc[0]) / window.iloc[0] * 100
+        return "系统性风险" if bench_change <= -10.0 else "个股事件"
+    except Exception:
+        return None
+
+
 def _to_dt(d: dict) -> datetime:
     """Convert a dividend history entry's 'date' field to a datetime object."""
     raw = d['date']
