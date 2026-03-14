@@ -83,13 +83,28 @@ class FlexClient:
         return resp.text
 
     def _parse(self, xml_text: str) -> Tuple[List[PositionRecord], AccountSummary]:
+        import logging as _log
         root = ET.fromstring(xml_text)
         positions = []
+        _undprice_check_done = False
         for pos in root.iter("OpenPosition"):
             a = pos.attrib
             # Skip LOT-level rows; SUMMARY rows already carry the total position.
             if a.get("levelOfDetail", "SUMMARY") == "LOT":
                 continue
+            # One-time diagnostic: log whether undPrice is present in the Flex data.
+            if not _undprice_check_done and a.get("assetCategory", "") == "OPT":
+                has_undprice = "undPrice" in a or "underlyingPrice" in a
+                _log.getLogger(__name__).info(
+                    "Flex undPrice field %s in OPT positions (symbol=%s). "
+                    "%s",
+                    "FOUND" if has_undprice else "MISSING",
+                    a.get("symbol", "?"),
+                    "underlying_price will use real data." if has_undprice
+                    else "Falling back to option strike as proxy. "
+                         "Enable 'Price' field in Flex Query → Open Positions to fix.",
+                )
+                _undprice_check_done = True
             positions.append(PositionRecord(
                 symbol=a.get("symbol", ""),
                 asset_category=a.get("assetCategory", ""),
