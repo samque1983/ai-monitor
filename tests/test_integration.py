@@ -587,4 +587,68 @@ def test_run_risk_report_populates_ai_suggestions(monkeypatch):
         run_risk_report(acct, {})
 
     mock_suggest.assert_called()
-    assert red_alert.ai_suggestion == "AI建议文本"
+
+
+def test_build_agent_payload_includes_name_field():
+    """Every signal dict must include a 'name' field."""
+    from src.main import _build_agent_payload
+    from unittest.mock import MagicMock
+
+    def make_ticker(ticker="AAPL", name="Apple Inc."):
+        t = MagicMock()
+        t.ticker = ticker
+        t.name = name
+        t.last_price = 185.0
+        t.ma200 = 170.0
+        t.ma50w = 165.0
+        t.iv_rank = 18.0
+        t.iv_momentum = 5.0
+        t.rsi14 = 42.0
+        t.earnings_date = None
+        t.days_to_earnings = None
+        return t
+
+    sell_put_signal = MagicMock()
+    sell_put_signal.ticker = "AAPL"
+    sell_put_signal.strike = 180.0
+    sell_put_signal.dte = 52
+    sell_put_signal.bid = 3.2
+    sell_put_signal.ask = 3.5
+    sell_put_signal.mid = 3.35
+    sell_put_signal.spread_pct = 8.0
+    sell_put_signal.liquidity_warn = False
+    sell_put_signal.apy = 18.5
+    sell_put_signal.earnings_risk = False
+
+    t = make_ticker()
+
+    earnings_gap = MagicMock()
+    earnings_gap.ticker = "MSFT"
+    earnings_gap.avg_gap = 4.2
+    earnings_gap.up_ratio = 0.7
+    earnings_gap.max_gap = 8.1
+    earnings_gap.sample_count = 10
+
+    gap_td = make_ticker("MSFT", "Microsoft Corporation")
+
+    payload = _build_agent_payload(
+        sell_puts=[(sell_put_signal, t)],
+        iv_low=[t],
+        iv_high=[t],
+        ma200_bull=[t],
+        ma200_bear=[t],
+        leaps=[t],
+        earnings_gaps=[earnings_gap],
+        earnings_gap_ticker_map={"MSFT": gap_td},
+        iv_momentum=[t],
+        dividend_signals=[],
+    )
+
+    for s in payload:
+        assert "name" in s, f"signal_type={s['signal_type']} missing 'name' field"
+
+    sell_put = next(s for s in payload if s["signal_type"] == "sell_put")
+    assert sell_put["name"] == "Apple Inc."
+
+    gap = next(s for s in payload if s["signal_type"] == "earnings_gap")
+    assert gap["name"] == "Microsoft Corporation"

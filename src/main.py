@@ -48,6 +48,7 @@ def _build_agent_payload(
         entry = {
             "signal_type": "sell_put",
             "ticker": signal.ticker,
+            "name": t.name,
             "strike": float(signal.strike),
             "dte": signal.dte,
             "bid": float(signal.bid),
@@ -67,6 +68,7 @@ def _build_agent_payload(
         signals.append({
             "signal_type": "iv_low",
             "ticker": t.ticker,
+            "name": t.name,
             "iv_rank": round(float(t.iv_rank), 1) if t.iv_rank is not None else None,
             "earnings_date": str(t.earnings_date) if t.earnings_date else None,
             "days_to_earnings": t.days_to_earnings,
@@ -76,6 +78,7 @@ def _build_agent_payload(
         signals.append({
             "signal_type": "iv_high",
             "ticker": t.ticker,
+            "name": t.name,
             "iv_rank": round(float(t.iv_rank), 1) if t.iv_rank is not None else None,
             "earnings_date": str(t.earnings_date) if t.earnings_date else None,
             "days_to_earnings": t.days_to_earnings,
@@ -86,6 +89,7 @@ def _build_agent_payload(
         signals.append({
             "signal_type": "ma200_bullish",
             "ticker": t.ticker,
+            "name": t.name,
             "last_price": round(float(t.last_price), 2),
             "ma200": round(float(t.ma200), 2),
             "pct": round(pct, 2),
@@ -98,6 +102,7 @@ def _build_agent_payload(
         signals.append({
             "signal_type": "ma200_bearish",
             "ticker": t.ticker,
+            "name": t.name,
             "last_price": round(float(t.last_price), 2),
             "ma200": round(float(t.ma200), 2),
             "pct": round(pct, 2),
@@ -111,6 +116,7 @@ def _build_agent_payload(
         signals.append({
             "signal_type": "leaps",
             "ticker": t.ticker,
+            "name": t.name,
             "last_price": round(float(t.last_price), 2),
             "ma200": round(float(t.ma200), 2) if t.ma200 is not None else None,
             "ma50w": ma50w_val,
@@ -126,6 +132,7 @@ def _build_agent_payload(
         signals.append({
             "signal_type": "earnings_gap",
             "ticker": g.ticker,
+            "name": td.name if td else g.ticker,
             "avg_gap": round(float(g.avg_gap), 1),
             "up_ratio": round(float(g.up_ratio), 1),
             "max_gap": round(float(g.max_gap), 1),
@@ -139,6 +146,7 @@ def _build_agent_payload(
         signals.append({
             "signal_type": "iv_momentum",
             "ticker": t.ticker,
+            "name": t.name,
             "iv_momentum": round(float(t.iv_momentum), 1) if t.iv_momentum is not None else None,
             "iv_rank": round(float(t.iv_rank), 1) if t.iv_rank is not None else None,
             "earnings_date": str(t.earnings_date) if t.earnings_date else None,
@@ -151,6 +159,7 @@ def _build_agent_payload(
         signals.append({
             "signal_type": "dividend",
             "ticker": td.ticker,
+            "name": td.name,
             "last_price": round(float(td.last_price), 2),
             "current_yield": round(float(s.current_yield), 2),
             "yield_percentile": round(float(s.yield_percentile), 0),
