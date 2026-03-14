@@ -330,7 +330,7 @@ def scan_dividend_pool_weekly(
 
             # Step 6: 质量评分过滤
             if quality_score_result.overall_score < min_quality_score:
-                logger.debug(
+                logger.info(
                     f"{ticker}: Quality score {quality_score_result.overall_score:.1f} "
                     f"< {min_quality_score}, filtered out"
                 )
