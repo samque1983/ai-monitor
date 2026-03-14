@@ -340,3 +340,39 @@ def test_html_report_no_strategies_no_tabs():
     report.strategies = []
     html = generate_html_report(report)
     assert 'class="strat-tabs"' not in html
+
+
+# ── Bug fixes ────────────────────────────────────────────────────────────────
+
+def test_strategy_card_expiry_formatted():
+    """Legs summary must show formatted expiry (YYYY-MM-DD), not raw YYYYMMDD."""
+    from src.portfolio_report import _strategy_card
+    from src.flex_client import PositionRecord
+    from src.option_strategies import StrategyGroup
+    p = PositionRecord(
+        symbol="QQQ   P78", asset_category="OPT", put_call="P",
+        strike=78, expiry="20260330", multiplier=100, position=-7,
+        cost_basis_price=2.0, mark_price=2.0, unrealized_pnl=0.0,
+        delta=-0.3, gamma=0.01, theta=0.05, vega=0.1,
+        underlying_symbol="QQQ", currency="USD",
+    )
+    sg = StrategyGroup(underlying="QQQ", strategy_type="Naked Put", intent="income")
+    sg.legs = [p]
+    sg.dte = 16
+    sg.net_delta = 210.0
+    sg.net_theta = 35.0
+    sg.net_vega = -70.0
+    sg.net_gamma = -7.0
+    sg.net_credit = 1400.0
+    html = _strategy_card(sg)
+    assert "20260330" not in html, "Raw YYYYMMDD expiry must not appear in card"
+    assert "2026-03-30" in html, "Formatted expiry YYYY-MM-DD must appear in card"
+
+
+def test_group_header_theta_negative_sign_format():
+    """Group header theta must format as '-$45/天' not '$-45/天' when negative."""
+    from src.portfolio_report import _render_group_header
+    sg = _make_sg(net_theta=-45.0, net_pnl=100.0)
+    html = _render_group_header("income", "收租", [sg], "intent", nlv=100_000, color="#30d158")
+    assert "$-45" not in html, "Sign must precede $, not follow it"
+    assert "-$45" in html, "Negative theta must render as -$45/天"

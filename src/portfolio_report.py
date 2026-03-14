@@ -93,31 +93,68 @@ def _group_strategies(strategies: list) -> dict:
     return result
 
 
-def _group_stats(strategies: list) -> dict:
+def _group_stats(strategies: list, nlv: float = 0) -> dict:
     """Compute aggregate stats for a group of StrategyGroup objects."""
     if not strategies:
-        return {"count": 0, "total_pnl": 0.0, "total_theta": 0.0}
+        return {"count": 0, "total_pnl": 0.0, "total_theta": 0.0,
+                "net_delta": 0.0, "total_max_loss": 0.0,
+                "max_loss_pct": 0.0, "has_naked": False}
+    total_max_loss = sum(sg.max_loss for sg in strategies if sg.max_loss is not None)
+    max_loss_pct = (total_max_loss / nlv * 100) if nlv else 0.0
     return {
         "count": len(strategies),
-        "total_pnl": sum(sg.net_pnl  for sg in strategies),
+        "total_pnl": sum(sg.net_pnl for sg in strategies),
         "total_theta": sum(sg.net_theta for sg in strategies),
+        "net_delta": sum(sg.net_delta for sg in strategies),
+        "total_max_loss": total_max_loss,
+        "max_loss_pct": max_loss_pct,
+        "has_naked": any(sg.max_loss is None for sg in strategies),
     }
+
+
+def _group_subtitle(group_name: str, stats: dict, dim: str, nlv: float) -> str:
+    """Return a one-liner context description for a strategy group header."""
+    if stats.get("has_naked"):
+        return "含裸 Call — 最大亏损无上限"
+    max_loss_pct = stats.get("max_loss_pct", 0)
+    if max_loss_pct and max_loss_pct > 10:
+        return f"最大亏损 {max_loss_pct:.1f}% 净资产"
+    if dim == "dte":
+        if group_name == "≤30天":
+            return "临近到期 — Gamma 风险偏高"
+        if group_name == ">90天":
+            return "长线持仓 — Vega 主导"
+        return ""
+    theta = stats.get("total_theta", 0)
+    delta = stats.get("net_delta", 0)
+    if group_name == "income":
+        if theta < 0:
+            return "Theta 为负 — 收租策略存在问题"
+        return f"靠卖出期权收租，日 Theta +${theta:,.0f} 每天"
+    if group_name == "hedge":
+        return "保险成本策略 — 保护下行风险"
+    if group_name == "directional":
+        return "多头方向性暴露" if delta > 0 else "空头方向性暴露"
+    return ""
 
 
 
 def _render_group_header(group_name: str, display_name: str,
                           strategies: list, dim: str,
                           nlv: float, color: str) -> str:
-    stats = _group_stats(strategies)
+    stats = _group_stats(strategies, nlv=nlv)
 
     pnl = stats["total_pnl"]
     pnl_color = "#30d158" if pnl >= 0 else "#ff453a"
     pnl_str = _fmt_dollar(pnl)
 
     theta = stats["total_theta"]
-    theta_sign = "+" if theta >= 0 else ""
-    theta_str = f"{theta_sign}${theta:,.0f}/天"
+    theta_str = f"{'+' if theta >= 0 else '-'}${abs(theta):,.0f}/天"
     theta_color = "#30d158" if theta >= 0 else "#ff453a"
+
+    subtitle = _group_subtitle(group_name, stats, dim, nlv)
+    subtitle_html = (f'<div style="font-size:12px; color:#8e8e93; margin-top:4px;">{_e(subtitle)}</div>'
+                     if subtitle else "")
 
     return f"""
 <div style="background:rgba(255,255,255,0.03); border-left:3px solid {color};
@@ -128,6 +165,7 @@ def _render_group_header(group_name: str, display_name: str,
     <span style="font-size:12px; color:{pnl_color}; font-family:'SF Mono',monospace;">盈亏 {pnl_str}</span>
     <span style="font-size:12px; color:{theta_color}; font-family:'SF Mono',monospace;">日Θ {_e(theta_str)}</span>
   </div>
+  {subtitle_html}
 </div>"""
 
 
@@ -269,6 +307,13 @@ def _fmt_dollar(v: float) -> str:
     return f"-${abs(v):,.0f}"
 
 
+def _fmt_expiry(expiry: str) -> str:
+    """Format YYYYMMDD → YYYY-MM-DD. Returns original string if not 8-char."""
+    if len(expiry) == 8:
+        return f"{expiry[:4]}-{expiry[4:6]}-{expiry[6:]}"
+    return expiry
+
+
 def _parse_recommended(ai_suggestion: str) -> str:
     """Parse '推荐选项C' or 'recommend option C' → 'C'."""
     if not ai_suggestion:
@@ -321,7 +366,7 @@ def _strategy_card(sg) -> str:
     for p in sg.legs:
         if p.asset_category == "OPT":
             direction = "Short" if p.position < 0 else "Long"
-            legs_summary.append(f"{direction} {abs(p.position):.0f}× {p.put_call}{p.strike:.0f} exp {p.expiry}")
+            legs_summary.append(f"{direction} {abs(p.position):.0f}× {p.put_call}{p.strike:.0f} exp {_fmt_expiry(p.expiry)}")
     for p in sg.modifiers:
         legs_summary.append(f"[hedge] Long {abs(p.position):.0f}× {p.put_call}{p.strike:.0f}")
 
