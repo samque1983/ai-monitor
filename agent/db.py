@@ -50,6 +50,12 @@ CREATE TABLE IF NOT EXISTS risk_reports (
     created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(account_id, report_date)
 );
+
+CREATE TABLE IF NOT EXISTS raw_positions (
+    account_id TEXT PRIMARY KEY,
+    raw_json   TEXT NOT NULL,
+    saved_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 class AgentDB:
@@ -303,6 +309,21 @@ class AgentDB:
             (account_id,),
         ).fetchall()
         return [r["report_date"] for r in rows]
+
+    def save_raw_positions(self, account_id: str, raw_payload: dict) -> None:
+        """Upsert the latest raw positions payload for an account."""
+        self.conn.execute(
+            "INSERT OR REPLACE INTO raw_positions (account_id, raw_json, saved_at) VALUES (?,?,?)",
+            (account_id, json.dumps(raw_payload, ensure_ascii=False), datetime.now().isoformat()),
+        )
+        self.conn.commit()
+
+    def get_raw_positions(self, account_id: str) -> Optional[dict]:
+        """Return the latest raw positions payload for an account, or None."""
+        row = self.conn.execute(
+            "SELECT raw_json FROM raw_positions WHERE account_id=?", (account_id,)
+        ).fetchone()
+        return json.loads(row["raw_json"]) if row else None
 
     def close(self):
         self.conn.close()

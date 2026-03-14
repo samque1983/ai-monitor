@@ -190,10 +190,76 @@ async def upload_positions(payload: PositionsUploadPayload, request: Request):
 
     db = _get_db()
     db.save_risk_report(payload.account_key, report.report_date, html)
+    db.save_raw_positions(payload.account_key, payload.model_dump())
 
     red    = sum(1 for a in report.alerts if a.severity == "red")
     yellow = sum(1 for a in report.alerts if a.severity == "yellow")
     logger.info(f"Risk report saved: {payload.account_key} {report.report_date} "
+                f"— {red} red / {yellow} yellow")
+
+    return {
+        "status": "ok",
+        "report_date": report.report_date,
+        "alerts": {"red": red, "yellow": yellow},
+    }
+
+
+@app.post("/api/risk-report/regenerate/{account_key}")
+async def regenerate_risk_report(account_key: str, request: Request):
+    """Re-run the risk pipeline from the last saved raw positions payload."""
+    api_key = config.get("POSITIONS_API_KEY")
+    if api_key and request.headers.get("X-API-Key") != api_key:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+
+    db = _get_db()
+    raw = db.get_raw_positions(account_key)
+    if raw is None:
+        raise HTTPException(status_code=404, detail=f"No saved positions for {account_key}")
+
+    from src.flex_client import PositionRecord, AccountSummary
+    from src.risk_pipeline import run_pipeline
+
+    positions = [
+        PositionRecord(
+            symbol=p["symbol"], asset_category=p["asset_category"],
+            put_call=p.get("put_call"), strike=p.get("strike", 0.0),
+            expiry=p.get("expiry", ""), multiplier=p.get("multiplier", 100),
+            position=p["position"], cost_basis_price=p.get("cost_basis_price", 0.0),
+            mark_price=p.get("mark_price", 0.0), unrealized_pnl=p.get("unrealized_pnl", 0.0),
+            delta=p.get("delta"), gamma=p.get("gamma"),
+            theta=p.get("theta"), vega=p.get("vega"),
+            underlying_symbol=p.get("underlying_symbol", ""), currency=p.get("currency", "USD"),
+        )
+        for p in raw["positions"]
+    ]
+    acct = raw["account_summary"]
+    account_summary = AccountSummary(
+        net_liquidation=acct["net_liquidation"],
+        gross_position_value=acct["gross_position_value"],
+        init_margin_req=acct["init_margin_req"],
+        maint_margin_req=acct["maint_margin_req"],
+        excess_liquidity=acct["excess_liquidity"],
+        available_funds=acct["available_funds"],
+        cushion=acct["cushion"],
+    )
+
+    try:
+        llm_cfg = config.get_llm_config()
+    except ValueError:
+        llm_cfg = {}
+
+    report, html = run_pipeline(
+        positions=positions,
+        account_summary=account_summary,
+        account_key=account_key,
+        account_name=account_key,
+        llm_cfg=llm_cfg,
+    )
+    db.save_risk_report(account_key, report.report_date, html)
+
+    red    = sum(1 for a in report.alerts if a.severity == "red")
+    yellow = sum(1 for a in report.alerts if a.severity == "yellow")
+    logger.info(f"Regenerated risk report: {account_key} {report.report_date} "
                 f"— {red} red / {yellow} yellow")
 
     return {

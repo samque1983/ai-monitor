@@ -78,3 +78,33 @@ def test_post_positions_saves_to_db(client):
     row = db.get_latest_risk_report("ALICE")
     assert row is not None
     assert "<html" in row["html_content"].lower()
+
+
+def test_post_positions_saves_raw_payload(client):
+    from agent.deps import get_db
+    client.post("/api/positions", json=_SAMPLE_PAYLOAD,
+                headers={"X-API-Key": "test-secret"})
+    db = get_db()
+    raw = db.get_raw_positions("ALICE")
+    assert raw is not None
+    assert raw["account_key"] == "ALICE"
+    assert len(raw["positions"]) == 1
+
+
+def test_regenerate_uses_saved_raw_payload(client):
+    # POST positions first to seed raw data
+    client.post("/api/positions", json=_SAMPLE_PAYLOAD,
+                headers={"X-API-Key": "test-secret"})
+    # Regenerate — should produce a new report without needing IB Gateway
+    resp = client.post("/api/risk-report/regenerate/ALICE",
+                       headers={"X-API-Key": "test-secret"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "ok"
+    assert "report_date" in data
+
+
+def test_regenerate_returns_404_when_no_raw_data(client):
+    resp = client.post("/api/risk-report/regenerate/ALICE",
+                       headers={"X-API-Key": "test-secret"})
+    assert resp.status_code == 404
