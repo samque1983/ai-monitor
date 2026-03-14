@@ -139,39 +139,6 @@ body {
 
     <div class="section-eyebrow">我的自选</div>
 
-    {% if is_default %}
-    {# ── Default universe view ── #}
-    <div style="font-size:12px; color:var(--text-3); background:var(--surface); border:1px solid var(--border-2); border-radius:var(--r8); padding:8px 14px; margin-bottom:14px;">
-      显示默认扫描标的池 · 添加标的后切换为个人自选
-    </div>
-
-    {% set ns = namespace(current_group='') %}
-    {% for row in default_rows %}
-      {% if row.group != ns.current_group %}
-        {% if not loop.first %}</div>{% endif %}
-        {% set ns.current_group = row.group %}
-        <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--amber);margin:16px 0 8px;font-family:'DM Mono',monospace;">{{ row.group }}</div>
-        <div>
-      {% endif %}
-      <div class="default-row" style="animation-delay:{{ loop.index0 * 30 }}ms">
-        <div class="default-row-left">
-          <span class="ticker-name">{{ row.ticker }}</span>
-          <span class="default-name">{{ row.name }}</span>
-          {% if row.role %}<span class="default-role">{{ row.role }}</span>{% endif %}
-        </div>
-        <div class="default-row-right">
-          {% if row.floor %}<span class="default-price-label">大底</span><span class="default-price">{{ row.floor }}</span>{% endif %}
-          {% if row.strike %}<span class="default-price-label" style="margin-left:10px">黄金位</span><span class="default-price amber">{{ row.strike }}</span>{% endif %}
-        </div>
-        {% if row.note %}
-        <div class="default-note">{{ row.note }}</div>
-        {% endif %}
-      </div>
-    {% endfor %}
-    {% if default_rows %}</div>{% endif %}
-
-    {% else %}
-    {# ── Personal watchlist view ── #}
     <div id="ticker-list">
       {% if ticker_rows %}
         {% for row in ticker_rows %}
@@ -202,7 +169,6 @@ body {
         <div class="empty-state" id="empty-msg">暂无自选标的，在上方输入 ticker 添加。</div>
       {% endif %}
     </div>
-    {% endif %}
 
     <!-- Strategy discovery -->
     <div class="section-eyebrow" style="margin-top: 32px;">策略发现</div>
