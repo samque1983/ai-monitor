@@ -121,7 +121,7 @@ class AkshareProvider(BaseProvider):
 
     def _cn_fundamentals(self, ticker: str) -> Optional[Dict[str, Any]]:
         symbol = self._normalize_cn(ticker)
-        info_df = ak.stock_individual_info_em(stock=symbol)
+        info_df = ak.stock_individual_info_em(symbol=symbol)
         info = dict(zip(info_df["item"], info_df["value"]))
         company_name = info.get("股票简称") or ticker
         industry = info.get("行业")

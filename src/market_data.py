@@ -715,7 +715,11 @@ class MarketDataProvider:
         if self._akshare and market in ("CN", "HK"):
             result = self._akshare.get_fundamentals(ticker)
             if result is not None:
-                logger.debug(f"{ticker}: fundamentals via AKShare")
+                logger.debug(f"{ticker}: fundamentals via AKShare, merging None fields from yfinance")
+                yf_data = self._yf_fundamentals(ticker) or {}
+                for key, val in result.items():
+                    if val is None and yf_data.get(key) is not None:
+                        result[key] = yf_data[key]
                 return result
         return self._yf_fundamentals(ticker)
 

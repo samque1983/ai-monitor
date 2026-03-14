@@ -134,6 +134,9 @@ def test_cn_fundamentals():
     assert result["company_name"] == "贵州茅台"
     assert result["industry"] == "白酒"
     assert result["dividend_yield"] == pytest.approx(2.5)
+    # AKShare renamed parameter from `stock=` to `symbol=`
+    call_kwargs = mock_ak.stock_individual_info_em.call_args
+    assert call_kwargs.kwargs.get("symbol") == "600519"
 
 
 def test_cn_xq_symbol():

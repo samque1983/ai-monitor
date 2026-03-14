@@ -1314,6 +1314,7 @@ def test_us_price_akshare_after_polygon():
 # ── get_fundamentals routing ──────────────────────────────────────────────────
 
 def test_cn_fundamentals_uses_akshare_before_yfinance():
+    """AKShare is primary; yfinance is called only to fill None fields."""
     provider = MarketDataProvider(config={"data_sources": {"akshare": {"enabled": True}}})
     provider._akshare.get_fundamentals = MagicMock(return_value={
         "company_name": "贵州茅台", "industry": "白酒",
@@ -1321,12 +1322,13 @@ def test_cn_fundamentals_uses_akshare_before_yfinance():
         "payout_ratio": None, "debt_to_equity": None, "dividend_yield": 2.5,
     })
 
-    with patch.object(provider, "_yf_fundamentals") as mock_yf:
+    with patch.object(provider, "_yf_fundamentals", return_value={}) as mock_yf:
         result = provider.get_fundamentals("600519.SS")
 
     provider._akshare.get_fundamentals.assert_called_once_with("600519.SS")
-    mock_yf.assert_not_called()
+    mock_yf.assert_called_once()   # called for None-field merge
     assert result["company_name"] == "贵州茅台"
+    assert result["dividend_yield"] == 2.5  # AKShare value preserved
 
 
 def test_cn_fundamentals_falls_back_to_yfinance_when_akshare_none():
@@ -1370,3 +1372,41 @@ def test_us_options_akshare_after_tradier():
     provider._akshare.get_options_chain.assert_called_once()
     mock_yf.assert_not_called()
     assert not result.empty
+
+
+def test_hk_fundamentals_merges_none_fields_with_yfinance():
+    """AKShare HK returns dividend_yield=None; yfinance should fill it in."""
+    provider = MarketDataProvider(config={"data_sources": {"akshare": {"enabled": True}}})
+    provider._akshare.get_fundamentals = MagicMock(return_value={
+        "company_name": "中信股份", "industry": "综合企业",
+        "sector": None, "roe": None, "free_cash_flow": None,
+        "payout_ratio": None, "debt_to_equity": None, "dividend_yield": None,
+    })
+    with patch.object(provider, "_yf_fundamentals", return_value={
+        "company_name": None, "dividend_yield": 5.5, "roe": 12.0,
+    }) as mock_yf:
+        result = provider.get_fundamentals("0267.HK")
+
+    mock_yf.assert_called_once()
+    assert result["company_name"] == "中信股份"   # AKShare wins (non-None)
+    assert result["dividend_yield"] == 5.5         # yfinance fills None
+    assert result["roe"] == 12.0                   # yfinance fills None
+
+
+def test_cn_fundamentals_merges_none_fields_with_yfinance():
+    """AKShare CN returns partial fields; yfinance fills in None fields."""
+    provider = MarketDataProvider(config={"data_sources": {"akshare": {"enabled": True}}})
+    provider._akshare.get_fundamentals = MagicMock(return_value={
+        "company_name": "招商银行", "industry": "银行",
+        "sector": None, "roe": None, "free_cash_flow": None,
+        "payout_ratio": None, "debt_to_equity": None, "dividend_yield": 2.5,
+    })
+    with patch.object(provider, "_yf_fundamentals", return_value={
+        "roe": 15.0, "debt_to_equity": 0.5, "dividend_yield": 3.0,
+    }) as mock_yf:
+        result = provider.get_fundamentals("600036.SS")
+
+    mock_yf.assert_called_once()
+    assert result["dividend_yield"] == 2.5   # AKShare wins (non-None)
+    assert result["roe"] == 15.0             # yfinance fills None
+    assert result["debt_to_equity"] == 0.5   # yfinance fills None
