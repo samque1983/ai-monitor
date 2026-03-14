@@ -181,6 +181,7 @@ def _build_agent_payload(
             "analysis_text": td.analysis_text or "",
             "health_rationale": td.health_rationale or "",
             "golden_price": round(float(s.golden_price), 2) if s.golden_price is not None else None,
+            "current_vs_golden_pct": s.current_vs_golden_pct,
         })
 
     return signals
