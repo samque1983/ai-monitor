@@ -1114,6 +1114,7 @@ function cardDividend(s) {
       ${row('历史最高股息率', `${p.max_yield_5y?.toFixed(1) ?? 'N/A'}% (5年)`)}
       ${row('Forward 股息', `$${p.forward_dividend_rate?.toFixed(2) ?? 'N/A'}/股`)}
       ${row('极值底价 (大底)', `$${p.floor_price.toFixed(2)} (下方 ${p.floor_downside_pct?.toFixed(1) ?? '?'}%)`)}
+      ${p.extreme_event_label ? `<div style="font-size:11px;color:var(--text-3);padding:2px 0 4px 0">已排除 ${p.extreme_event_label}${p.extreme_event_price != null ? ` · 原始低 $${p.extreme_event_price.toFixed(2)}` : ''}</div>` : ''}
       ${goldenRow}
       ${rationaleRow}`;
   })();
