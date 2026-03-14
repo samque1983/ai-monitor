@@ -503,3 +503,89 @@ class TestDividendCardEnrichment:
             dividend_pool_summary={"count": 1, "last_update": "2026-03-09"},
         )
         assert "数据较旧" in html
+
+
+class TestFloorPriceExtremeEventFootnote:
+    """Task 7: floor section renders ↳ extreme event footnote."""
+
+    def _base_kwargs(self):
+        return dict(
+            scan_date=date(2026, 3, 14),
+            data_source="yfinance",
+            universe_count=5,
+            iv_low=[], iv_high=[],
+            ma200_bullish=[], ma200_bearish=[],
+            leaps=[], sell_puts=[],
+            elapsed_seconds=1.0,
+        )
+
+    def test_extreme_event_footnote_shown_when_present(self):
+        """When extreme_event_label is set, card shows ↳ footnote with price, label, days."""
+        signal = DividendBuySignal(
+            ticker_data=make_ticker(ticker="TEST", last_price=50.0),
+            signal_type="STOCK",
+            current_yield=5.2,
+            yield_percentile=88.0,
+            floor_price=43.11,
+            floor_downside_pct=13.8,
+            max_yield_5y=4.5,
+            forward_dividend_rate=1.94,
+            floor_price_raw=31.20,
+            extreme_event_label="2020-03 COVID 抛售",
+            extreme_event_price=31.20,
+            extreme_event_days=18,
+        )
+        html = format_html_report(
+            **self._base_kwargs(),
+            dividend_signals=[signal],
+            dividend_pool_summary={"count": 1, "last_update": "2026-03-14"},
+        )
+        assert "已剔除更低点" in html
+        assert "31.20" in html
+        assert "2020-03 COVID 抛售" in html
+        assert "18 天" in html
+
+    def test_extreme_event_footnote_absent_when_none(self):
+        """When extreme_event_label is None, ↳ footnote is not rendered."""
+        signal = DividendBuySignal(
+            ticker_data=make_ticker(ticker="TEST", last_price=50.0),
+            signal_type="STOCK",
+            current_yield=5.2,
+            yield_percentile=88.0,
+            floor_price=43.11,
+            floor_downside_pct=13.8,
+            max_yield_5y=4.5,
+            forward_dividend_rate=1.94,
+            extreme_event_label=None,
+        )
+        html = format_html_report(
+            **self._base_kwargs(),
+            dividend_signals=[signal],
+            dividend_pool_summary={"count": 1, "last_update": "2026-03-14"},
+        )
+        assert "已剔除更低点" not in html
+
+    def test_extreme_event_footnote_no_days_when_none(self):
+        """When extreme_event_days is None, days part is omitted gracefully."""
+        signal = DividendBuySignal(
+            ticker_data=make_ticker(ticker="TEST", last_price=50.0),
+            signal_type="STOCK",
+            current_yield=5.2,
+            yield_percentile=88.0,
+            floor_price=43.11,
+            floor_downside_pct=13.8,
+            max_yield_5y=4.5,
+            forward_dividend_rate=1.94,
+            floor_price_raw=31.20,
+            extreme_event_label="个股事件",
+            extreme_event_price=31.20,
+            extreme_event_days=None,
+        )
+        html = format_html_report(
+            **self._base_kwargs(),
+            dividend_signals=[signal],
+            dividend_pool_summary={"count": 1, "last_update": "2026-03-14"},
+        )
+        assert "已剔除更低点" in html
+        assert "个股事件" in html
+        assert "天" not in html or "已剔除" in html  # no days suffix
