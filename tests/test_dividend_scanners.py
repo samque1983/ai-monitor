@@ -872,6 +872,20 @@ def test_weekly_scan_populates_forward_dividend_rate(config):
     assert results[0].forward_dividend_rate == pytest.approx(2.40)
 
 
+def test_weekly_scan_forward_dividend_rate_falls_back_to_annual_dividend_ttm(config):
+    """When fundamentals have no forward/dividendRate, fall back to annual_dividend_ttm
+    so that floor_price can be computed for HK/CN stocks."""
+    provider, fs = _make_passing_provider_and_fs(forward_dividend_rate=None)
+    # Remove dividendRate too (ensure it's not present)
+    provider.get_fundamentals.return_value.pop("dividendRate", None)
+    # annual_dividend_ttm = 4 × 0.60 = 2.40 (from _make_passing_provider_and_fs)
+    results = scan_dividend_pool_weekly(["0267.HK"], provider, fs, config)
+    assert len(results) == 1
+    assert results[0].forward_dividend_rate == pytest.approx(2.40)
+    assert results[0].max_yield_5y is not None    # floor data computed
+    assert results[0].max_yield_5y > 0
+
+
 def test_weekly_scan_populates_max_yield_5y(config):
     """max_yield_5y must be computed as (annual_dividend_ttm / min_5y_price) * 100."""
     provider, fs = _make_passing_provider_and_fs()

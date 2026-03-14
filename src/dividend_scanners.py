@@ -338,9 +338,11 @@ def scan_dividend_pool_weekly(
 
             # Step 7: 获取 forward_dividend_rate
             # forwardAnnualDividendRate is unreliable in yfinance; fall back to dividendRate (TTM)
+            # Final fallback: annual_dividend_ttm (for HK/CN stocks where yfinance has no rate)
             forward_dividend_rate = (
                 fundamentals.get("forward_dividend_rate")
                 or fundamentals.get("dividendRate")
+                or (annual_dividend_ttm if annual_dividend_ttm > 0 else None)
             )
 
             # Step 8: 计算 floor price (filtered) using _compute_floor_data + golden_price
